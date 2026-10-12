@@ -1,0 +1,855 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Activity;
+use App\Models\AppNotification;
+use App\Models\Family;
+use App\Models\FamilyMember;
+use App\Models\UserLocation;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+
+class FamilyController extends Controller
+{
+    // =====================================================
+    // สร้างครอบครัว
+    // =====================================================
+
+    public function create(Request $request)
+    {
+        $request->validate([
+            'name' => 'required|string|max:255',
+        ]);
+
+        $user = $request->user();
+
+        $alreadyMember = FamilyMember::where(
+            'user_id',
+            $user->id
+        )->exists();
+
+        if ($alreadyMember) {
+            return response()->json([
+                'status' => false,
+                'message' => 'คุณมีครอบครัวอยู่แล้ว',
+            ], 409);
+        }
+
+        $family = DB::transaction(function () use (
+            $request,
+            $user
+        ) {
+            do {
+                $inviteCode =
+                    strtoupper(
+                        Str::random(8)
+                    );
+            } while (
+                Family::where(
+                    'invite_code',
+                    $inviteCode
+                )->exists()
+            );
+
+            $family = Family::create([
+                'name' =>
+                    $request->name,
+
+                'invite_code' =>
+                    $inviteCode,
+
+                'owner_id' =>
+                    $user->id,
+            ]);
+
+            FamilyMember::create([
+                'family_id' =>
+                    $family->id,
+
+                'user_id' =>
+                    $user->id,
+
+                'role' =>
+                    'owner',
+            ]);
+
+            return $family;
+        });
+
+        return response()->json([
+            'status' => true,
+
+            'message' =>
+                'สร้างครอบครัวสำเร็จ',
+
+            'family' =>
+                $family,
+        ], 201);
+    }
+
+    // =====================================================
+    // เข้าร่วมครอบครัว
+    // =====================================================
+
+    public function join(Request $request)
+    {
+        $request->validate([
+            'invite_code' =>
+                'required|string',
+        ]);
+
+        $user =
+            $request->user();
+
+        $alreadyMember =
+            FamilyMember::where(
+                'user_id',
+                $user->id
+            )->exists();
+
+        if ($alreadyMember) {
+            return response()->json([
+                'status' => false,
+
+                'message' =>
+                    'คุณมีครอบครัวอยู่แล้ว',
+            ], 409);
+        }
+
+        $family =
+            Family::where(
+                'invite_code',
+                strtoupper(
+                    $request->invite_code
+                )
+            )->first();
+
+        if (!$family) {
+            return response()->json([
+                'status' => false,
+
+                'message' =>
+                    'ไม่พบรหัสครอบครัวนี้',
+            ], 404);
+        }
+
+        DB::transaction(function () use (
+            $family,
+            $user
+        ) {
+            FamilyMember::create([
+                'family_id' =>
+                    $family->id,
+
+                'user_id' =>
+                    $user->id,
+
+                'role' =>
+                    'member',
+            ]);
+
+            // ---------------------------------------------
+            // แจ้ง Owner เมื่อมีสมาชิกใหม่
+            // ---------------------------------------------
+
+            if (
+                $family->owner_id
+                !== $user->id
+            ) {
+                AppNotification::create([
+                    'user_id' =>
+                        $family->owner_id,
+
+                    'family_id' =>
+                        $family->id,
+
+                    'type' =>
+                        'member_joined',
+
+                    'title' =>
+                        'สมาชิกใหม่',
+
+                    'message' =>
+                        $user->name .
+                        ' เข้าร่วมครอบครัวแล้ว',
+
+                    'data' => [
+                        'user_id' =>
+                            $user->id,
+                    ],
+
+                    'is_read' =>
+                        false,
+                ]);
+            }
+        });
+
+        return response()->json([
+            'status' => true,
+
+            'message' =>
+                'เข้าร่วมครอบครัวสำเร็จ',
+
+            'family' =>
+                $family,
+        ]);
+    }
+
+    // =====================================================
+    // ดูครอบครัวปัจจุบัน
+    // =====================================================
+
+    public function current(
+        Request $request
+    ) {
+        $membership =
+            FamilyMember::where(
+                'user_id',
+                $request->user()->id
+            )->first();
+
+        if (!$membership) {
+            return response()->json([
+                'status' =>
+                    true,
+
+                'has_family' =>
+                    false,
+
+                'family' =>
+                    null,
+            ]);
+        }
+
+        $family =
+            Family::with([
+                'owner:id,name,email,profile_photo',
+
+                'members:id,name,email,profile_photo',
+            ])->find(
+                $membership->family_id
+            );
+
+        if (!$family) {
+            return response()->json([
+                'status' =>
+                    true,
+
+                'has_family' =>
+                    false,
+
+                'family' =>
+                    null,
+            ]);
+        }
+
+        return response()->json([
+            'status' =>
+                true,
+
+            'has_family' =>
+                true,
+
+            'role' =>
+                $membership->role,
+
+            'family' =>
+                $family,
+        ]);
+    }
+
+    // =====================================================
+    // Owner เปลี่ยนชื่อครอบครัว
+    // =====================================================
+
+    public function update(
+        Request $request,
+        Family $family
+    ) {
+        $user =
+            $request->user();
+
+        if (
+            $family->owner_id
+            !== $user->id
+        ) {
+            return response()->json([
+                'status' =>
+                    false,
+
+                'message' =>
+                    'เฉพาะเจ้าของครอบครัวเท่านั้นที่แก้ไขได้',
+            ], 403);
+        }
+
+        $data =
+            $request->validate([
+                'name' =>
+                    'required|string|max:255',
+            ]);
+
+        $family->name =
+            $data['name'];
+
+        $family->save();
+
+        return response()->json([
+            'status' =>
+                true,
+
+            'message' =>
+                'เปลี่ยนชื่อครอบครัวสำเร็จ',
+
+            'family' =>
+                $family,
+        ]);
+    }
+
+    // =====================================================
+    // Owner สร้าง Invite Code ใหม่
+    // =====================================================
+
+    public function regenerateCode(
+        Request $request
+    ) {
+        $user =
+            $request->user();
+
+        $family =
+            Family::where(
+                'owner_id',
+                $user->id
+            )->first();
+
+        if (!$family) {
+            return response()->json([
+                'status' =>
+                    false,
+
+                'message' =>
+                    'เฉพาะเจ้าของครอบครัวเท่านั้นที่สร้างรหัสใหม่ได้',
+            ], 403);
+        }
+
+        do {
+            $newCode =
+                strtoupper(
+                    Str::random(8)
+                );
+        } while (
+            Family::where(
+                'invite_code',
+                $newCode
+            )->exists()
+        );
+
+        $family->invite_code =
+            $newCode;
+
+        $family->save();
+
+        return response()->json([
+            'status' =>
+                true,
+
+            'message' =>
+                'สร้าง Invite Code ใหม่สำเร็จ',
+
+            'invite_code' =>
+                $newCode,
+        ]);
+    }
+
+    // =====================================================
+    // Owner นำสมาชิกออก
+    // =====================================================
+
+    public function removeMember(
+        Request $request,
+        int $userId
+    ) {
+        $user =
+            $request->user();
+
+        $family =
+            Family::where(
+                'owner_id',
+                $user->id
+            )->first();
+
+        if (!$family) {
+            return response()->json([
+                'status' =>
+                    false,
+
+                'message' =>
+                    'เฉพาะเจ้าของครอบครัวเท่านั้นที่นำสมาชิกออกได้',
+            ], 403);
+        }
+
+        if (
+            $userId ===
+            $user->id
+        ) {
+            return response()->json([
+                'status' =>
+                    false,
+
+                'message' =>
+                    'เจ้าของไม่สามารถนำตัวเองออกได้',
+            ], 422);
+        }
+
+        $member =
+            FamilyMember::where(
+                'family_id',
+                $family->id
+            )
+                ->where(
+                    'user_id',
+                    $userId
+                )
+                ->first();
+
+        if (!$member) {
+            return response()->json([
+                'status' =>
+                    false,
+
+                'message' =>
+                    'ไม่พบสมาชิกนี้ในครอบครัว',
+            ], 404);
+        }
+
+        if (
+            $member->role ===
+            'owner'
+        ) {
+            return response()->json([
+                'status' =>
+                    false,
+
+                'message' =>
+                    'ไม่สามารถนำ Owner ออกจากครอบครัวได้',
+            ], 422);
+        }
+
+        DB::transaction(function () use (
+            $member,
+            $userId,
+            $family
+        ) {
+            // ---------------------------------------------
+            // Family Activity ของสมาชิก
+            // → กลายเป็น Private
+            // ---------------------------------------------
+
+            Activity::where(
+                'user_id',
+                $userId
+            )
+                ->where(
+                    'family_id',
+                    $family->id
+                )
+                ->where(
+                    'visibility',
+                    'family'
+                )
+                ->update([
+                    'visibility' =>
+                        'private',
+
+                    'family_id' =>
+                        null,
+                ]);
+
+            // ---------------------------------------------
+            // ลบตำแหน่งล่าสุด
+            // ---------------------------------------------
+
+            UserLocation::where(
+                'user_id',
+                $userId
+            )->delete();
+
+            // ---------------------------------------------
+            // นำสมาชิกออกจาก Family
+            // ---------------------------------------------
+
+            $member->delete();
+        });
+
+        return response()->json([
+            'status' =>
+                true,
+
+            'message' =>
+                'นำสมาชิกออกจากครอบครัวสำเร็จ',
+        ]);
+    }
+
+    // =====================================================
+    // Member ออกจากครอบครัว
+    // =====================================================
+
+    public function leave(
+        Request $request
+    ) {
+        $user =
+            $request->user();
+
+        $membership =
+            FamilyMember::where(
+                'user_id',
+                $user->id
+            )->first();
+
+        if (!$membership) {
+            return response()->json([
+                'status' =>
+                    false,
+
+                'message' =>
+                    'คุณยังไม่ได้อยู่ในครอบครัว',
+            ], 404);
+        }
+
+        if (
+            $membership->role ===
+            'owner'
+        ) {
+            return response()->json([
+                'status' =>
+                    false,
+
+                'message' =>
+                    'Owner ไม่สามารถออกจากครอบครัวได้ กรุณาโอนสิทธิ์ Owner ก่อน',
+            ], 422);
+        }
+
+        DB::transaction(function () use (
+            $membership,
+            $user
+        ) {
+            // ---------------------------------------------
+            // Family Activity ของตัวเอง
+            // → Private
+            // ---------------------------------------------
+
+            Activity::where(
+                'user_id',
+                $user->id
+            )
+                ->where(
+                    'family_id',
+                    $membership->family_id
+                )
+                ->where(
+                    'visibility',
+                    'family'
+                )
+                ->update([
+                    'visibility' =>
+                        'private',
+
+                    'family_id' =>
+                        null,
+                ]);
+
+            // ---------------------------------------------
+            // ลบตำแหน่งล่าสุด
+            // ---------------------------------------------
+
+            UserLocation::where(
+                'user_id',
+                $user->id
+            )->delete();
+
+            // ---------------------------------------------
+            // ออกจาก Family
+            // ---------------------------------------------
+
+            $membership->delete();
+        });
+
+        return response()->json([
+            'status' =>
+                true,
+
+            'message' =>
+                'ออกจากครอบครัวสำเร็จ',
+        ]);
+    }
+
+    // =====================================================
+    // Owner โอนสิทธิ์
+    // =====================================================
+
+    public function transferOwner(
+        Request $request,
+        int $userId
+    ) {
+        $currentUser =
+            $request->user();
+
+        $family =
+            Family::where(
+                'owner_id',
+                $currentUser->id
+            )->first();
+
+        if (!$family) {
+            return response()->json([
+                'status' =>
+                    false,
+
+                'message' =>
+                    'เฉพาะ Owner เท่านั้นที่สามารถโอนสิทธิ์ได้',
+            ], 403);
+        }
+
+        if (
+            $userId ===
+            $currentUser->id
+        ) {
+            return response()->json([
+                'status' =>
+                    false,
+
+                'message' =>
+                    'คุณเป็น Owner อยู่แล้ว',
+            ], 422);
+        }
+
+        $newOwnerMembership =
+            FamilyMember::where(
+                'family_id',
+                $family->id
+            )
+                ->where(
+                    'user_id',
+                    $userId
+                )
+                ->first();
+
+        if (!$newOwnerMembership) {
+            return response()->json([
+                'status' =>
+                    false,
+
+                'message' =>
+                    'ไม่พบสมาชิกนี้ในครอบครัว',
+            ], 404);
+        }
+
+        DB::transaction(function () use (
+            $family,
+            $currentUser,
+            $newOwnerMembership,
+            $userId
+        ) {
+            // ---------------------------------------------
+            // Owner เดิม → Member
+            // ---------------------------------------------
+
+            FamilyMember::where(
+                'family_id',
+                $family->id
+            )
+                ->where(
+                    'user_id',
+                    $currentUser->id
+                )
+                ->update([
+                    'role' =>
+                        'member',
+                ]);
+
+            // ---------------------------------------------
+            // Member ใหม่ → Owner
+            // ---------------------------------------------
+
+            $newOwnerMembership->role =
+                'owner';
+
+            $newOwnerMembership->save();
+
+            // ---------------------------------------------
+            // เปลี่ยน owner_id
+            // ---------------------------------------------
+
+            $family->owner_id =
+                $userId;
+
+            $family->save();
+        });
+
+        return response()->json([
+            'status' =>
+                true,
+
+            'message' =>
+                'โอนสิทธิ์ Owner สำเร็จ',
+        ]);
+    }
+
+    // =====================================================
+    // Owner ลบครอบครัว
+    // =====================================================
+
+    public function deleteFamily(
+        Request $request
+    ) {
+        $user =
+            $request->user();
+
+        $family =
+            Family::where(
+                'owner_id',
+                $user->id
+            )->first();
+
+        if (!$family) {
+            return response()->json([
+                'status' =>
+                    false,
+
+                'message' =>
+                    'เฉพาะ Owner เท่านั้นที่สามารถลบครอบครัวได้',
+            ], 403);
+        }
+
+        DB::transaction(function () use (
+            $family
+        ) {
+            // ---------------------------------------------
+            // เก็บ ID สมาชิก
+            // ---------------------------------------------
+
+            $memberIds =
+                DB::table(
+                    'family_members'
+                )
+                    ->where(
+                        'family_id',
+                        $family->id
+                    )
+                    ->pluck(
+                        'user_id'
+                    );
+
+            // ---------------------------------------------
+            // Family Activity ทั้งหมด
+            // → Private
+            //
+            // สำคัญ:
+            // ต้องทำก่อนลบ Family
+            // ---------------------------------------------
+
+            Activity::where(
+                'family_id',
+                $family->id
+            )
+                ->update([
+                    'visibility' =>
+                        'private',
+
+                    'family_id' =>
+                        null,
+                ]);
+
+            // ---------------------------------------------
+            // ลบ Location ของสมาชิกทุกคน
+            // ---------------------------------------------
+
+            if (
+                $memberIds->isNotEmpty()
+            ) {
+                DB::table(
+                    'user_locations'
+                )
+                    ->whereIn(
+                        'user_id',
+                        $memberIds
+                    )
+                    ->delete();
+            }
+
+            // ---------------------------------------------
+            // หา Post ทั้งหมด
+            // ---------------------------------------------
+
+            $postIds =
+                DB::table(
+                    'posts'
+                )
+                    ->where(
+                        'family_id',
+                        $family->id
+                    )
+                    ->pluck(
+                        'id'
+                    );
+
+            // ---------------------------------------------
+            // ลบ Comment
+            // ---------------------------------------------
+
+            if (
+                $postIds->isNotEmpty()
+            ) {
+                DB::table(
+                    'comments'
+                )
+                    ->whereIn(
+                        'post_id',
+                        $postIds
+                    )
+                    ->delete();
+            }
+
+            // ---------------------------------------------
+            // ลบ Post
+            // ---------------------------------------------
+
+            DB::table(
+                'posts'
+            )
+                ->where(
+                    'family_id',
+                    $family->id
+                )
+                ->delete();
+
+            // ---------------------------------------------
+            // ลบสมาชิก
+            // ---------------------------------------------
+
+            DB::table(
+                'family_members'
+            )
+                ->where(
+                    'family_id',
+                    $family->id
+                )
+                ->delete();
+
+            // ---------------------------------------------
+            // ลบ Family
+            // ---------------------------------------------
+
+            $family->delete();
+        });
+
+        return response()->json([
+            'status' =>
+                true,
+
+            'message' =>
+                'ลบครอบครัวสำเร็จ',
+        ]);
+    }
+}

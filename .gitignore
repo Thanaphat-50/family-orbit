@@ -1,0 +1,26 @@
+
+# Environment variables / secrets
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.*.example
+
+# Laravel
+**/vendor/
+**/node_modules/
+**/storage/logs/
+**/database/*.sqlite
+
+# Flutter
+**/.dart_tool/
+**/build/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+
+# Android
+**/.gradle/
+**/android/local.properties
+**/android/key.properties
+**/*.jks
+**/*.keystore
+family_app/android/app/src/main/res/values/google_maps_key.xml
