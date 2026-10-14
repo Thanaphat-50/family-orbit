@@ -2,44 +2,30 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
-use Laravel\Sanctum\HasApiTokens;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Laravel\Sanctum\HasApiTokens;
+use Throwable;
 
 class User extends Authenticatable
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasApiTokens, HasFactory, Notifiable;
 
-    /**
-     * The attributes that are mass assignable.
-     *
-     * @var list<string>
-     */
     protected $fillable = [
         'name',
         'email',
         'password',
     ];
 
-    /**
-     * The attributes that should be hidden for serialization.
-     *
-     * @var list<string>
-     */
     protected $hidden = [
         'password',
         'remember_token',
     ];
 
-    /**
-     * Get the attributes that should be cast.
-     *
-     * @return array<string, string>
-     */
     protected function casts(): array
     {
         return [
@@ -50,21 +36,57 @@ class User extends Authenticatable
 
     protected $appends = [
         'profile_image_url',
+        'profile_photo_url',
     ];
 
     public function getProfileImageUrlAttribute(): ?string
+    {
+        return $this->profilePhotoUrl();
+    }
+
+    public function getProfilePhotoUrlAttribute(): ?string
+    {
+        return $this->profilePhotoUrl();
+    }
+
+    private function profilePhotoUrl(): ?string
     {
         if (!$this->profile_photo) {
             return null;
         }
 
-        $storageUrl = Storage::url(
-            $this->profile_photo
+        $disk = config(
+            'filesystems.default',
+            'local'
         );
 
-        return request()
-            ->getSchemeAndHttpHost()
-            . $storageUrl;
-    }
+        $disk = $disk === 'local'
+            ? 'public'
+            : $disk;
 
+        // สำหรับการพัฒนาในเครื่อง
+        if ($disk === 'public') {
+            return request()->getSchemeAndHttpHost()
+                . '/storage/'
+                . ltrim($this->profile_photo, '/');
+        }
+
+        // สำหรับ Private Bucket บน Cloud
+        try {
+            return Storage::disk($disk)->temporaryUrl(
+                $this->profile_photo,
+                now()->addHours(12)
+            );
+        } catch (Throwable $e) {
+            Log::warning(
+                'Cannot generate profile photo URL',
+                [
+                    'user_id' => $this->id,
+                    'error' => $e->getMessage(),
+                ]
+            );
+
+            return null;
+        }
+    }
 }
