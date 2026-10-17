@@ -1,7 +1,7 @@
 class ApiConfig {
   // IP ของคอมใน Wi-Fi วงเดียวกับมือถือ
   static const String serverUrl =
-      'http://192.168.0.106:8000';
+      'https://family-orbit-production-aznxgw.laravel.cloud';
 
   static const String baseUrl =
       '$serverUrl/api';
