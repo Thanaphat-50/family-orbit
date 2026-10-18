@@ -61,6 +61,11 @@ class Shop extends Model
         return $this->hasMany(Product::class);
     }
 
+    public function reports()
+    {
+        return $this->hasMany(ShopReport::class);
+    }
+
     // ร้านที่แสดงในตลาด
     public function scopeActive(Builder $query): Builder
     {

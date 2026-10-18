@@ -9,8 +9,10 @@ use Filament\Forms\Components\Textarea;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\ImageColumn;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class ShopsTable
 {
@@ -52,6 +54,12 @@ class ShopsTable
                     ->label('ติดต่อ')
                     ->description(fn (Shop $record) => $record->line_id ? 'LINE: ' . $record->line_id : null),
 
+                TextColumn::make('reports_count')
+                    ->label('รายงาน')
+                    ->badge()
+                    ->color(fn (int $state) => $state > 0 ? 'danger' : 'gray')
+                    ->sortable(),
+
                 TextColumn::make('status')
                     ->label('สถานะ')
                     ->formatStateUsing(fn (string $state) => Shop::STATUS_LABELS[$state] ?? $state)
@@ -67,15 +75,6 @@ class ShopsTable
                     ->label('สมัครเมื่อ')
                     ->since()
                     ->sortable(),
-            ])
-            ->filters([
-                SelectFilter::make('status')
-                    ->label('สถานะ')
-                    ->options(Shop::STATUS_LABELS),
-
-                SelectFilter::make('category')
-                    ->label('หมวด')
-                    ->options(config('market.categories')),
             ])
             ->recordActions([
                 // ตรวจแล้วผ่าน → เปิดขาย (ใช้คืนร้านที่ถูกระงับด้วย)
@@ -113,6 +112,28 @@ class ShopsTable
                             ->maxLength(500),
                     ])
                     ->action(fn (Shop $record, array $data) => $record->suspend($data['reason'])),
+
+                // ตรวจแล้วร้านไม่ผิดกฎ → ล้างรายงาน
+                Action::make('dismissReports')
+                    ->label('ล้างรายงาน')
+                    ->icon(Heroicon::OutlinedCheckBadge)
+                    ->color('gray')
+                    ->requiresConfirmation()
+                    ->visible(fn (Shop $record) => $record->reports_count > 0)
+                    ->action(fn (Shop $record) => $record->reports()->delete()),
+            ])
+            ->filters([
+                SelectFilter::make('status')
+                    ->label('สถานะ')
+                    ->options(Shop::STATUS_LABELS),
+
+                SelectFilter::make('category')
+                    ->label('หมวด')
+                    ->options(config('market.categories')),
+
+                Filter::make('reported')
+                    ->label('ถูกรายงาน')
+                    ->query(fn (Builder $query) => $query->has('reports')),
             ]);
     }
 }

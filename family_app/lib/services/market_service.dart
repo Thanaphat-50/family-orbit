@@ -83,6 +83,94 @@ class MarketService {
   }
 
   // =====================================================
+  // ตลาด (ฝั่งผู้ซื้อ)
+  // =====================================================
+
+  // q: คำค้น, category / province: ตัวกรอง (null = ทั้งหมด)
+  static Future<Map<String, dynamic>> getMarketProducts({
+    String? q,
+    String? category,
+    String? province,
+    int page = 1,
+  }) async {
+    final headers = await _headers();
+
+    final uri = Uri.parse('$baseUrl/market/products').replace(
+      queryParameters: {
+        'page': '$page',
+        if (q != null && q.trim().isNotEmpty) 'q': q.trim(),
+        'category': ?category,
+        'province': ?province,
+      },
+    );
+
+    final response = await ApiHelper.request(
+      () => http.get(uri, headers: headers),
+    );
+
+    return ApiHelper.decode(response);
+  }
+
+  static Future<Map<String, dynamic>> getMarketProduct(int productId) async {
+    final headers = await _headers();
+
+    final response = await ApiHelper.request(
+      () => http.get(
+        Uri.parse('$baseUrl/market/products/$productId'),
+        headers: headers,
+      ),
+    );
+
+    return ApiHelper.decode(response);
+  }
+
+  // ร้านที่เปิดขายและมีสินค้า (แถบร้านหน้าตลาด)
+  static Future<Map<String, dynamic>> getMarketShops({String? province}) async {
+    final headers = await _headers();
+
+    final uri = Uri.parse('$baseUrl/market/shops')
+        .replace(queryParameters: {'province': ?province});
+
+    final response = await ApiHelper.request(
+      () => http.get(uri, headers: headers),
+    );
+
+    return ApiHelper.decode(response);
+  }
+
+  static Future<Map<String, dynamic>> getMarketShop(int shopId) async {
+    final headers = await _headers();
+
+    final response = await ApiHelper.request(
+      () => http.get(
+        Uri.parse('$baseUrl/market/shops/$shopId'),
+        headers: headers,
+      ),
+    );
+
+    return ApiHelper.decode(response);
+  }
+
+  // target: 'products' หรือ 'shops'
+  static Future<Map<String, dynamic>> report({
+    required String target,
+    required int id,
+    required String reason,
+  }) async {
+    final headers = await _headers();
+
+    final response = await ApiHelper.request(
+      () => http.post(
+        Uri.parse('$baseUrl/market/$target/$id/report'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode({'reason': reason}),
+      ),
+    );
+
+    return ApiHelper.decode(response);
+  }
+
+  // =====================================================
   // สินค้าในร้านของฉัน
   // =====================================================
 

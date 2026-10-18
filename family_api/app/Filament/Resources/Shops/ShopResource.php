@@ -32,7 +32,8 @@ class ShopResource extends Resource
     public static function getEloquentQuery(): Builder
     {
         return parent::getEloquentQuery()
-            ->with('owner:id,name,email');
+            ->with('owner:id,name,email')
+            ->withCount('reports');
     }
 
     // ตัวเลขบนเมนู = ร้านที่รออนุมัติ

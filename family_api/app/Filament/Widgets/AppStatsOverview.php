@@ -5,6 +5,7 @@ namespace App\Filament\Widgets;
 use App\Models\Comment;
 use App\Models\Family;
 use App\Models\Post;
+use App\Models\Product;
 use App\Models\Shop;
 use App\Models\User;
 use Filament\Widgets\StatsOverviewWidget;
@@ -27,7 +28,11 @@ class AppStatsOverview extends StatsOverviewWidget
             ->count()
             + Comment::whereNull('hidden_at')
                 ->has('reports')
-                ->count();
+                ->count()
+            + Product::whereNull('hidden_at')
+                ->has('reports')
+                ->count()
+            + Shop::has('reports')->count();
 
         $pendingShops = Shop::where('status', Shop::STATUS_PENDING)->count();
 
@@ -40,7 +45,7 @@ class AppStatsOverview extends StatsOverviewWidget
             Stat::make('โพสต์ชุมชน', Post::where('visibility', 'community')->count()),
 
             Stat::make('รายงานรอตรวจ', $pendingReports)
-                ->description($pendingReports > 0 ? 'ดูที่เมนูโพสต์/ความคิดเห็นชุมชน' : 'ไม่มีรายงานค้าง')
+                ->description($pendingReports > 0 ? 'ดูที่เมนูชุมชนและตลาดที่มีตัวเลขสีแดง' : 'ไม่มีรายงานค้าง')
                 ->color($pendingReports > 0 ? 'danger' : 'success'),
 
             Stat::make('ร้านรออนุมัติ', $pendingShops)

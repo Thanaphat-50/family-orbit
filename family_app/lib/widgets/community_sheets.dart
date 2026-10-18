@@ -237,9 +237,11 @@ Future<String?> showCommentActionsSheet(
 // คืนค่า key ของเหตุผล หรือ null ถ้ายกเลิก
 // =======================================================
 
+// reasons: เหตุผลให้เลือก (ตลาดใช้ชุดของตัวเอง)
 Future<String?> showReportReasonSheet(
   BuildContext context, {
   String title = 'รายงานโพสต์นี้',
+  Map<String, String> reasons = reportReasons,
 }) {
   return showModalBottomSheet<String>(
     context: context,
@@ -269,7 +271,7 @@ Future<String?> showReportReasonSheet(
                 ),
               ),
               const SizedBox(height: 8),
-              ...reportReasons.entries.map(
+              ...reasons.entries.map(
                 (entry) => ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: const Icon(

@@ -8,6 +8,7 @@ use App\Http\Controllers\LocationController;
 use App\Http\Controllers\PostController;
 use App\Http\Controllers\CommentController;
 use App\Http\Controllers\CommunityController;
+use App\Http\Controllers\MarketController;
 use App\Http\Controllers\MyProductController;
 use App\Http\Controllers\MyShopController;
 use App\Http\Controllers\ActivityController;
@@ -127,6 +128,37 @@ Route::middleware('auth:sanctum')->group(function () {
         CommentController::class,
         'destroy'
     ]);
+
+    // ตลาด: ฝั่งผู้ซื้อ
+    Route::get('/market/products', [
+        MarketController::class,
+        'products'
+    ]);
+
+    Route::get('/market/products/{product}', [
+        MarketController::class,
+        'showProduct'
+    ]);
+
+    Route::post('/market/products/{product}/report', [
+        MarketController::class,
+        'reportProduct'
+    ])->middleware('throttle:ugc');
+
+    Route::get('/market/shops', [
+        MarketController::class,
+        'shops'
+    ]);
+
+    Route::get('/market/shops/{shop}', [
+        MarketController::class,
+        'showShop'
+    ]);
+
+    Route::post('/market/shops/{shop}/report', [
+        MarketController::class,
+        'reportShop'
+    ])->middleware('throttle:ugc');
 
     // ตลาด: ร้านของฉัน (ฝั่งผู้ขาย)
     Route::get('/my-shop', [

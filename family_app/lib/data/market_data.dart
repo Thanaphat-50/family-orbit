@@ -138,6 +138,26 @@ const List<String> thaiProvinces = [
   'อุบลราชธานี',
 ];
 
+// เหตุผลรายงานสินค้า/ร้าน (ตรงกับ market.report_reasons)
+const Map<String, String> marketReportReasons = {
+  'scam': 'หลอกลวง / โกง',
+  'prohibited': 'สินค้าต้องห้าม / ผิดกฎหมาย',
+  'fake': 'ของปลอม / ไม่ตรงปก',
+  'inappropriate': 'ไม่เหมาะสม',
+  'spam': 'สแปม',
+  'other': 'อื่น ๆ',
+};
+
+// "บางนา, กรุงเทพมหานคร"
+String shopArea(dynamic shop) {
+  if (shop is! Map) return '';
+
+  return [
+    shop['district']?.toString() ?? '',
+    shop['province']?.toString() ?? '',
+  ].where((part) => part.trim().isNotEmpty).join(', ');
+}
+
 // =======================================================
 // ราคา: "฿1,250" / "฿35.50" / ไม่มีราคา = "สอบถามราคา"
 // =======================================================

@@ -39,6 +39,11 @@ class Product extends Model
         return $this->hasMany(ProductImage::class)->orderBy('sort');
     }
 
+    public function reports()
+    {
+        return $this->hasMany(ProductReport::class);
+    }
+
     // สินค้าที่ผู้ซื้อเห็นในตลาด:
     // เจ้าของร้านไม่ได้ซ่อน, ไม่ถูกซ่อนโดย Admin และร้านเปิดขายอยู่
     public function scopeVisibleInMarket(Builder $query): Builder
