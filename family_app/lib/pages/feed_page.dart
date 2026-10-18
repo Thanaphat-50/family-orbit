@@ -25,9 +25,15 @@ class _ScopeFeed {
   bool hasMore = false;
 }
 
+// ฟีดโพสต์ ใช้ได้ 2 แบบ
+// - FeedScope.community: หน้าหลัก (ทุกครอบครัวเห็น)
+// - FeedScope.family:    แท็บครอบครัว (เฉพาะครอบครัว)
 class FeedPage extends StatefulWidget {
+  final FeedScope scope;
+
   const FeedPage({
     super.key,
+    required this.scope,
   });
 
   @override
@@ -50,18 +56,10 @@ class _FeedPageState extends State<FeedPage> {
 
   bool isPosting = false;
 
-  // ฟีดที่กำลังดูอยู่
-  FeedScope scope = FeedScope.family;
+  // ฟีดนี้เป็นของครอบครัวหรือชุมชน (กำหนดจากหน้าที่เปิด)
+  FeedScope get scope => widget.scope;
 
-  final Map<FeedScope, _ScopeFeed> feeds = {
-    FeedScope.family: _ScopeFeed(),
-    FeedScope.community: _ScopeFeed(),
-  };
-
-  _ScopeFeed get feed => feeds[scope]!;
-
-  // กลุ่มผู้เห็นโพสต์ที่กำลังเขียน (ค่าเริ่มต้นตามแท็บที่เปิด)
-  FeedScope composerScope = FeedScope.family;
+  final _ScopeFeed feed = _ScopeFeed();
 
   Map<String, dynamic>? currentUser;
 
@@ -77,7 +75,7 @@ class _FeedPageState extends State<FeedPage> {
   void initState() {
     super.initState();
     scrollController.addListener(onScroll);
-    loadPosts(FeedScope.family);
+    loadPosts();
   }
 
   String apiScope(FeedScope value) {
@@ -89,11 +87,10 @@ class _FeedPageState extends State<FeedPage> {
   // loadMore = true → โหลดหน้าถัดไปต่อท้าย (ฟีดชุมชน)
   // =====================================================
 
-  Future<void> loadPosts(
-    FeedScope target, {
+  Future<void> loadPosts({
     bool loadMore = false,
   }) async {
-    final state = feeds[target]!;
+    final state = feed;
 
     if (loadMore) {
       if (state.isLoading || state.isLoadingMore || !state.hasMore) {
@@ -109,7 +106,7 @@ class _FeedPageState extends State<FeedPage> {
 
     try {
       final result = await PostService.getPosts(
-        scope: apiScope(target),
+        scope: apiScope(scope),
         page: page,
       );
 
@@ -148,14 +145,13 @@ class _FeedPageState extends State<FeedPage> {
         });
       } else {
         handleLoadError(
-          target,
           result['message']?.toString() ?? 'โหลดโพสต์ไม่สำเร็จ',
         );
       }
     } catch (e) {
       if (!mounted) return;
 
-      handleLoadError(target, e.toString());
+      handleLoadError(e.toString());
     } finally {
       if (mounted) {
         setState(() {
@@ -176,12 +172,10 @@ class _FeedPageState extends State<FeedPage> {
 
   // ยังไม่มีโพสต์ในจอ → แสดงการ์ด "ลองอีกครั้ง"
   // มีโพสต์อยู่แล้ว → แจ้งด้วย SnackBar
-  void handleLoadError(FeedScope target, String message) {
-    final state = feeds[target]!;
-
-    if (state.posts.isEmpty) {
+  void handleLoadError(String message) {
+    if (feed.posts.isEmpty) {
       setState(() {
-        state.loadError = message;
+        feed.loadError = message;
       });
     } else {
       showMessage(message);
@@ -189,14 +183,12 @@ class _FeedPageState extends State<FeedPage> {
   }
 
   Future<void> retryLoad() async {
-    final target = scope;
-
     setState(() {
-      feeds[target]!.isLoading = true;
-      feeds[target]!.loadError = null;
+      feed.isLoading = true;
+      feed.loadError = null;
     });
 
-    await loadPosts(target);
+    await loadPosts();
   }
 
   // เลื่อนใกล้ท้ายฟีดชุมชน → โหลดหน้าถัดไป
@@ -208,23 +200,7 @@ class _FeedPageState extends State<FeedPage> {
     final position = scrollController.position;
 
     if (position.pixels >= position.maxScrollExtent - 600) {
-      loadPosts(FeedScope.community, loadMore: true);
-    }
-  }
-
-  void switchScope(FeedScope next) {
-    if (next == scope) return;
-
-    setState(() {
-      scope = next;
-      composerScope = next;
-    });
-
-    final state = feeds[next]!;
-
-    // โหลดฟีดชุมชนครั้งแรกเมื่อกดเข้าไปดู
-    if (!state.loaded && state.loadError == null) {
-      loadPosts(next);
+      loadPosts(loadMore: true);
     }
   }
 
@@ -274,7 +250,7 @@ class _FeedPageState extends State<FeedPage> {
       return;
     }
 
-    final FeedScope target = composerScope;
+    final FeedScope target = scope;
 
     if (target == FeedScope.community && !communityTermsAccepted) {
       final bool ok = await ensureCommunityTerms();
@@ -299,14 +275,7 @@ class _FeedPageState extends State<FeedPage> {
 
         dismissKeyboard();
 
-        // ไปที่ฟีดของโพสต์ที่เพิ่งแชร์ เพื่อให้เห็นโพสต์ทันที
-        if (scope != target) {
-          setState(() {
-            scope = target;
-          });
-        }
-
-        await loadPosts(target);
+        await loadPosts();
 
         if (!mounted) return;
 
@@ -427,7 +396,7 @@ class _FeedPageState extends State<FeedPage> {
 
       if (result['status'] == true) {
         setState(() {
-          removePostEverywhere(postId);
+          removePost(postId);
         });
 
         showMessage(
@@ -451,10 +420,8 @@ class _FeedPageState extends State<FeedPage> {
     }
   }
 
-  void removePostEverywhere(int postId) {
-    for (final state in feeds.values) {
-      state.posts.removeWhere((post) => postIdOf(post) == postId);
-    }
+  void removePost(int postId) {
+    feed.posts.removeWhere((post) => postIdOf(post) == postId);
 
     expandedPostIds.remove(postId);
   }
@@ -481,7 +448,7 @@ class _FeedPageState extends State<FeedPage> {
       if (result['status'] == true) {
         // ซ่อนโพสต์ที่รายงานจากจอของเราทันที
         setState(() {
-          removePostEverywhere(postId);
+          removePost(postId);
         });
 
         showMessage(
@@ -537,11 +504,9 @@ class _FeedPageState extends State<FeedPage> {
 
   // เอาโพสต์และความคิดเห็นของคนที่บล็อกออกจากฟีดชุมชน
   void removeUserFromCommunity(int userId) {
-    final state = feeds[FeedScope.community]!;
+    feed.posts.removeWhere((post) => authorIdOf(post) == userId);
 
-    state.posts.removeWhere((post) => authorIdOf(post) == userId);
-
-    for (final post in state.posts) {
+    for (final post in feed.posts) {
       final dynamic comments = post['comments'];
 
       if (comments is List) {
@@ -570,7 +535,7 @@ class _FeedPageState extends State<FeedPage> {
 
     // เลิกบล็อกแล้ว → โหลดฟีดชุมชนใหม่ให้เห็นโพสต์ของเขาอีกครั้ง
     if (changed && mounted) {
-      await loadPosts(FeedScope.community);
+      await loadPosts();
     }
   }
 
@@ -582,9 +547,6 @@ class _FeedPageState extends State<FeedPage> {
 
   Future<void> showCommentDialog(int postId) async {
     dismissKeyboard();
-
-    // ฟีดของโพสต์นี้ (ใช้โหลดใหม่หลังส่งความคิดเห็น)
-    final FeedScope postScope = scope;
 
     String commentText = '';
 
@@ -670,7 +632,7 @@ class _FeedPageState extends State<FeedPage> {
       if (!mounted) return;
 
       if (result['status'] == true) {
-        await loadPosts(postScope);
+        await loadPosts();
 
         if (!mounted) return;
 
@@ -922,23 +884,34 @@ class _FeedPageState extends State<FeedPage> {
   // =====================================================
 
   Widget buildHeroHeader() {
+    final bool community = scope == FeedScope.community;
+
+    // หน้าชุมชนใช้โทนฟ้า-เขียว แยกจากหน้าครอบครัว
+    final List<Color> colors = community
+        ? const [
+            Color(0xFF0B2E4A),
+            Color(0xFF0B7FA6),
+            Color(0xFF35B9DC),
+          ]
+        : const [
+            Color(0xFF182458),
+            Color(0xFF4650D8),
+            Color(0xFF646BFF),
+          ];
+
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 22),
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
+        gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF182458),
-            Color(0xFF4650D8),
-            Color(0xFF646BFF),
-          ],
+          colors: colors,
         ),
         borderRadius: BorderRadius.circular(28),
         boxShadow: [
           BoxShadow(
-            color: AppColors.primary.withValues(alpha: 0.18),
+            color: colors[1].withValues(alpha: 0.18),
             blurRadius: 28,
             offset: const Offset(0, 12),
           ),
@@ -1005,18 +978,20 @@ class _FeedPageState extends State<FeedPage> {
                   color: Colors.white.withValues(alpha: 0.13),
                   borderRadius: BorderRadius.circular(999),
                 ),
-                child: const Row(
+                child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
-                      Icons.auto_awesome_rounded,
+                      community
+                          ? Icons.public_rounded
+                          : Icons.auto_awesome_rounded,
                       color: AppColors.warm,
                       size: 15,
                     ),
-                    SizedBox(width: 6),
+                    const SizedBox(width: 6),
                     Text(
-                      'FAMILY ORBIT',
-                      style: TextStyle(
+                      community ? 'COMMUNITY' : 'FAMILY ORBIT',
+                      style: const TextStyle(
                         color: Colors.white,
                         fontSize: 11,
                         fontWeight: FontWeight.w800,
@@ -1027,9 +1002,11 @@ class _FeedPageState extends State<FeedPage> {
                 ),
               ),
               const SizedBox(height: 16),
-              const Text(
-                'วันนี้ครอบครัว\nเป็นอย่างไรกันบ้าง?',
-                style: TextStyle(
+              Text(
+                community
+                    ? 'เรื่องราวจาก\nทุกครอบครัว'
+                    : 'วันนี้ครอบครัว\nเป็นอย่างไรกันบ้าง?',
+                style: const TextStyle(
                   color: Colors.white,
                   fontSize: 24,
                   height: 1.25,
@@ -1038,7 +1015,9 @@ class _FeedPageState extends State<FeedPage> {
               ),
               const SizedBox(height: 8),
               Text(
-                'แชร์เรื่องเล็ก ๆ ให้คนสำคัญของคุณรับรู้',
+                community
+                    ? 'แชร์ ถาม-ตอบ และช่วยเหลือกันในชุมชน'
+                    : 'แชร์เรื่องเล็ก ๆ ให้คนสำคัญของคุณรับรู้',
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.78),
                   fontSize: 13,
@@ -1104,7 +1083,7 @@ class _FeedPageState extends State<FeedPage> {
                   },
 
                   decoration: InputDecoration(
-                    hintText: composerScope == FeedScope.community
+                    hintText: scope == FeedScope.community
                         ? 'แชร์เรื่องราวให้ทุกครอบครัวในชุมชน...'
                         : 'มีอะไรอยากเล่าให้ครอบครัวฟังไหม?',
                     filled: true,
@@ -1126,7 +1105,7 @@ class _FeedPageState extends State<FeedPage> {
           const SizedBox(height: 12),
           Row(
             children: [
-              buildAudienceSelector(),
+              buildAudienceChip(),
               const Spacer(),
 
               // ปุ่มแชร์กดได้เมื่อมีข้อความเท่านั้น
@@ -1174,81 +1153,19 @@ class _FeedPageState extends State<FeedPage> {
     );
   }
 
-  // เลือกว่าโพสต์นี้ให้ใครเห็น: ครอบครัว / ชุมชน
-  Widget buildAudienceSelector() {
-    final bool community = composerScope == FeedScope.community;
+  // บอกว่าโพสต์นี้ใครจะเห็น (ตามหน้าที่เปิดอยู่)
+  Widget buildAudienceChip() {
+    if (scope == FeedScope.community) {
+      return buildChip(
+        icon: Icons.public_rounded,
+        label: 'ชุมชน · ทุกคนเห็น',
+        color: communityColor,
+      );
+    }
 
-    return PopupMenuButton<FeedScope>(
-      tooltip: 'เลือกผู้ที่เห็นโพสต์',
-      position: PopupMenuPosition.under,
-      initialValue: composerScope,
-      onSelected: (value) {
-        setState(() {
-          composerScope = value;
-        });
-      },
-      itemBuilder: (context) {
-        return [
-          buildAudienceItem(
-            value: FeedScope.family,
-            icon: Icons.lock_outline_rounded,
-            title: 'เฉพาะครอบครัว',
-            subtitle: 'สมาชิกในครอบครัวเท่านั้น',
-            color: AppColors.primary,
-          ),
-          buildAudienceItem(
-            value: FeedScope.community,
-            icon: Icons.public_rounded,
-            title: 'ชุมชน',
-            subtitle: 'ผู้ใช้ทุกคนในแอปเห็นได้',
-            color: communityColor,
-          ),
-        ];
-      },
-      child: buildChip(
-        icon: community ? Icons.public_rounded : Icons.lock_outline_rounded,
-        label: community ? 'ชุมชน' : 'เฉพาะครอบครัว',
-        color: community ? communityColor : AppColors.primary,
-        trailingIcon: Icons.expand_more_rounded,
-      ),
-    );
-  }
-
-  PopupMenuItem<FeedScope> buildAudienceItem({
-    required FeedScope value,
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required Color color,
-  }) {
-    return PopupMenuItem<FeedScope>(
-      value: value,
-      child: Row(
-        children: [
-          Icon(icon, color: color, size: 20),
-          const SizedBox(width: 12),
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  color: AppColors.navy,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              Text(
-                subtitle,
-                style: const TextStyle(
-                  color: AppColors.muted,
-                  fontSize: 11.5,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
+    return buildChip(
+      icon: Icons.lock_outline_rounded,
+      label: 'เฉพาะครอบครัว',
     );
   }
 
@@ -1290,50 +1207,6 @@ class _FeedPageState extends State<FeedPage> {
   }
 
   // =====================================================
-  // สวิตช์ ครอบครัว | ชุมชน
-  // =====================================================
-
-  Widget buildScopeSwitch() {
-    return SizedBox(
-      width: double.infinity,
-      child: SegmentedButton<FeedScope>(
-        showSelectedIcon: false,
-        segments: const [
-          ButtonSegment<FeedScope>(
-            value: FeedScope.family,
-            icon: Icon(Icons.family_restroom_rounded, size: 18),
-            label: Text('ครอบครัว'),
-          ),
-          ButtonSegment<FeedScope>(
-            value: FeedScope.community,
-            icon: Icon(Icons.public_rounded, size: 18),
-            label: Text('ชุมชน'),
-          ),
-        ],
-        selected: {scope},
-        onSelectionChanged: (selection) {
-          switchScope(selection.first);
-        },
-        style: SegmentedButton.styleFrom(
-          backgroundColor: Colors.white,
-          foregroundColor: AppColors.muted,
-          selectedBackgroundColor: AppColors.primary,
-          selectedForegroundColor: Colors.white,
-          side: const BorderSide(color: AppColors.border),
-          minimumSize: const Size(0, 46),
-          textStyle: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
-          ),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // =====================================================
   // หัวข้อรายการโพสต์
   // =====================================================
 
@@ -1342,7 +1215,7 @@ class _FeedPageState extends State<FeedPage> {
       return Row(
         children: [
           const Text(
-            'ชุมชน',
+            'ล่าสุดในชุมชน',
             style: TextStyle(
               color: AppColors.navy,
               fontSize: 19,
@@ -2043,7 +1916,7 @@ class _FeedPageState extends State<FeedPage> {
   Widget build(BuildContext context) {
     return RefreshIndicator(
       color: AppColors.primary,
-      onRefresh: () => loadPosts(scope),
+      onRefresh: () => loadPosts(),
       child: ListView(
         controller: scrollController,
         physics: const AlwaysScrollableScrollPhysics(),
@@ -2051,8 +1924,6 @@ class _FeedPageState extends State<FeedPage> {
         children: [
           buildHeroHeader(),
           const SizedBox(height: 16),
-          buildScopeSwitch(),
-          const SizedBox(height: 14),
           buildCreatePost(),
           const SizedBox(height: 24),
           buildSectionHeader(),

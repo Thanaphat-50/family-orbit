@@ -5,12 +5,20 @@ import '../services/auth_service.dart';
 import '../services/family_service.dart';
 import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/section_switch.dart';
 
 import 'activity_page.dart';
 import 'feed_page.dart';
 import 'map_page.dart';
 import 'notification_page.dart';
 import 'profile_page.dart';
+import 'shop_page.dart';
+
+// หน้าย่อยของแท็บ "หน้าหลัก"
+enum HomeSection { community, shop }
+
+// หน้าย่อยของแท็บ "ครอบครัว"
+enum FamilySection { posts, members }
 
 class HomePage extends StatefulWidget {
   final String userName;
@@ -28,6 +36,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   int selectedIndex = 0;
   int unreadNotificationCount = 0;
+
+  // หน้าหลัก: ชุมชน | ตลาด
+  HomeSection homeSection = HomeSection.community;
+
+  // ครอบครัว: โพสต์ | สมาชิก
+  FamilySection familySection = FamilySection.posts;
 
   bool isLoading = true;
   bool isWorking = false;
@@ -745,7 +759,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   String getPageTitle() {
     switch (selectedIndex) {
       case 0:
-        return 'หน้าหลัก';
+        return homeSection == HomeSection.shop ? 'ตลาด' : 'ชุมชน';
 
       case 1:
         return 'ครอบครัว';
@@ -891,7 +905,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           return buildNoFamily();
         }
 
-        return const FeedPage();
+        return buildHomeTab();
 
       case 1:
         return buildFamilyContent();
@@ -1221,7 +1235,91 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       return buildNoFamily();
     }
 
-    return buildFamily();
+    return buildFamilyTab();
+  }
+
+  // =====================================================
+  // หน้าหลัก: ชุมชน | ตลาด
+  // =====================================================
+
+  Widget buildHomeTab() {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: SectionSwitch<HomeSection>(
+            value: homeSection,
+            options: const [
+              SectionOption(
+                value: HomeSection.community,
+                icon: Icons.public_rounded,
+                label: 'ชุมชน',
+              ),
+              SectionOption(
+                value: HomeSection.shop,
+                icon: Icons.storefront_rounded,
+                label: 'ตลาด',
+              ),
+            ],
+            onChanged: (value) {
+              setState(() {
+                homeSection = value;
+              });
+            },
+          ),
+        ),
+        Expanded(
+          child: homeSection == HomeSection.shop
+              ? const ShopPage()
+              : const FeedPage(
+                  key: ValueKey('feed-community'),
+                  scope: FeedScope.community,
+                ),
+        ),
+      ],
+    );
+  }
+
+  // =====================================================
+  // ครอบครัว: โพสต์ | สมาชิก
+  // =====================================================
+
+  Widget buildFamilyTab() {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: SectionSwitch<FamilySection>(
+            value: familySection,
+            options: const [
+              SectionOption(
+                value: FamilySection.posts,
+                icon: Icons.forum_rounded,
+                label: 'โพสต์',
+              ),
+              SectionOption(
+                value: FamilySection.members,
+                icon: Icons.groups_rounded,
+                label: 'สมาชิก',
+              ),
+            ],
+            onChanged: (value) {
+              setState(() {
+                familySection = value;
+              });
+            },
+          ),
+        ),
+        Expanded(
+          child: familySection == FamilySection.members
+              ? buildFamily()
+              : const FeedPage(
+                  key: ValueKey('feed-family'),
+                  scope: FeedScope.family,
+                ),
+        ),
+      ],
+    );
   }
 
   // =====================================================
