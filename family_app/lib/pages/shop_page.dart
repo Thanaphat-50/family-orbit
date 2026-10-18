@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import '../widgets/my_shop_banner.dart';
 
 // =======================================================
 // หน้าตลาด (ตัวอย่าง)
@@ -289,65 +290,16 @@ class ShopPage extends StatelessWidget {
     );
   }
 
-  // =====================================================
-  // สนใจเปิดร้าน
-  // =====================================================
-
-  Widget buildOpenShopCard() {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: AppColors.softWarm,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: AppColors.warm.withValues(alpha: 0.45),
-        ),
-      ),
-      child: const Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            Icons.campaign_outlined,
-            color: shopColor,
-            size: 26,
-          ),
-          SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'อยากเปิดร้านในแอป?',
-                  style: TextStyle(
-                    color: AppColors.navy,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                SizedBox(height: 4),
-                Text(
-                  'ระบบเช่าพื้นที่ร้านค้ากำลังพัฒนา '
-                  'เมื่อเปิดรับร้านค้าจะประกาศในหน้าชุมชน',
-                  style: TextStyle(
-                    color: AppColors.muted,
-                    fontSize: 13,
-                    height: 1.45,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 35),
       children: [
         buildHero(),
+        const SizedBox(height: 16),
+
+        // เปิดร้าน / ร้านของฉัน (เปิดรับร้านค้าแล้ว)
+        const MyShopBanner(),
         const SizedBox(height: 24),
         buildSectionTitle('กำลังจะมีในตลาด'),
         const SizedBox(height: 12),
@@ -356,8 +308,6 @@ class ShopPage extends StatelessWidget {
         buildSectionTitle('หมวดหมู่ตัวอย่าง'),
         const SizedBox(height: 12),
         buildCategories(),
-        const SizedBox(height: 24),
-        buildOpenShopCard(),
       ],
     );
   }

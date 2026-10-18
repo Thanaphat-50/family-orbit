@@ -8,6 +8,7 @@ use App\Http\Controllers\LocationController;
 use App\Http\Controllers\PostController;
 use App\Http\Controllers\CommentController;
 use App\Http\Controllers\CommunityController;
+use App\Http\Controllers\MyShopController;
 use App\Http\Controllers\ActivityController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\NotificationController;
@@ -125,6 +126,22 @@ Route::middleware('auth:sanctum')->group(function () {
         CommentController::class,
         'destroy'
     ]);
+
+    // ตลาด: ร้านของฉัน (ฝั่งผู้ขาย)
+    Route::get('/my-shop', [
+        MyShopController::class,
+        'show'
+    ]);
+
+    Route::post('/my-shop', [
+        MyShopController::class,
+        'store'
+    ])->middleware('throttle:ugc');
+
+    Route::post('/my-shop/update', [
+        MyShopController::class,
+        'update'
+    ])->middleware('throttle:ugc');
 
     Route::get('/activities', [
         ActivityController::class,

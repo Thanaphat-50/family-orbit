@@ -11,14 +11,12 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
 use Tests\Concerns\CreatesFamilies;
+use Tests\Concerns\FakesImages;
 use Tests\TestCase;
 
 class PostImageTest extends TestCase
 {
-    use CreatesFamilies, RefreshDatabase;
-
-    // รูป PNG ขนาด 1x1 (เครื่องที่ไม่มี GD ก็ใช้ได้)
-    private const TINY_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+    use CreatesFamilies, FakesImages, RefreshDatabase;
 
     protected function setUp(): void
     {
@@ -29,10 +27,7 @@ class PostImageTest extends TestCase
 
     private function png(string $name = 'photo.png'): UploadedFile
     {
-        return UploadedFile::fake()->createWithContent(
-            $name,
-            base64_decode(self::TINY_PNG)
-        );
+        return $this->fakePng($name);
     }
 
     private function storedFiles(): array

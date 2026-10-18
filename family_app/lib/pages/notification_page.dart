@@ -670,6 +670,16 @@ class _NotificationPageState
           label: 'NEW ACTIVITY',
         );
 
+      // ผลตรวจร้านค้าในตลาด (อนุมัติ / ไม่ผ่าน / ระงับ)
+      case 'shop_status':
+        return const _NotificationStyle(
+          icon: Icons.storefront_rounded,
+
+          color: Color(0xFFD9701F),
+
+          label: 'MARKET',
+        );
+
       default:
         return const _NotificationStyle(
           icon:

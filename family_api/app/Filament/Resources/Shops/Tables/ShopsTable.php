@@ -1,0 +1,118 @@
+<?php
+
+namespace App\Filament\Resources\Shops\Tables;
+
+use App\Models\Shop;
+use App\Support\MediaStorage;
+use Filament\Actions\Action;
+use Filament\Forms\Components\Textarea;
+use Filament\Support\Icons\Heroicon;
+use Filament\Tables\Columns\ImageColumn;
+use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\SelectFilter;
+use Filament\Tables\Table;
+
+class ShopsTable
+{
+    public static function configure(Table $table): Table
+    {
+        return $table
+            ->defaultSort('created_at', 'desc')
+            ->columns([
+                ImageColumn::make('logo_path')
+                    ->label('โลโก้')
+                    ->disk(MediaStorage::disk())
+                    ->visibility('private')
+                    ->checkFileExistence(false)
+                    ->circular(),
+
+                TextColumn::make('name')
+                    ->label('ชื่อร้าน')
+                    ->description(fn (Shop $record) => $record->description)
+                    ->wrap()
+                    ->searchable(),
+
+                TextColumn::make('owner.name')
+                    ->label('เจ้าของ')
+                    ->description(fn (Shop $record) => $record->owner?->email)
+                    ->searchable(),
+
+                TextColumn::make('category')
+                    ->label('หมวด')
+                    ->formatStateUsing(fn (string $state) => config('market.categories')[$state] ?? $state)
+                    ->badge()
+                    ->color('info'),
+
+                TextColumn::make('province')
+                    ->label('พื้นที่')
+                    ->description(fn (Shop $record) => $record->district)
+                    ->searchable(),
+
+                TextColumn::make('phone')
+                    ->label('ติดต่อ')
+                    ->description(fn (Shop $record) => $record->line_id ? 'LINE: ' . $record->line_id : null),
+
+                TextColumn::make('status')
+                    ->label('สถานะ')
+                    ->formatStateUsing(fn (string $state) => Shop::STATUS_LABELS[$state] ?? $state)
+                    ->description(fn (Shop $record) => $record->status_reason)
+                    ->badge()
+                    ->color(fn (string $state) => match ($state) {
+                        Shop::STATUS_ACTIVE => 'success',
+                        Shop::STATUS_PENDING => 'warning',
+                        default => 'danger',
+                    }),
+
+                TextColumn::make('created_at')
+                    ->label('สมัครเมื่อ')
+                    ->since()
+                    ->sortable(),
+            ])
+            ->filters([
+                SelectFilter::make('status')
+                    ->label('สถานะ')
+                    ->options(Shop::STATUS_LABELS),
+
+                SelectFilter::make('category')
+                    ->label('หมวด')
+                    ->options(config('market.categories')),
+            ])
+            ->recordActions([
+                // ตรวจแล้วผ่าน → เปิดขาย (ใช้คืนร้านที่ถูกระงับด้วย)
+                Action::make('approve')
+                    ->label(fn (Shop $record) => $record->status === Shop::STATUS_SUSPENDED ? 'เปิดร้านอีกครั้ง' : 'อนุมัติ')
+                    ->icon(Heroicon::OutlinedCheckCircle)
+                    ->color('success')
+                    ->requiresConfirmation()
+                    ->modalDescription('ร้านจะแสดงในตลาด และเจ้าของร้านจะได้รับแจ้งเตือน')
+                    ->visible(fn (Shop $record) => $record->status !== Shop::STATUS_ACTIVE)
+                    ->action(fn (Shop $record) => $record->approve()),
+
+                Action::make('reject')
+                    ->label('ไม่ผ่าน')
+                    ->icon(Heroicon::OutlinedXCircle)
+                    ->color('danger')
+                    ->visible(fn (Shop $record) => $record->status === Shop::STATUS_PENDING)
+                    ->schema([
+                        Textarea::make('reason')
+                            ->label('เหตุผล (เจ้าของร้านจะเห็นข้อความนี้)')
+                            ->required()
+                            ->maxLength(500),
+                    ])
+                    ->action(fn (Shop $record, array $data) => $record->reject($data['reason'])),
+
+                Action::make('suspend')
+                    ->label('ระงับ')
+                    ->icon(Heroicon::OutlinedNoSymbol)
+                    ->color('danger')
+                    ->visible(fn (Shop $record) => $record->status === Shop::STATUS_ACTIVE)
+                    ->schema([
+                        Textarea::make('reason')
+                            ->label('เหตุผล (เจ้าของร้านจะเห็นข้อความนี้)')
+                            ->required()
+                            ->maxLength(500),
+                    ])
+                    ->action(fn (Shop $record, array $data) => $record->suspend($data['reason'])),
+            ]);
+    }
+}
