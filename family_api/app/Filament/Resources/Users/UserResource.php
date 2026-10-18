@@ -32,7 +32,7 @@ class UserResource extends Resource
 
     protected static ?string $navigationLabel = 'ผู้ใช้';
 
-    protected static ?int $navigationSort = 2;
+    protected static ?int $navigationSort = 3;
 
     public static function canCreate(): bool
     {

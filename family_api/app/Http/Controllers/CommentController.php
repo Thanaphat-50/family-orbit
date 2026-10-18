@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\AppNotification;
 use App\Models\Comment;
+use App\Models\CommentReport;
 use App\Models\FamilyMember;
 use App\Models\Post;
 use App\Models\UserBlock;
@@ -195,6 +196,78 @@ class CommentController extends Controller
             'status' => true,
             'message' =>
                 'ลบความคิดเห็นสำเร็จ',
+        ]);
+    }
+
+    // =====================================================
+    // รายงาน Comment (เฉพาะในโพสต์ชุมชน)
+    // =====================================================
+
+    public function report(
+        Request $request,
+        Comment $comment
+    ) {
+        $data = $request->validate([
+            'reason' =>
+                'required|in:spam,inappropriate,harassment,scam,other',
+            'details' => 'nullable|string|max:1000',
+        ]);
+
+        $user = $request->user();
+
+        $isMember = FamilyMember::where(
+            'user_id',
+            $user->id
+        )->exists();
+
+        if (!$isMember) {
+            return response()->json([
+                'status' => false,
+                'message' => 'คุณยังไม่ได้อยู่ในครอบครัว',
+            ], 403);
+        }
+
+        if (!$comment->post?->isCommunity()) {
+            return response()->json([
+                'status' => false,
+                'message' =>
+                    'รายงานได้เฉพาะความคิดเห็นในโพสต์ชุมชน',
+            ], 422);
+        }
+
+        if ((int) $comment->user_id === (int) $user->id) {
+            return response()->json([
+                'status' => false,
+                'message' =>
+                    'ไม่สามารถรายงานความคิดเห็นของตัวเองได้',
+            ], 422);
+        }
+
+        // รายงานซ้ำไม่นับเพิ่ม
+        CommentReport::firstOrCreate(
+            [
+                'comment_id' => $comment->id,
+                'user_id' => $user->id,
+            ],
+            [
+                'reason' => $data['reason'],
+                'details' => $data['details'] ?? null,
+            ]
+        );
+
+        // ซ่อนอัตโนมัติเมื่อถูกรายงานครบ
+        if (
+            $comment->hidden_at === null
+            && $comment->reports()->count() >= config('community.auto_hide_reports')
+        ) {
+            $comment->hidden_at = now();
+            $comment->save();
+        }
+
+        return response()->json([
+            'status' => true,
+            'message' =>
+                'ขอบคุณที่รายงาน เราจะตรวจสอบความคิดเห็นนี้',
         ]);
     }
 }

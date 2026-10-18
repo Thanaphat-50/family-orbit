@@ -90,6 +90,11 @@ Route::middleware('auth:sanctum')->group(function () {
         'report'
     ])->middleware('throttle:ugc');
 
+    Route::post('/comments/{comment}/report', [
+        CommentController::class,
+        'report'
+    ])->middleware('throttle:ugc');
+
     // ชุมชน: กฎชุมชน และการบล็อกผู้ใช้
     Route::post('/community/accept-terms', [
         CommunityController::class,

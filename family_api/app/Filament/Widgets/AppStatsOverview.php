@@ -2,6 +2,7 @@
 
 namespace App\Filament\Widgets;
 
+use App\Models\Comment;
 use App\Models\Family;
 use App\Models\Post;
 use App\Models\User;
@@ -18,10 +19,14 @@ class AppStatsOverview extends StatsOverviewWidget
 
     protected function getStats(): array
     {
+        // โพสต์ + ความคิดเห็น ที่ถูกรายงานแต่ยังไม่ถูกซ่อน
         $pendingReports = Post::where('visibility', 'community')
             ->whereNull('hidden_at')
             ->has('reports')
-            ->count();
+            ->count()
+            + Comment::whereNull('hidden_at')
+                ->has('reports')
+                ->count();
 
         return [
             Stat::make('ผู้ใช้ทั้งหมด', User::count())
@@ -32,7 +37,7 @@ class AppStatsOverview extends StatsOverviewWidget
             Stat::make('โพสต์ชุมชน', Post::where('visibility', 'community')->count()),
 
             Stat::make('รายงานรอตรวจ', $pendingReports)
-                ->description($pendingReports > 0 ? 'ดูที่เมนู "โพสต์ชุมชน"' : 'ไม่มีรายงานค้าง')
+                ->description($pendingReports > 0 ? 'ดูที่เมนูโพสต์/ความคิดเห็นชุมชน' : 'ไม่มีรายงานค้าง')
                 ->color($pendingReports > 0 ? 'danger' : 'success'),
         ];
     }

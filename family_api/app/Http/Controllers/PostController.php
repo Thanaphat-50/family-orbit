@@ -15,9 +15,6 @@ class PostController extends Controller
     // จำนวนโพสต์ชุมชนต่อหน้า
     private const COMMUNITY_PAGE_SIZE = 20;
 
-    // ถูกรายงานจากผู้ใช้ต่างกันครบเท่านี้ → ซ่อนอัตโนมัติ
-    private const AUTO_HIDE_REPORTS = 3;
-
     // ข้อมูลผู้ใช้ที่ส่งไปกับโพสต์/ความคิดเห็น (ไม่ส่ง email)
     private const USER_COLUMNS = 'id,name,profile_photo';
 
@@ -89,8 +86,14 @@ class PostController extends Controller
             ->whereNotIn('user_id', $blockedIds)
             ->with([
                 'user:' . self::USER_COLUMNS,
-                'comments' => function ($query) use ($blockedIds) {
-                    $query->whereNotIn('user_id', $blockedIds);
+                // ไม่แสดงความคิดเห็นที่ถูกซ่อน, ที่เรารายงานแล้ว
+                // หรือของคนที่เราบล็อก
+                'comments' => function ($query) use ($blockedIds, $user) {
+                    $query->whereNull('hidden_at')
+                        ->whereDoesntHave('reports', function ($reports) use ($user) {
+                            $reports->where('user_id', $user->id);
+                        })
+                        ->whereNotIn('user_id', $blockedIds);
                 },
                 'comments.user:' . self::USER_COLUMNS,
             ])
@@ -326,7 +329,7 @@ class PostController extends Controller
         // ซ่อนอัตโนมัติเมื่อถูกรายงานครบ
         if (
             $post->hidden_at === null
-            && $post->reports()->count() >= self::AUTO_HIDE_REPORTS
+            && $post->reports()->count() >= config('community.auto_hide_reports')
         ) {
             $post->hidden_at = now();
             $post->save();

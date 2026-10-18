@@ -31,10 +31,7 @@ class _ScopeFeed {
 class FeedPage extends StatefulWidget {
   final FeedScope scope;
 
-  const FeedPage({
-    super.key,
-    required this.scope,
-  });
+  const FeedPage({super.key, required this.scope});
 
   @override
   State<FeedPage> createState() => _FeedPageState();
@@ -87,9 +84,7 @@ class _FeedPageState extends State<FeedPage> {
   // loadMore = true → โหลดหน้าถัดไปต่อท้าย (ฟีดชุมชน)
   // =====================================================
 
-  Future<void> loadPosts({
-    bool loadMore = false,
-  }) async {
+  Future<void> loadPosts({bool loadMore = false}) async {
     final state = feed;
 
     if (loadMore) {
@@ -117,9 +112,9 @@ class _FeedPageState extends State<FeedPage> {
 
         final List<Map<String, dynamic>> newPosts = rawPosts is List
             ? rawPosts
-                .whereType<Map>()
-                .map((item) => Map<String, dynamic>.from(item))
-                .toList()
+                  .whereType<Map>()
+                  .map((item) => Map<String, dynamic>.from(item))
+                  .toList()
             : [];
 
         setState(() {
@@ -128,9 +123,7 @@ class _FeedPageState extends State<FeedPage> {
             final existingIds = state.posts.map(postIdOf).toSet();
 
             state.posts.addAll(
-              newPosts.where(
-                (post) => !existingIds.contains(postIdOf(post)),
-              ),
+              newPosts.where((post) => !existingIds.contains(postIdOf(post))),
             );
           } else {
             state.posts = newPosts;
@@ -144,9 +137,7 @@ class _FeedPageState extends State<FeedPage> {
           applyCurrentUser(result['current_user'] ?? result['user']);
         });
       } else {
-        handleLoadError(
-          result['message']?.toString() ?? 'โหลดโพสต์ไม่สำเร็จ',
-        );
+        handleLoadError(result['message']?.toString() ?? 'โหลดโพสต์ไม่สำเร็จ');
       }
     } catch (e) {
       if (!mounted) return;
@@ -293,9 +284,7 @@ class _FeedPageState extends State<FeedPage> {
           result['message']?.toString() ?? 'กรุณายอมรับกฎชุมชนก่อนโพสต์',
         );
       } else {
-        showMessage(
-          result['message']?.toString() ?? 'โพสต์ไม่สำเร็จ',
-        );
+        showMessage(result['message']?.toString() ?? 'โพสต์ไม่สำเร็จ');
       }
     } catch (e) {
       if (!mounted) return;
@@ -399,13 +388,9 @@ class _FeedPageState extends State<FeedPage> {
           removePost(postId);
         });
 
-        showMessage(
-          result['message']?.toString() ?? 'ลบโพสต์แล้ว',
-        );
+        showMessage(result['message']?.toString() ?? 'ลบโพสต์แล้ว');
       } else {
-        showMessage(
-          result['message']?.toString() ?? 'ลบโพสต์ไม่สำเร็จ',
-        );
+        showMessage(result['message']?.toString() ?? 'ลบโพสต์ไม่สำเร็จ');
       }
     } catch (e) {
       if (!mounted) return;
@@ -451,13 +436,9 @@ class _FeedPageState extends State<FeedPage> {
           removePost(postId);
         });
 
-        showMessage(
-          result['message']?.toString() ?? 'ขอบคุณที่รายงาน',
-        );
+        showMessage(result['message']?.toString() ?? 'ขอบคุณที่รายงาน');
       } else {
-        showMessage(
-          result['message']?.toString() ?? 'รายงานไม่สำเร็จ',
-        );
+        showMessage(result['message']?.toString() ?? 'รายงานไม่สำเร็จ');
       }
     } catch (e) {
       if (!mounted) return;
@@ -487,13 +468,9 @@ class _FeedPageState extends State<FeedPage> {
           removeUserFromCommunity(userId);
         });
 
-        showMessage(
-          result['message']?.toString() ?? 'บล็อก $name แล้ว',
-        );
+        showMessage(result['message']?.toString() ?? 'บล็อก $name แล้ว');
       } else {
-        showMessage(
-          result['message']?.toString() ?? 'บล็อกไม่สำเร็จ',
-        );
+        showMessage(result['message']?.toString() ?? 'บล็อกไม่สำเร็จ');
       }
     } catch (e) {
       if (!mounted) return;
@@ -515,6 +492,80 @@ class _FeedPageState extends State<FeedPage> {
               (comment) =>
                   !(comment is Map &&
                       comment['user_id']?.toString() == userId.toString()),
+            )
+            .toList();
+      }
+    }
+  }
+
+  // =====================================================
+  // ความคิดเห็นของคนอื่นในฟีดชุมชน: รายงาน / บล็อก
+  // =====================================================
+
+  Future<void> openCommentActions({
+    required int commentId,
+    required int? authorId,
+    required String authorName,
+  }) async {
+    dismissKeyboard();
+
+    final String? action = await showCommentActionsSheet(
+      context,
+      authorName: authorName,
+    );
+
+    if (!mounted || action == null) return;
+
+    if (action == 'report') {
+      await reportComment(commentId);
+    } else if (action == 'block' && authorId != null) {
+      await blockAuthor(authorId, authorName);
+    }
+  }
+
+  Future<void> reportComment(int commentId) async {
+    final String? reason = await showReportReasonSheet(
+      context,
+      title: 'รายงานความคิดเห็นนี้',
+    );
+
+    if (reason == null || !mounted) return;
+
+    try {
+      final result = await PostService.reportComment(
+        commentId: commentId,
+        reason: reason,
+      );
+
+      if (!mounted) return;
+
+      if (result['status'] == true) {
+        // ซ่อนความคิดเห็นที่รายงานจากจอของเราทันที
+        setState(() {
+          removeComment(commentId);
+        });
+
+        showMessage(result['message']?.toString() ?? 'ขอบคุณที่รายงาน');
+      } else {
+        showMessage(result['message']?.toString() ?? 'รายงานไม่สำเร็จ');
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      showMessage(e.toString());
+    }
+  }
+
+  void removeComment(int commentId) {
+    for (final post in feed.posts) {
+      final dynamic comments = post['comments'];
+
+      if (comments is List) {
+        post['comments'] = comments
+            .where(
+              (comment) =>
+                  !(comment is Map &&
+                      comment['id']?.toString() == commentId.toString()),
             )
             .toList();
       }
@@ -601,10 +652,7 @@ class _FeedPageState extends State<FeedPage> {
 
                 Navigator.of(dialogContext).pop(text);
               },
-              icon: const Icon(
-                Icons.send_rounded,
-                size: 18,
-              ),
+              icon: const Icon(Icons.send_rounded, size: 18),
               label: const Text('ส่ง'),
             ),
           ],
@@ -617,9 +665,7 @@ class _FeedPageState extends State<FeedPage> {
     }
 
     // รอ Dialog ปิดสนิทก่อนเรียก API
-    await Future<void>.delayed(
-      const Duration(milliseconds: 300),
-    );
+    await Future<void>.delayed(const Duration(milliseconds: 300));
 
     if (!mounted) return;
 
@@ -665,11 +711,7 @@ class _FeedPageState extends State<FeedPage> {
 
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-        ),
-      );
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   // =====================================================
@@ -683,7 +725,8 @@ class _FeedPageState extends State<FeedPage> {
   }
 
   int? authorIdOf(Map<String, dynamic> post) {
-    final dynamic id = post['user_id'] ??
+    final dynamic id =
+        post['user_id'] ??
         (post['user'] is Map ? (post['user'] as Map)['id'] : null);
 
     return id is num ? id.toInt() : int.tryParse('$id');
@@ -759,9 +802,9 @@ class _FeedPageState extends State<FeedPage> {
 
     final int index =
         runes.length > 1 &&
-                leadingVowels.contains(String.fromCharCode(runes.first))
-            ? 1
-            : 0;
+            leadingVowels.contains(String.fromCharCode(runes.first))
+        ? 1
+        : 0;
 
     return String.fromCharCode(runes[index]).toUpperCase();
   }
@@ -830,10 +873,7 @@ class _FeedPageState extends State<FeedPage> {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [
-              AppColors.primary,
-              Color(0xFF7B80FF),
-            ],
+            colors: [AppColors.primary, Color(0xFF7B80FF)],
           ),
           shape: BoxShape.circle,
         ),
@@ -888,16 +928,8 @@ class _FeedPageState extends State<FeedPage> {
 
     // หน้าชุมชนใช้โทนฟ้า-เขียว แยกจากหน้าครอบครัว
     final List<Color> colors = community
-        ? const [
-            Color(0xFF0B2E4A),
-            Color(0xFF0B7FA6),
-            Color(0xFF35B9DC),
-          ]
-        : const [
-            Color(0xFF182458),
-            Color(0xFF4650D8),
-            Color(0xFF646BFF),
-          ];
+        ? const [Color(0xFF0B2E4A), Color(0xFF0B7FA6), Color(0xFF35B9DC)]
+        : const [Color(0xFF182458), Color(0xFF4650D8), Color(0xFF646BFF)];
 
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 22),
@@ -1063,24 +1095,25 @@ class _FeedPageState extends State<FeedPage> {
                   textCapitalization: TextCapitalization.sentences,
 
                   // แสดงตัวนับเมื่อใกล้ถึงขีดจำกัด
-                  buildCounter: (
-                    context, {
-                    required currentLength,
-                    required isFocused,
-                    required maxLength,
-                  }) {
-                    if (currentLength < maxPostLength - 500) {
-                      return null;
-                    }
+                  buildCounter:
+                      (
+                        context, {
+                        required currentLength,
+                        required isFocused,
+                        required maxLength,
+                      }) {
+                        if (currentLength < maxPostLength - 500) {
+                          return null;
+                        }
 
-                    return Text(
-                      '$currentLength/$maxPostLength',
-                      style: const TextStyle(
-                        color: AppColors.muted,
-                        fontSize: 11,
-                      ),
-                    );
-                  },
+                        return Text(
+                          '$currentLength/$maxPostLength',
+                          style: const TextStyle(
+                            color: AppColors.muted,
+                            fontSize: 11,
+                          ),
+                        );
+                      },
 
                   decoration: InputDecoration(
                     hintText: scope == FeedScope.community
@@ -1120,8 +1153,9 @@ class _FeedPageState extends State<FeedPage> {
                     style: FilledButton.styleFrom(
                       backgroundColor: AppColors.primary,
                       foregroundColor: Colors.white,
-                      disabledBackgroundColor:
-                          AppColors.primary.withValues(alpha: 0.30),
+                      disabledBackgroundColor: AppColors.primary.withValues(
+                        alpha: 0.30,
+                      ),
                       disabledForegroundColor: Colors.white,
                       minimumSize: const Size(0, 42),
                       padding: const EdgeInsets.symmetric(horizontal: 18),
@@ -1138,10 +1172,7 @@ class _FeedPageState extends State<FeedPage> {
                               color: Colors.white,
                             ),
                           )
-                        : const Icon(
-                            Icons.send_rounded,
-                            size: 17,
-                          ),
+                        : const Icon(Icons.send_rounded, size: 17),
                     label: Text(isPosting ? 'กำลังส่ง' : 'แชร์'),
                   );
                 },
@@ -1163,10 +1194,7 @@ class _FeedPageState extends State<FeedPage> {
       );
     }
 
-    return buildChip(
-      icon: Icons.lock_outline_rounded,
-      label: 'เฉพาะครอบครัว',
-    );
+    return buildChip(icon: Icons.lock_outline_rounded, label: 'เฉพาะครอบครัว');
   }
 
   Widget buildChip({
@@ -1176,10 +1204,7 @@ class _FeedPageState extends State<FeedPage> {
     IconData? trailingIcon,
   }) {
     return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 10,
-        vertical: 6,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(999),
@@ -1252,10 +1277,7 @@ class _FeedPageState extends State<FeedPage> {
         const Spacer(),
         if (!feed.isLoading && feed.posts.isNotEmpty)
           Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 10,
-              vertical: 5,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             decoration: BoxDecoration(
               color: AppColors.primary.withValues(alpha: 0.09),
               borderRadius: BorderRadius.circular(999),
@@ -1280,8 +1302,9 @@ class _FeedPageState extends State<FeedPage> {
   Widget buildPostCard(Map<String, dynamic> post) {
     final dynamic user = post['user'];
 
-    final String name =
-        user is Map ? (user['name']?.toString() ?? 'สมาชิก') : 'สมาชิก';
+    final String name = user is Map
+        ? (user['name']?.toString() ?? 'สมาชิก')
+        : 'สมาชิก';
 
     final List<dynamic> comments = (post['comments'] as List?) ?? [];
 
@@ -1377,9 +1400,7 @@ class _FeedPageState extends State<FeedPage> {
                         child: SizedBox(
                           width: 18,
                           height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                          ),
+                          child: CircularProgressIndicator(strokeWidth: 2),
                         ),
                       )
                     else if (postId != null && (mine || community))
@@ -1393,7 +1414,6 @@ class _FeedPageState extends State<FeedPage> {
               // ===========================================
               // Content
               // ===========================================
-
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
                 child: Text(
@@ -1410,7 +1430,6 @@ class _FeedPageState extends State<FeedPage> {
               // ===========================================
               // Action Bar
               // ===========================================
-
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 12, 12),
                 child: Row(
@@ -1475,12 +1494,8 @@ class _FeedPageState extends State<FeedPage> {
               // ===========================================
               // Comments
               // ===========================================
-
               if (comments.isNotEmpty)
-                buildCommentsSection(
-                  postId: postId,
-                  comments: comments,
-                ),
+                buildCommentsSection(postId: postId, comments: comments),
             ],
           ),
         ),
@@ -1490,10 +1505,7 @@ class _FeedPageState extends State<FeedPage> {
 
   Widget buildYouBadge() {
     return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 7,
-        vertical: 2,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
       decoration: BoxDecoration(
         color: AppColors.sky.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(999),
@@ -1512,25 +1524,19 @@ class _FeedPageState extends State<FeedPage> {
   // เมนู ⋯
   // - โพสต์ของเรา: ลบโพสต์
   // - โพสต์ชุมชนของคนอื่น: รายงาน / บล็อก
-  Widget buildPostMenu(
-    Map<String, dynamic> post,
-    int postId,
-    bool mine,
-  ) {
+  Widget buildPostMenu(Map<String, dynamic> post, int postId, bool mine) {
     final int? authorId = authorIdOf(post);
 
     final dynamic user = post['user'];
 
-    final String authorName =
-        user is Map ? (user['name']?.toString() ?? 'สมาชิก') : 'สมาชิก';
+    final String authorName = user is Map
+        ? (user['name']?.toString() ?? 'สมาชิก')
+        : 'สมาชิก';
 
     return PopupMenuButton<String>(
       tooltip: 'ตัวเลือกโพสต์',
       position: PopupMenuPosition.under,
-      icon: const Icon(
-        Icons.more_horiz_rounded,
-        color: AppColors.muted,
-      ),
+      icon: const Icon(Icons.more_horiz_rounded, color: AppColors.muted),
       onSelected: (value) {
         switch (value) {
           case 'delete':
@@ -1581,21 +1587,14 @@ class _FeedPageState extends State<FeedPage> {
       value: value,
       child: Row(
         children: [
-          Icon(
-            icon,
-            color: color,
-            size: 20,
-          ),
+          Icon(icon, color: color, size: 20),
           const SizedBox(width: 10),
           Flexible(
             child: Text(
               label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: color,
-                fontWeight: FontWeight.w700,
-              ),
+              style: TextStyle(color: color, fontWeight: FontWeight.w700),
             ),
           ),
         ],
@@ -1616,8 +1615,8 @@ class _FeedPageState extends State<FeedPage> {
 
     final List<dynamic> visibleComments =
         expanded || comments.length <= collapsedCommentCount
-            ? comments
-            : comments.sublist(comments.length - collapsedCommentCount);
+        ? comments
+        : comments.sublist(comments.length - collapsedCommentCount);
 
     final int hiddenCount = comments.length - visibleComments.length;
 
@@ -1628,12 +1627,8 @@ class _FeedPageState extends State<FeedPage> {
       width: double.infinity,
       decoration: const BoxDecoration(
         color: Color(0xFFF8F9FD),
-        border: Border(
-          top: BorderSide(color: AppColors.border),
-        ),
-        borderRadius: BorderRadius.vertical(
-          bottom: Radius.circular(24),
-        ),
+        border: Border(top: BorderSide(color: AppColors.border)),
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
       ),
       padding: const EdgeInsets.fromLTRB(14, 6, 14, 14),
       child: Column(
@@ -1680,76 +1675,129 @@ class _FeedPageState extends State<FeedPage> {
 
     final dynamic createdAt = comment is Map ? comment['created_at'] : null;
 
-    final String content =
-        comment is Map ? (comment['content']?.toString() ?? '') : '';
+    final String content = comment is Map
+        ? (comment['content']?.toString() ?? '')
+        : '';
 
-    return Padding(
-      padding: const EdgeInsets.only(top: 10),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          buildAvatar(
-            name: commentName,
-            imageUrl: getProfileImage(commentUser),
-            radius: 15,
-          ),
-          const SizedBox(width: 9),
-          Expanded(
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(12, 9, 12, 10),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(4),
-                  topRight: Radius.circular(16),
-                  bottomLeft: Radius.circular(16),
-                  bottomRight: Radius.circular(16),
+    final dynamic rawId = comment is Map ? comment['id'] : null;
+
+    final int? commentId = rawId is num ? rawId.toInt() : null;
+
+    final dynamic rawAuthorId = comment is Map ? comment['user_id'] : null;
+
+    final int? authorId = rawAuthorId is num ? rawAuthorId.toInt() : null;
+
+    final dynamic myId = currentUser?['id'];
+
+    final bool mine =
+        myId != null && authorId != null && myId.toString() == '$authorId';
+
+    // ความคิดเห็นของคนอื่นในฟีดชุมชน → รายงาน / บล็อกได้
+    final bool canAct =
+        scope == FeedScope.community && commentId != null && !mine;
+
+    void openActions() {
+      if (commentId == null) return;
+
+      openCommentActions(
+        commentId: commentId,
+        authorId: authorId,
+        authorName: commentName,
+      );
+    }
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onLongPress: canAct ? openActions : null,
+      child: Padding(
+        padding: const EdgeInsets.only(top: 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            buildAvatar(
+              name: commentName,
+              imageUrl: getProfileImage(commentUser),
+              radius: 15,
+            ),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(12, 9, 12, 10),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(4),
+                    topRight: Radius.circular(16),
+                    bottomLeft: Radius.circular(16),
+                    bottomRight: Radius.circular(16),
+                  ),
+                  border: Border.all(color: AppColors.border),
                 ),
-                border: Border.all(color: AppColors.border),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          commentName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: AppColors.navy,
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w800,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        // ชื่อ + เวลา ใช้พื้นที่ที่เหลือ → ปุ่ม ⋯ ชิดขวา
+                        Expanded(
+                          child: Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  commentName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: AppColors.navy,
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                              if (createdAt != null) ...[
+                                const SizedBox(width: 6),
+                                Text(
+                                  formatDate(createdAt),
+                                  style: const TextStyle(
+                                    color: AppColors.muted,
+                                    fontSize: 10.5,
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
                         ),
-                      ),
-                      if (createdAt != null) ...[
-                        const SizedBox(width: 6),
-                        Text(
-                          formatDate(createdAt),
-                          style: const TextStyle(
-                            color: AppColors.muted,
-                            fontSize: 10.5,
+                        if (canAct) ...[
+                          InkWell(
+                            borderRadius: BorderRadius.circular(999),
+                            onTap: openActions,
+                            child: const Padding(
+                              padding: EdgeInsets.all(2),
+                              child: Icon(
+                                Icons.more_horiz_rounded,
+                                size: 18,
+                                color: AppColors.muted,
+                              ),
+                            ),
                           ),
-                        ),
+                        ],
                       ],
-                    ],
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    content,
-                    style: const TextStyle(
-                      color: Color(0xFF344054),
-                      fontSize: 14,
-                      height: 1.4,
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 3),
+                    Text(
+                      content,
+                      style: const TextStyle(
+                        color: Color(0xFF344054),
+                        fontSize: 14,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1783,14 +1831,9 @@ class _FeedPageState extends State<FeedPage> {
       title: 'โหลดโพสต์ไม่สำเร็จ',
       message: feed.loadError ?? 'กรุณาลองใหม่อีกครั้ง',
       action: OutlinedButton.icon(
-        style: OutlinedButton.styleFrom(
-          minimumSize: const Size(170, 46),
-        ),
+        style: OutlinedButton.styleFrom(minimumSize: const Size(170, 46)),
         onPressed: retryLoad,
-        icon: const Icon(
-          Icons.refresh_rounded,
-          size: 18,
-        ),
+        icon: const Icon(Icons.refresh_rounded, size: 18),
         label: const Text('ลองอีกครั้ง'),
       ),
     );
@@ -1805,10 +1848,7 @@ class _FeedPageState extends State<FeedPage> {
   }) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(
-        horizontal: 24,
-        vertical: 40,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
       decoration: cardDecoration(),
       child: Column(
         children: [
@@ -1819,11 +1859,7 @@ class _FeedPageState extends State<FeedPage> {
               color: color.withValues(alpha: 0.09),
               shape: BoxShape.circle,
             ),
-            child: Icon(
-              icon,
-              size: 34,
-              color: color,
-            ),
+            child: Icon(icon, size: 34, color: color),
           ),
           const SizedBox(height: 18),
           Text(
@@ -1844,10 +1880,7 @@ class _FeedPageState extends State<FeedPage> {
               height: 1.5,
             ),
           ),
-          if (action != null) ...[
-            const SizedBox(height: 18),
-            action,
-          ],
+          if (action != null) ...[const SizedBox(height: 18), action],
         ],
       ),
     );
@@ -1859,10 +1892,7 @@ class _FeedPageState extends State<FeedPage> {
 
   List<Widget> buildFeedItems() {
     if (feed.isLoading) {
-      return const [
-        _PostSkeleton(),
-        _PostSkeleton(),
-      ];
+      return const [_PostSkeleton(), _PostSkeleton()];
     }
 
     if (feed.loadError != null && feed.posts.isEmpty) {
@@ -1903,10 +1933,7 @@ class _FeedPageState extends State<FeedPage> {
       child: Center(
         child: Text(
           'ไม่มีโพสต์เพิ่มแล้ว',
-          style: TextStyle(
-            color: AppColors.muted,
-            fontSize: 12,
-          ),
+          style: TextStyle(color: AppColors.muted, fontSize: 12),
         ),
       ),
     );

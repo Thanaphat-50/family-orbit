@@ -158,11 +158,14 @@ class _RuleRow extends StatelessWidget {
 }
 
 // =======================================================
-// เลือกเหตุผลการรายงาน
-// คืนค่า key ของเหตุผล หรือ null ถ้ายกเลิก
+// เมนูบนความคิดเห็นของคนอื่น (ฟีดชุมชน)
+// คืนค่า 'report' / 'block' หรือ null ถ้ายกเลิก
 // =======================================================
 
-Future<String?> showReportReasonSheet(BuildContext context) {
+Future<String?> showCommentActionsSheet(
+  BuildContext context, {
+  required String authorName,
+}) {
   return showModalBottomSheet<String>(
     context: context,
     showDragHandle: true,
@@ -174,9 +177,84 @@ Future<String?> showReportReasonSheet(BuildContext context) {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'รายงานโพสต์นี้',
-                style: TextStyle(
+              Text(
+                'ความคิดเห็นของ $authorName',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: AppColors.navy,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 8),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(
+                  Icons.flag_outlined,
+                  color: AppColors.navy,
+                ),
+                title: const Text(
+                  'รายงานความคิดเห็น',
+                  style: TextStyle(
+                    color: AppColors.navy,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                onTap: () {
+                  Navigator.of(sheetContext).pop('report');
+                },
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(
+                  Icons.block_rounded,
+                  color: AppColors.danger,
+                ),
+                title: Text(
+                  'บล็อก $authorName',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.danger,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                onTap: () {
+                  Navigator.of(sheetContext).pop('block');
+                },
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+}
+
+// =======================================================
+// เลือกเหตุผลการรายงาน
+// คืนค่า key ของเหตุผล หรือ null ถ้ายกเลิก
+// =======================================================
+
+Future<String?> showReportReasonSheet(
+  BuildContext context, {
+  String title = 'รายงานโพสต์นี้',
+}) {
+  return showModalBottomSheet<String>(
+    context: context,
+    showDragHandle: true,
+    builder: (sheetContext) {
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
                   color: AppColors.navy,
                   fontSize: 19,
                   fontWeight: FontWeight.w800,
@@ -184,7 +262,7 @@ Future<String?> showReportReasonSheet(BuildContext context) {
               ),
               const SizedBox(height: 4),
               const Text(
-                'ผู้โพสต์จะไม่รู้ว่าใครเป็นคนรายงาน',
+                'เจ้าของจะไม่รู้ว่าใครเป็นคนรายงาน',
                 style: TextStyle(
                   color: AppColors.muted,
                   fontSize: 13,

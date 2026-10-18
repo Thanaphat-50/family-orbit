@@ -101,6 +101,29 @@ class PostService {
   }
 
   // =====================================================
+  // REPORT COMMENT (เฉพาะความคิดเห็นในโพสต์ชุมชน)
+  // =====================================================
+
+  static Future<Map<String, dynamic>> reportComment({
+    required int commentId,
+    required String reason,
+  }) async {
+    final headers = await _headers();
+
+    final response = await ApiHelper.request(
+      () => http.post(
+        Uri.parse('$baseUrl/comments/$commentId/report'),
+        headers: headers,
+        body: jsonEncode({
+          'reason': reason,
+        }),
+      ),
+    );
+
+    return ApiHelper.decode(response);
+  }
+
+  // =====================================================
   // COMMUNITY: กฎชุมชน และการบล็อก
   // =====================================================
 
