@@ -31,7 +31,19 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'community_terms_accepted_at' => 'datetime',
         ];
+    }
+
+    // ผู้ใช้ที่เราบล็อก (ซ่อนโพสต์/ความคิดเห็นของเขาในฟีดชุมชน)
+    public function blockedUsers()
+    {
+        return $this->belongsToMany(
+            User::class,
+            'user_blocks',
+            'user_id',
+            'blocked_user_id'
+        )->withTimestamps();
     }
 
     protected $appends = [

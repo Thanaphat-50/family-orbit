@@ -3,45 +3,15 @@
 namespace Tests\Feature;
 
 use App\Models\Comment;
-use App\Models\Family;
-use App\Models\FamilyMember;
 use App\Models\Post;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\CreatesFamilies;
 use Tests\TestCase;
 
 class PostDeleteTest extends TestCase
 {
-    use RefreshDatabase;
-
-    // =====================================================
-    // สร้างครอบครัวพร้อมสมาชิก
-    // =====================================================
-
-    private function createFamily(User $owner, array $members = []): Family
-    {
-        $family = Family::create([
-            'name' => 'Family ' . $owner->id,
-            'invite_code' => 'CODE' . $owner->id,
-            'owner_id' => $owner->id,
-        ]);
-
-        FamilyMember::create([
-            'family_id' => $family->id,
-            'user_id' => $owner->id,
-            'role' => 'owner',
-        ]);
-
-        foreach ($members as $member) {
-            FamilyMember::create([
-                'family_id' => $family->id,
-                'user_id' => $member->id,
-                'role' => 'member',
-            ]);
-        }
-
-        return $family;
-    }
+    use CreatesFamilies, RefreshDatabase;
 
     // =====================================================
     // GET /api/posts: บอกว่าโพสต์ไหนเป็นของเรา

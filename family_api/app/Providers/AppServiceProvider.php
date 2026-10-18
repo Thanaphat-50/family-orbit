@@ -61,6 +61,19 @@ class AppServiceProvider extends ServiceProvider
                 ->by('register-ip:' . $request->ip())
                 ->response($this->tooManyAttempts(...));
         });
+
+        // =====================================================
+        // Rate Limit: โพสต์ / ความคิดเห็น / รายงาน
+        //
+        // - ผู้ใช้คนเดียว รวมกันได้ 20 ครั้ง/นาที
+        //   (กันสแปมในฟีดชุมชน)
+        // =====================================================
+
+        RateLimiter::for('ugc', function (Request $request) {
+            return Limit::perMinute(20)
+                ->by('ugc:' . ($request->user()?->id ?? $request->ip()))
+                ->response($this->tooManyAttempts(...));
+        });
     }
 
     // =====================================================

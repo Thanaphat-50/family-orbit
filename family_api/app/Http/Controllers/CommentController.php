@@ -6,6 +6,7 @@ use App\Models\AppNotification;
 use App\Models\Comment;
 use App\Models\FamilyMember;
 use App\Models\Post;
+use App\Models\UserBlock;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -38,8 +39,17 @@ class CommentController extends Controller
             ], 403);
         }
 
-        // Post ต้องอยู่ Family เดียวกับ User
-        if (
+        if ($post->isCommunity()) {
+            // โพสต์ชุมชน: ทุกคนแสดงความคิดเห็นได้ ยกเว้นโพสต์ที่ถูกซ่อน
+            if ($post->hidden_at !== null) {
+                return response()->json([
+                    'status' => false,
+                    'message' =>
+                        'โพสต์นี้ถูกซ่อนแล้ว',
+                ], 403);
+            }
+        } elseif (
+            // โพสต์ครอบครัว: ต้องอยู่ Family เดียวกับ User
             $post->family_id !==
             $membership->family_id
         ) {
@@ -50,12 +60,24 @@ class CommentController extends Controller
             ], 403);
         }
 
+        // เจ้าของโพสต์บล็อกเราไว้ → ไม่ต้องแจ้งเตือน
+        $blockedByOwner = UserBlock::where(
+            'user_id',
+            $post->user_id
+        )
+            ->where(
+                'blocked_user_id',
+                $user->id
+            )
+            ->exists();
+
         $comment = DB::transaction(
             function () use (
                 $request,
                 $post,
                 $user,
-                $membership
+                $membership,
+                $blockedByOwner
             ) {
                 $comment = Comment::create([
                     'post_id' => $post->id,
@@ -68,12 +90,17 @@ class CommentController extends Controller
                 if (
                     $post->user_id !==
                     $user->id
+                    && !$blockedByOwner
                 ) {
                     AppNotification::create([
                         'user_id' =>
                             $post->user_id,
+
+                        // โพสต์ชุมชนไม่ผูกกับครอบครัวของผู้แสดงความคิดเห็น
                         'family_id' =>
-                            $membership->family_id,
+                            $post->isCommunity()
+                                ? null
+                                : $membership->family_id,
                         'type' => 'new_comment',
                         'title' =>
                             'ความคิดเห็นใหม่',
@@ -95,7 +122,7 @@ class CommentController extends Controller
         );
 
         $comment->load(
-            'user:id,name,email'
+            'user:id,name,profile_photo'
         );
 
         return response()->json([
@@ -141,7 +168,8 @@ class CommentController extends Controller
             ], 404);
         }
 
-        // User ต้องยังอยู่ใน Family ของ Post
+        // โพสต์ครอบครัว: User ต้องยังอยู่ใน Family ของ Post
+        // โพสต์ชุมชน: เจ้าของความคิดเห็นลบได้เสมอ
         $membership =
             FamilyMember::where(
                 'user_id',
@@ -153,7 +181,7 @@ class CommentController extends Controller
                 )
                 ->first();
 
-        if (!$membership) {
+        if (!$post->isCommunity() && !$membership) {
             return response()->json([
                 'status' => false,
                 'message' =>

@@ -7,6 +7,7 @@ use App\Http\Controllers\FamilyController;
 use App\Http\Controllers\LocationController;
 use App\Http\Controllers\PostController;
 use App\Http\Controllers\CommentController;
+use App\Http\Controllers\CommunityController;
 use App\Http\Controllers\ActivityController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\NotificationController;
@@ -64,10 +65,11 @@ Route::middleware('auth:sanctum')->group(function () {
         'index'
     ]);
 
+    // throttle:ugc = กันสแปมโพสต์/ความคิดเห็น/รายงาน (ตั้งค่าใน AppServiceProvider)
     Route::post('/posts', [
         PostController::class,
         'store'
-    ]);
+    ])->middleware('throttle:ugc');
 
     Route::delete('/posts/{post}', [
         PostController::class,
@@ -77,6 +79,32 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/posts/{post}/comments', [
         CommentController::class,
         'store'
+    ])->middleware('throttle:ugc');
+
+    Route::post('/posts/{post}/report', [
+        PostController::class,
+        'report'
+    ])->middleware('throttle:ugc');
+
+    // ชุมชน: กฎชุมชน และการบล็อกผู้ใช้
+    Route::post('/community/accept-terms', [
+        CommunityController::class,
+        'acceptTerms'
+    ]);
+
+    Route::get('/blocks', [
+        CommunityController::class,
+        'blocks'
+    ]);
+
+    Route::post('/users/{user}/block', [
+        CommunityController::class,
+        'block'
+    ]);
+
+    Route::delete('/users/{user}/block', [
+        CommunityController::class,
+        'unblock'
     ]);
 
     Route::delete('/comments/{comment}', [

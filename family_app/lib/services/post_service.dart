@@ -27,12 +27,23 @@ class PostService {
   // GET POSTS
   // =====================================================
 
-  static Future<Map<String, dynamic>> getPosts() async {
+  // scope: 'family' (ครอบครัว) หรือ 'community' (ชุมชน แบ่งหน้า)
+  static Future<Map<String, dynamic>> getPosts({
+    String scope = 'family',
+    int page = 1,
+  }) async {
     final headers = await _headers();
+
+    final uri = Uri.parse('$baseUrl/posts').replace(
+      queryParameters: {
+        'scope': scope,
+        if (scope == 'community') 'page': '$page',
+      },
+    );
 
     final response = await ApiHelper.request(
       () => http.get(
-        Uri.parse('$baseUrl/posts'),
+        uri,
         headers: headers,
       ),
     );
@@ -42,11 +53,13 @@ class PostService {
 
   // =====================================================
   // CREATE POST
+  // visibility: 'family' (ค่าเริ่มต้น) หรือ 'community'
   // =====================================================
 
   static Future<Map<String, dynamic>> createPost(
-    String content,
-  ) async {
+    String content, {
+    String visibility = 'family',
+  }) async {
     final headers = await _headers();
 
     final response = await ApiHelper.request(
@@ -55,7 +68,88 @@ class PostService {
         headers: headers,
         body: jsonEncode({
           'content': content,
+          'visibility': visibility,
         }),
+      ),
+    );
+
+    return ApiHelper.decode(response);
+  }
+
+  // =====================================================
+  // REPORT POST (เฉพาะโพสต์ชุมชน)
+  // reason: spam, inappropriate, harassment, scam, other
+  // =====================================================
+
+  static Future<Map<String, dynamic>> reportPost({
+    required int postId,
+    required String reason,
+  }) async {
+    final headers = await _headers();
+
+    final response = await ApiHelper.request(
+      () => http.post(
+        Uri.parse('$baseUrl/posts/$postId/report'),
+        headers: headers,
+        body: jsonEncode({
+          'reason': reason,
+        }),
+      ),
+    );
+
+    return ApiHelper.decode(response);
+  }
+
+  // =====================================================
+  // COMMUNITY: กฎชุมชน และการบล็อก
+  // =====================================================
+
+  static Future<Map<String, dynamic>> acceptCommunityTerms() async {
+    final headers = await _headers();
+
+    final response = await ApiHelper.request(
+      () => http.post(
+        Uri.parse('$baseUrl/community/accept-terms'),
+        headers: headers,
+      ),
+    );
+
+    return ApiHelper.decode(response);
+  }
+
+  static Future<Map<String, dynamic>> getBlockedUsers() async {
+    final headers = await _headers();
+
+    final response = await ApiHelper.request(
+      () => http.get(
+        Uri.parse('$baseUrl/blocks'),
+        headers: headers,
+      ),
+    );
+
+    return ApiHelper.decode(response);
+  }
+
+  static Future<Map<String, dynamic>> blockUser(int userId) async {
+    final headers = await _headers();
+
+    final response = await ApiHelper.request(
+      () => http.post(
+        Uri.parse('$baseUrl/users/$userId/block'),
+        headers: headers,
+      ),
+    );
+
+    return ApiHelper.decode(response);
+  }
+
+  static Future<Map<String, dynamic>> unblockUser(int userId) async {
+    final headers = await _headers();
+
+    final response = await ApiHelper.request(
+      () => http.delete(
+        Uri.parse('$baseUrl/users/$userId/block'),
+        headers: headers,
       ),
     );
 
