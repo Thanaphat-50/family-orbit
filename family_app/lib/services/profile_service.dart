@@ -136,4 +136,27 @@ class ProfileService {
 
     return ApiHelper.decode(response);
   }
+
+  // =====================================================
+  // DELETE ACCOUNT
+  // ลบบัญชีและข้อมูลทั้งหมด (ยืนยันด้วยรหัสผ่าน)
+  // =====================================================
+
+  static Future<Map<String, dynamic>> deleteAccount({
+    required String password,
+  }) async {
+    final headers = await _headers();
+
+    final response = await ApiHelper.request(
+      () => http.delete(
+        Uri.parse('$baseUrl/account'),
+
+        headers: headers,
+
+        body: jsonEncode({'password': password}),
+      ),
+    );
+
+    return ApiHelper.decode(response);
+  }
 }

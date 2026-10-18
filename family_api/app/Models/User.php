@@ -61,20 +61,27 @@ class User extends Authenticatable
         return $this->profilePhotoUrl();
     }
 
+    // Disk ที่เก็บรูปโปรไฟล์
+    // ในเครื่องใช้ public / บน Cloud ใช้ Default Disk ที่เชื่อมกับ Bucket
+    public static function profilePhotoDisk(): string
+    {
+        $default = config(
+            'filesystems.default',
+            'local'
+        );
+
+        return $default === 'local'
+            ? 'public'
+            : $default;
+    }
+
     private function profilePhotoUrl(): ?string
     {
         if (!$this->profile_photo) {
             return null;
         }
 
-        $disk = config(
-            'filesystems.default',
-            'local'
-        );
-
-        $disk = $disk === 'local'
-            ? 'public'
-            : $disk;
+        $disk = self::profilePhotoDisk();
 
         // สำหรับการพัฒนาในเครื่อง
         if ($disk === 'public') {

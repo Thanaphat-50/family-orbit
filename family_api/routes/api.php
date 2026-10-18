@@ -33,6 +33,10 @@ Route::post('/login', [AuthController::class, 'login'])
 Route::post('/logout', [AuthController::class, 'logout'])
     ->middleware('auth:sanctum');
 
+// ลบบัญชี (จำกัด 5 ครั้ง/นาที กันเดารหัสผ่าน)
+Route::delete('/account', [AuthController::class, 'deleteAccount'])
+    ->middleware(['auth:sanctum', 'throttle:5,1']);
+
 Route::middleware('auth:sanctum')->group(function () {
 
     Route::post('/families', [

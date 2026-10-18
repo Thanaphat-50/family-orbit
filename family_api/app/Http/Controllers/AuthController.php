@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Services\AccountDeletionService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
@@ -65,6 +66,46 @@ class AuthController extends Controller
         return response()->json([
             'status' => true,
             'message' => 'Logout successful',
+        ]);
+    }
+
+    // =====================================================
+    // DELETE /api/account
+    // ลบบัญชีและข้อมูลทั้งหมด (ต้องยืนยันด้วยรหัสผ่าน)
+    // =====================================================
+
+    public function deleteAccount(
+        Request $request,
+        AccountDeletionService $deletion
+    ) {
+        $data = $request->validate([
+            'password' => 'required|string',
+        ]);
+
+        $user = $request->user();
+
+        if (!Hash::check($data['password'], $user->password)) {
+            return response()->json([
+                'status' => false,
+                'message' => 'รหัสผ่านไม่ถูกต้อง',
+            ], 422);
+        }
+
+        $reason = $deletion->blockingReason($user);
+
+        if ($reason !== null) {
+            return response()->json([
+                'status' => false,
+                'code' => 'transfer_owner_required',
+                'message' => $reason,
+            ], 409);
+        }
+
+        $deletion->delete($user);
+
+        return response()->json([
+            'status' => true,
+            'message' => 'ลบบัญชีและข้อมูลทั้งหมดเรียบร้อยแล้ว',
         ]);
     }
 }

@@ -211,14 +211,7 @@ class ProfileController extends Controller
     // บน Cloud ใช้ Default Disk ที่เชื่อมกับ Bucket
     private function photoDisk(): string
     {
-        $default = config(
-            'filesystems.default',
-            'local'
-        );
-
-        return $default === 'local'
-            ? 'public'
-            : $default;
+        return User::profilePhotoDisk();
     }
 
     private function userPayload(

@@ -660,6 +660,212 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   // =====================================================
+  // DELETE ACCOUNT
+  // ลบบัญชีและข้อมูลทั้งหมด (ยืนยันด้วยรหัสผ่าน)
+  // =====================================================
+
+  Future<void> deleteAccount() async {
+    String password = '';
+
+    bool hidePassword = true;
+    bool confirmed = false;
+
+    final String? result = await showModalBottomSheet<String>(
+      context: context,
+
+      isScrollControlled: true,
+
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return SafeArea(
+              child: SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(
+                  20,
+                  15,
+                  20,
+                  MediaQuery.of(context).viewInsets.bottom + 25,
+                ),
+
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+
+                  children: [
+                    const Text(
+                      'ลบบัญชี',
+
+                      style: TextStyle(
+                        color: AppColors.danger,
+
+                        fontSize: 21,
+
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+
+                    const SizedBox(height: 10),
+
+                    const Text(
+                      'ข้อมูลต่อไปนี้จะถูกลบถาวร และกู้คืนไม่ได้\n'
+                      '• บัญชีและรูปโปรไฟล์\n'
+                      '• การเป็นสมาชิกครอบครัวและตำแหน่ง\n'
+                      '• โพสต์ ความคิดเห็น และกิจกรรมทั้งหมด',
+
+                      style: TextStyle(
+                        color: AppColors.muted,
+
+                        fontSize: 13,
+
+                        height: 1.6,
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    TextField(
+                      obscureText: hidePassword,
+
+                      onChanged: (value) {
+                        password = value;
+                      },
+
+                      decoration: InputDecoration(
+                        labelText: 'ยืนยันด้วยรหัสผ่าน',
+
+                        prefixIcon: const Icon(Icons.lock_outline_rounded),
+
+                        suffixIcon: IconButton(
+                          onPressed: () {
+                            setSheetState(() {
+                              hidePassword = !hidePassword;
+                            });
+                          },
+
+                          icon: Icon(
+                            hidePassword
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    CheckboxListTile(
+                      value: confirmed,
+
+                      contentPadding: EdgeInsets.zero,
+
+                      controlAffinity: ListTileControlAffinity.leading,
+
+                      activeColor: AppColors.danger,
+
+                      title: const Text(
+                        'ฉันเข้าใจว่าข้อมูลทั้งหมดจะถูกลบถาวร',
+
+                        style: TextStyle(
+                          color: AppColors.navy,
+
+                          fontSize: 13,
+
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+
+                      onChanged: (value) {
+                        setSheetState(() {
+                          confirmed = value ?? false;
+                        });
+                      },
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    FilledButton(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.danger,
+
+                        disabledBackgroundColor:
+                            AppColors.danger.withValues(alpha: 0.35),
+
+                        disabledForegroundColor: Colors.white,
+
+                        minimumSize: const Size(double.infinity, 52),
+                      ),
+
+                      onPressed: confirmed
+                          ? () {
+                              if (password.isEmpty) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('กรุณากรอกรหัสผ่าน'),
+                                  ),
+                                );
+
+                                return;
+                              }
+
+                              Navigator.of(sheetContext).pop(password);
+                            }
+                          : null,
+
+                      child: const Text('ลบบัญชีถาวร'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    if (result == null || !mounted) {
+      return;
+    }
+
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+
+    try {
+      final response = await ProfileService.deleteAccount(
+        password: result,
+      );
+
+      if (!mounted) return;
+
+      if (response['status'] != true) {
+        showMessage(response['message'] ?? 'ลบบัญชีไม่สำเร็จ');
+        return;
+      }
+
+      // บัญชีถูกลบแล้ว → ล้าง Token ในเครื่อง แล้วกลับหน้า Login
+      await AuthService.clearToken();
+
+      if (!mounted) return;
+
+      final messenger = ScaffoldMessenger.of(context);
+
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LoginPage()),
+        (route) => false,
+      );
+
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            response['message'] ?? 'ลบบัญชีเรียบร้อยแล้ว',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      showMessage(e.toString());
+    }
+  }
+
+  // =====================================================
   // LOGOUT
   // =====================================================
 
@@ -1127,6 +1333,22 @@ class _ProfilePageState extends State<ProfilePage> {
             danger: true,
 
             onTap: logout,
+          ),
+
+          const SizedBox(height: 10),
+
+          buildSettingTile(
+            icon: Icons.delete_forever_rounded,
+
+            title: 'ลบบัญชี',
+
+            subtitle: 'ลบบัญชีและข้อมูลทั้งหมดถาวร',
+
+            color: AppColors.danger,
+
+            danger: true,
+
+            onTap: deleteAccount,
           ),
         ],
       ),
