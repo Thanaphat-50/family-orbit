@@ -1,8 +1,12 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../services/post_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/community_sheets.dart';
+import '../widgets/photo_viewer.dart';
 import '../widgets/post_categories.dart';
 
 // ฟีด "ครอบครัว" (เฉพาะครอบครัว) และ "ชุมชน" (ทุกคนในแอป)
@@ -42,6 +46,9 @@ class _FeedPageState extends State<FeedPage> {
   // ความยาวสูงสุดของโพสต์ ตรงกับ Laravel (content max:5000)
   static const int maxPostLength = 5000;
 
+  // จำนวนรูปสูงสุดต่อโพสต์ ตรงกับ Laravel (images max:10)
+  static const int maxPostImages = 10;
+
   // จำนวนความคิดเห็นที่แสดงก่อนกด "ดูก่อนหน้า"
   static const int collapsedCommentCount = 2;
 
@@ -54,6 +61,11 @@ class _FeedPageState extends State<FeedPage> {
   final TextEditingController postController = TextEditingController();
 
   final ScrollController scrollController = ScrollController();
+
+  final ImagePicker imagePicker = ImagePicker();
+
+  // รูปที่เลือกไว้สำหรับโพสต์ที่กำลังเขียน
+  final List<XFile> pickedImages = [];
 
   bool isPosting = false;
 
@@ -273,11 +285,51 @@ class _FeedPageState extends State<FeedPage> {
   // สร้างโพสต์
   // =====================================================
 
+  // เลือกรูปจากเครื่อง (รวมแล้วไม่เกิน 10 รูป)
+  // ย่อรูปก่อนส่ง เหมือนรูปโปรไฟล์ เพื่อให้อัปโหลดเร็ว
+  Future<void> pickImages() async {
+    dismissKeyboard();
+
+    final int remaining = maxPostImages - pickedImages.length;
+
+    if (remaining <= 0) {
+      showMessage('แนบรูปได้สูงสุด $maxPostImages รูป');
+      return;
+    }
+
+    try {
+      final List<XFile> images = await imagePicker.pickMultiImage(
+        limit: remaining,
+        maxWidth: 1600,
+        imageQuality: 80,
+      );
+
+      if (!mounted || images.isEmpty) return;
+
+      // เครื่องรุ่นเก่าบางรุ่นไม่จำกัดจำนวนให้ → ตัดเอง
+      setState(() {
+        pickedImages.addAll(images.take(remaining));
+      });
+
+      if (images.length > remaining) {
+        showMessage('แนบรูปได้สูงสุด $maxPostImages รูป');
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      showMessage('เลือกรูปไม่สำเร็จ กรุณาลองอีกครั้ง');
+    }
+  }
+
   Future<void> createPost() async {
     final content = postController.text.trim();
 
-    if (content.isEmpty) {
-      showMessage('กรุณาพิมพ์ข้อความก่อนโพสต์');
+    final List<String> imagePaths = pickedImages
+        .map((image) => image.path)
+        .toList();
+
+    if (content.isEmpty && imagePaths.isEmpty) {
+      showMessage('กรุณาพิมพ์ข้อความหรือเพิ่มรูปก่อนโพสต์');
       return;
     }
 
@@ -302,6 +354,7 @@ class _FeedPageState extends State<FeedPage> {
         content,
         visibility: apiScope(target),
         category: category,
+        imagePaths: imagePaths,
       );
 
       if (!mounted) return;
@@ -312,6 +365,8 @@ class _FeedPageState extends State<FeedPage> {
         dismissKeyboard();
 
         setState(() {
+          pickedImages.clear();
+
           composeCategory = 'general';
 
           // กรองหมวดอื่นอยู่ → กลับไป "ทั้งหมด" ให้เห็นโพสต์ที่เพิ่งแชร์
@@ -848,6 +903,19 @@ class _FeedPageState extends State<FeedPage> {
     return post['visibility'] == 'community';
   }
 
+  // URL รูปในโพสต์ ตามลำดับที่ Server ส่งมา
+  List<String> imageUrlsOf(Map<String, dynamic> post) {
+    final dynamic images = post['images'];
+
+    if (images is! List) return const [];
+
+    return images
+        .whereType<Map>()
+        .map((image) => image['url']?.toString() ?? '')
+        .where((url) => url.isNotEmpty)
+        .toList();
+  }
+
   int likesCountOf(Map<String, dynamic> post) {
     final dynamic count = post['likes_count'];
 
@@ -1259,6 +1327,10 @@ class _FeedPageState extends State<FeedPage> {
               ),
             ],
           ),
+          if (pickedImages.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            buildPickedImages(),
+          ],
           if (scope == FeedScope.community) ...[
             const SizedBox(height: 12),
             buildCategoryPicker(),
@@ -1266,15 +1338,27 @@ class _FeedPageState extends State<FeedPage> {
           const SizedBox(height: 12),
           Row(
             children: [
-              buildAudienceChip(),
-              const Spacer(),
+              // ป้ายผู้เห็น + ปุ่มรูป ใช้พื้นที่ที่เหลือ
+              // (ย่อป้ายเฉพาะตอนจอแคบจริง ๆ)
+              Expanded(
+                child: Row(
+                  children: [
+                    Flexible(child: buildAudienceChip()),
+                    const SizedBox(width: 8),
+                    buildAddPhotoButton(),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
 
-              // ปุ่มแชร์กดได้เมื่อมีข้อความเท่านั้น
+              // ปุ่มแชร์กดได้เมื่อมีข้อความหรือมีรูป
               ValueListenableBuilder<TextEditingValue>(
                 valueListenable: postController,
                 builder: (context, value, child) {
                   final bool canPost =
-                      value.text.trim().isNotEmpty && !isPosting;
+                      (value.text.trim().isNotEmpty ||
+                          pickedImages.isNotEmpty) &&
+                      !isPosting;
 
                   return FilledButton.icon(
                     onPressed: canPost ? createPost : null,
@@ -1308,6 +1392,109 @@ class _FeedPageState extends State<FeedPage> {
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  // ปุ่ม 📷 เพิ่มรูป (แสดงจำนวนที่เลือกแล้ว)
+  Widget buildAddPhotoButton() {
+    final int count = pickedImages.length;
+
+    return Tooltip(
+      message: 'เพิ่มรูป',
+      child: Material(
+        color: AppColors.softPrimary,
+        borderRadius: BorderRadius.circular(999),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(999),
+          onTap: isPosting ? null : pickImages,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.add_photo_alternate_outlined,
+                  size: 18,
+                  color: AppColors.primary,
+                ),
+                if (count > 0) ...[
+                  const SizedBox(width: 4),
+                  Text(
+                    '$count/$maxPostImages',
+                    style: const TextStyle(
+                      color: AppColors.primary,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // รูปที่เลือกไว้ เลื่อนดูแนวนอน กด ✕ เพื่อเอาออก
+  Widget buildPickedImages() {
+    const double size = 76;
+
+    return SizedBox(
+      height: size,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: pickedImages.length,
+        separatorBuilder: (context, index) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final XFile image = pickedImages[index];
+
+          return Stack(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: Image.file(
+                  File(image.path),
+                  width: size,
+                  height: size,
+                  fit: BoxFit.cover,
+                  cacheWidth: 240,
+                ),
+              ),
+              Positioned(
+                top: 4,
+                right: 4,
+                child: Semantics(
+                  button: true,
+                  label: 'เอารูปที่ ${index + 1} ออก',
+                  child: GestureDetector(
+                    onTap: isPosting
+                        ? null
+                        : () {
+                            setState(() {
+                              pickedImages.removeAt(index);
+                            });
+                          },
+                    child: Container(
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.55),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.close_rounded,
+                        size: 15,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -1400,12 +1587,16 @@ class _FeedPageState extends State<FeedPage> {
         children: [
           Icon(icon, size: 14, color: color),
           const SizedBox(width: 5),
-          Text(
-            label,
-            style: TextStyle(
-              color: color,
-              fontSize: 11.5,
-              fontWeight: FontWeight.w700,
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: color,
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
           if (trailingIcon != null) ...[
@@ -1513,6 +1704,10 @@ class _FeedPageState extends State<FeedPage> {
         ? findPostCategory(post['category'] ?? 'general')
         : null;
 
+    final String content = post['content']?.toString().trim() ?? '';
+
+    final List<String> imageUrls = imageUrlsOf(post);
+
     return AnimatedOpacity(
       key: ValueKey('post-$postId'),
       duration: const Duration(milliseconds: 200),
@@ -1617,20 +1812,40 @@ class _FeedPageState extends State<FeedPage> {
               ),
 
               // ===========================================
-              // Content
+              // Content (โพสต์ที่มีแต่รูปไม่แสดงช่องข้อความ)
               // ===========================================
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
-                child: Text(
-                  post['content']?.toString() ?? '',
-                  style: const TextStyle(
-                    color: AppColors.navy,
-                    fontSize: 15.5,
-                    height: 1.55,
-                    fontWeight: FontWeight.w500,
+              if (content.isNotEmpty)
+                Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    10,
+                    16,
+                    imageUrls.isEmpty ? 14 : 10,
+                  ),
+                  child: Text(
+                    content,
+                    style: const TextStyle(
+                      color: AppColors.navy,
+                      fontSize: 15.5,
+                      height: 1.55,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ),
-              ),
+
+              // ===========================================
+              // Images
+              // ===========================================
+              if (imageUrls.isNotEmpty)
+                Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    content.isEmpty ? 10 : 0,
+                    16,
+                    14,
+                  ),
+                  child: buildImageGrid(imageUrls),
+                ),
 
               // ===========================================
               // Action Bar
@@ -1718,6 +1933,109 @@ class _FeedPageState extends State<FeedPage> {
                 buildCommentsSection(postId: postId, comments: comments),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  // =====================================================
+  // ตารางรูปในโพสต์
+  // 1 รูป: เต็มกว้าง / 2 รูป: คู่ / 3 รูป: ใหญ่ 1 + เล็ก 2
+  // 4 รูปขึ้นไป: ตาราง 2×2 ช่องสุดท้ายแสดง +N
+  // =====================================================
+
+  Widget buildImageGrid(List<String> urls) {
+    const double gap = 4;
+
+    Widget tile(int index, {int extra = 0}) {
+      return buildImageTile(urls, index, extra: extra);
+    }
+
+    Widget pair(Widget first, Widget second, {bool vertical = false}) {
+      final children = [
+        Expanded(child: first),
+        vertical ? const SizedBox(height: gap) : const SizedBox(width: gap),
+        Expanded(child: second),
+      ];
+
+      return vertical ? Column(children: children) : Row(children: children);
+    }
+
+    final Widget grid = switch (urls.length) {
+      1 => AspectRatio(aspectRatio: 4 / 3, child: tile(0)),
+      2 => AspectRatio(aspectRatio: 2, child: pair(tile(0), tile(1))),
+      3 => AspectRatio(
+        aspectRatio: 4 / 3,
+        child: Row(
+          children: [
+            Expanded(flex: 2, child: tile(0)),
+            const SizedBox(width: gap),
+            Expanded(child: pair(tile(1), tile(2), vertical: true)),
+          ],
+        ),
+      ),
+      _ => AspectRatio(
+        aspectRatio: 1,
+        child: pair(
+          pair(tile(0), tile(1)),
+          pair(tile(2), tile(3, extra: urls.length - 4)),
+          vertical: true,
+        ),
+      ),
+    };
+
+    return ClipRRect(borderRadius: BorderRadius.circular(16), child: grid);
+  }
+
+  Widget buildImageTile(List<String> urls, int index, {int extra = 0}) {
+    const Color placeholder = Color(0xFFEDEFF5);
+
+    return Semantics(
+      button: true,
+      label: 'ดูรูปที่ ${index + 1} จาก ${urls.length}',
+      child: GestureDetector(
+        onTap: () {
+          dismissKeyboard();
+
+          showPhotoViewer(context, urls: urls, initialIndex: index);
+        },
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.network(
+              urls[index],
+              fit: BoxFit.cover,
+              cacheWidth: 900,
+              loadingBuilder: (context, child, progress) {
+                return progress == null
+                    ? child
+                    : const ColoredBox(color: placeholder);
+              },
+              errorBuilder: (context, error, stackTrace) {
+                return const ColoredBox(
+                  color: placeholder,
+                  child: Icon(
+                    Icons.broken_image_outlined,
+                    color: AppColors.muted,
+                  ),
+                );
+              },
+            ),
+            if (extra > 0)
+              ColoredBox(
+                color: Colors.black.withValues(alpha: 0.45),
+                child: Center(
+                  child: Text(
+                    '+$extra',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 26,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );

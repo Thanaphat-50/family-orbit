@@ -6,11 +6,9 @@ use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
+use App\Support\MediaStorage;
 use Illuminate\Notifications\Notifiable;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\HasApiTokens;
-use Throwable;
 
 class User extends Authenticatable implements FilamentUser
 {
@@ -71,51 +69,15 @@ class User extends Authenticatable implements FilamentUser
         return $this->profilePhotoUrl();
     }
 
-    // Disk ที่เก็บรูปโปรไฟล์
+    // Disk ที่เก็บรูปโปรไฟล์ (ใช้ร่วมกับรูปในโพสต์)
     // ในเครื่องใช้ public / บน Cloud ใช้ Default Disk ที่เชื่อมกับ Bucket
     public static function profilePhotoDisk(): string
     {
-        $default = config(
-            'filesystems.default',
-            'local'
-        );
-
-        return $default === 'local'
-            ? 'public'
-            : $default;
+        return MediaStorage::disk();
     }
 
     private function profilePhotoUrl(): ?string
     {
-        if (!$this->profile_photo) {
-            return null;
-        }
-
-        $disk = self::profilePhotoDisk();
-
-        // สำหรับการพัฒนาในเครื่อง
-        if ($disk === 'public') {
-            return request()->getSchemeAndHttpHost()
-                . '/storage/'
-                . ltrim($this->profile_photo, '/');
-        }
-
-        // สำหรับ Private Bucket บน Cloud
-        try {
-            return Storage::disk($disk)->temporaryUrl(
-                $this->profile_photo,
-                now()->addHours(12)
-            );
-        } catch (Throwable $e) {
-            Log::warning(
-                'Cannot generate profile photo URL',
-                [
-                    'user_id' => $this->id,
-                    'error' => $e->getMessage(),
-                ]
-            );
-
-            return null;
-        }
+        return MediaStorage::url($this->profile_photo);
     }
 }

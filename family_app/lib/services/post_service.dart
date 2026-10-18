@@ -55,13 +55,25 @@ class PostService {
   // CREATE POST
   // visibility: 'family' (ค่าเริ่มต้น) หรือ 'community'
   // category: หมวดของโพสต์ชุมชน (general, qa, news, help, event)
+  // imagePaths: ไฟล์รูปในเครื่อง (สูงสุด 10 รูป)
+  //             มีรูป → ส่งแบบ multipart / ไม่มีรูป → JSON เหมือนเดิม
   // =====================================================
 
   static Future<Map<String, dynamic>> createPost(
     String content, {
     String visibility = 'family',
     String? category,
+    List<String> imagePaths = const [],
   }) async {
+    if (imagePaths.isNotEmpty) {
+      return _createPostWithImages(
+        content,
+        visibility: visibility,
+        category: category,
+        imagePaths: imagePaths,
+      );
+    }
+
     final headers = await _headers();
 
     final response = await ApiHelper.request(
@@ -75,6 +87,50 @@ class PostService {
         }),
       ),
     );
+
+    return ApiHelper.decode(response);
+  }
+
+  // อัปโหลดหลายรูปใช้เวลานานกว่า Request ปกติ
+  static const Duration _uploadTimeLimit = Duration(seconds: 90);
+
+  static Future<Map<String, dynamic>> _createPostWithImages(
+    String content, {
+    required String visibility,
+    String? category,
+    required List<String> imagePaths,
+  }) async {
+    final token = await AuthService.getToken();
+
+    // ไม่ใส่ Content-Type เพราะ MultipartRequest สร้างให้เอง
+    final request = http.MultipartRequest('POST', Uri.parse('$baseUrl/posts'))
+      ..headers.addAll({
+        'Accept': 'application/json',
+        if (token != null) 'Authorization': 'Bearer $token',
+      })
+      ..fields['content'] = content
+      ..fields['visibility'] = visibility;
+
+    if (category != null) {
+      request.fields['category'] = category;
+    }
+
+    for (final path in imagePaths) {
+      request.files.add(await http.MultipartFile.fromPath('images[]', path));
+    }
+
+    final response = await ApiHelper.request(
+      () async => http.Response.fromStream(await request.send()),
+      timeLimit: _uploadTimeLimit,
+    );
+
+    // ไฟล์รวมใหญ่เกินที่ Server รับได้
+    if (response.statusCode == 413) {
+      return {
+        'status': false,
+        'message': 'รูปมีขนาดรวมใหญ่เกินไป กรุณาเลือกรูปให้น้อยลง',
+      };
+    }
 
     return ApiHelper.decode(response);
   }

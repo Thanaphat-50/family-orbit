@@ -57,13 +57,16 @@ class ApiHelper {
 
   // =====================================================
   // ส่ง Request
+  // timeLimit: เวลารอสูงสุดของ Request นี้
+  // (เช่น อัปโหลดรูปใช้นานกว่าปกติ)
   // =====================================================
 
   static Future<http.Response> request(
-    Future<http.Response> Function() action,
-  ) async {
+    Future<http.Response> Function() action, {
+    Duration? timeLimit,
+  }) async {
     try {
-      return await action().timeout(timeout);
+      return await action().timeout(timeLimit ?? timeout);
     } on SocketException {
       throw ApiException(
         'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้\n'

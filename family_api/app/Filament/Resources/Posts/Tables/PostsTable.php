@@ -3,11 +3,13 @@
 namespace App\Filament\Resources\Posts\Tables;
 
 use App\Models\Post;
+use App\Support\MediaStorage;
 use Filament\Actions\Action;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Support\Icons\Heroicon;
+use Filament\Tables\Columns\ImageColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
@@ -41,6 +43,17 @@ class PostsTable
                     ->limit(200)
                     ->wrap()
                     ->searchable(),
+
+                // รูปในโพสต์ (Private Bucket → ลิงก์ชั่วคราว)
+                // ไม่เช็กว่าไฟล์มีอยู่จริง เพื่อไม่ต้องเรียก Bucket ทุกรูป
+                ImageColumn::make('images.path')
+                    ->label('รูป')
+                    ->disk(MediaStorage::disk())
+                    ->visibility('private')
+                    ->checkFileExistence(false)
+                    ->stacked()
+                    ->limit(3)
+                    ->limitedRemainingText(),
 
                 TextColumn::make('category')
                     ->label('หมวด')

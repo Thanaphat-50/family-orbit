@@ -6,7 +6,10 @@ use App\Models\Activity;
 use App\Models\AppNotification;
 use App\Models\Family;
 use App\Models\FamilyMember;
+use App\Models\Post;
+use App\Models\PostImage;
 use App\Models\UserLocation;
+use App\Support\MediaStorage;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -722,6 +725,12 @@ class FamilyController extends Controller
             ], 403);
         }
 
+        // เก็บที่อยู่ไฟล์รูปในโพสต์ของครอบครัวไว้ลบหลังลบข้อมูลสำเร็จ
+        $imagePaths = PostImage::whereIn(
+            'post_id',
+            Post::where('family_id', $family->id)->select('id')
+        )->pluck('path')->all();
+
         DB::transaction(function () use (
             $family
         ) {
@@ -843,6 +852,10 @@ class FamilyController extends Controller
 
             $family->delete();
         });
+
+        // ลบไฟล์รูปของโพสต์ที่ถูกลบไปแล้ว
+        // (แถวใน post_images ถูกลบตาม cascade แต่ไฟล์ต้องลบเอง)
+        MediaStorage::delete($imagePaths);
 
         return response()->json([
             'status' =>

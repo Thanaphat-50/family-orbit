@@ -4,7 +4,9 @@ namespace App\Services;
 
 use App\Models\Family;
 use App\Models\FamilyMember;
+use App\Models\PostImage;
 use App\Models\User;
+use App\Support\MediaStorage;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -59,6 +61,16 @@ class AccountDeletionService
 
         $photoPath = $user->profile_photo;
 
+        // ไฟล์รูปในโพสต์ที่จะถูกลบตาม cascade:
+        // โพสต์ของผู้ใช้ + โพสต์ของครอบครัวที่ผู้ใช้เป็น Owner คนเดียว
+        $imagePaths = PostImage::whereHas('post', function ($posts) use ($user) {
+            $posts->where('user_id', $user->id)
+                ->orWhereIn(
+                    'family_id',
+                    Family::where('owner_id', $user->id)->select('id')
+                );
+        })->pluck('path')->all();
+
         DB::transaction(function () use ($user) {
             // Owner คนเดียวของครอบครัว → ลบครอบครัวด้วย
             Family::where('owner_id', $user->id)->delete();
@@ -68,6 +80,9 @@ class AccountDeletionService
 
             $user->delete();
         });
+
+        // ลบไฟล์รูปในโพสต์หลังลบข้อมูลสำเร็จแล้ว
+        MediaStorage::delete($imagePaths);
 
         // ลบรูปโปรไฟล์หลังลบข้อมูลสำเร็จแล้ว
         if ($photoPath) {

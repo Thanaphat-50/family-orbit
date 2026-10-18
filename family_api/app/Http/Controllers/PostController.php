@@ -8,9 +8,13 @@ use App\Models\Post;
 use App\Models\PostLike;
 use App\Models\PostReport;
 use App\Models\User;
+use App\Support\MediaStorage;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
+use RuntimeException;
+use Throwable;
 
 class PostController extends Controller
 {
@@ -19,6 +23,10 @@ class PostController extends Controller
 
     // ข้อมูลผู้ใช้ที่ส่งไปกับโพสต์/ความคิดเห็น (ไม่ส่ง email)
     private const USER_COLUMNS = 'id,name,profile_photo';
+
+    // รูปในโพสต์: จำนวนสูงสุด และขนาดสูงสุดต่อรูป (KB)
+    private const MAX_IMAGES = 10;
+    private const MAX_IMAGE_KB = 4096;
 
     // =====================================================
     // ดู Post
@@ -60,6 +68,7 @@ class PostController extends Controller
             ->where('visibility', 'family')
             ->with([
                 'user:' . self::USER_COLUMNS,
+                'images',
                 'comments.user:' . self::USER_COLUMNS,
             ])
             ->tap(fn ($query) => $this->withLikeInfo($query, $user))
@@ -95,6 +104,7 @@ class PostController extends Controller
             ->whereNotIn('user_id', $blockedIds)
             ->with([
                 'user:' . self::USER_COLUMNS,
+                'images',
                 // ไม่แสดงความคิดเห็นที่ถูกซ่อน, ที่เรารายงานแล้ว
                 // หรือของคนที่เราบล็อก
                 'comments' => function ($query) use ($blockedIds, $user) {
@@ -130,15 +140,28 @@ class PostController extends Controller
     // สร้าง Post
     // visibility: family (ค่าเริ่มต้น) / community
     // category:   ใช้เฉพาะโพสต์ชุมชน (ค่าเริ่มต้น general)
+    // images[]:   รูปแนบ (multipart) ไม่บังคับ
+    //             มีรูปแล้วไม่ต้องมีข้อความก็ได้
     // =====================================================
 
     public function store(Request $request)
     {
         $data = $request->validate([
-            'content' => 'required|string|max:5000',
+            'content' => 'required_without:images|nullable|string|max:5000',
             'visibility' => 'nullable|in:family,community',
             'category' => ['nullable', Rule::in(Post::CATEGORIES)],
+            'images' => 'nullable|array|max:' . self::MAX_IMAGES,
+            'images.*' => 'image|mimes:jpg,jpeg,png,webp|max:' . self::MAX_IMAGE_KB,
+        ], [
+            'content.required_without' => 'กรุณาพิมพ์ข้อความหรือแนบรูปก่อนโพสต์',
+            'images.max' => 'แนบรูปได้สูงสุด ' . self::MAX_IMAGES . ' รูป',
+            'images.*.image' => 'รองรับเฉพาะรูป JPG, PNG หรือ WEBP',
+            'images.*.mimes' => 'รองรับเฉพาะรูป JPG, PNG หรือ WEBP',
+            'images.*.max' => 'รูปแต่ละรูปต้องมีขนาดไม่เกิน 4 MB',
+            'images.*.uploaded' => 'อัปโหลดรูปไม่สำเร็จ กรุณาลองอีกครั้ง',
         ]);
+
+        $content = trim($data['content'] ?? '');
 
         $visibility = $data['visibility'] ?? 'family';
 
@@ -173,11 +196,86 @@ class PostController extends Controller
             ], 403);
         }
 
-        $post = DB::transaction(
-            function () use (
-                $data,
+        // เก็บไฟล์รูปก่อน ถ้าล้มกลางทางให้ลบไฟล์ที่เก็บไปแล้วทิ้ง
+        $imagePaths = [];
+
+        try {
+            foreach ($request->file('images', []) as $image) {
+                $path = $image->store(
+                    'post_images',
+                    MediaStorage::disk()
+                );
+
+                if (!$path) {
+                    throw new RuntimeException(
+                        'Could not store the uploaded image.'
+                    );
+                }
+
+                $imagePaths[] = $path;
+            }
+        } catch (Throwable $e) {
+            MediaStorage::delete($imagePaths);
+
+            Log::error('Post image upload failed', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'status' => false,
+                'message' => 'อัปโหลดรูปไม่สำเร็จ กรุณาลองอีกครั้ง',
+            ], 500);
+        }
+
+        try {
+            $post = $this->createPostRecords(
+                $user,
+                $membership,
                 $visibility,
                 $category,
+                $content,
+                $imagePaths
+            );
+        } catch (Throwable $e) {
+            // บันทึกลงฐานข้อมูลไม่สำเร็จ → ไม่เก็บไฟล์ค้างไว้
+            MediaStorage::delete($imagePaths);
+
+            throw $e;
+        }
+
+        $post->load([
+            'user:' . self::USER_COLUMNS,
+            'images',
+            'comments.user:' . self::USER_COLUMNS,
+        ]);
+
+        $post->setAttribute('is_mine', true);
+        $post->setAttribute('likes_count', 0);
+        $post->setAttribute('liked_by_me', false);
+
+        return response()->json([
+            'status' => true,
+            'message' => 'สร้างโพสต์สำเร็จ',
+            'post' => $post,
+        ], 201);
+    }
+
+    // สร้างโพสต์ + แถวรูป + แจ้งเตือนสมาชิก ใน Transaction เดียว
+    private function createPostRecords(
+        User $user,
+        FamilyMember $membership,
+        string $visibility,
+        ?string $category,
+        string $content,
+        array $imagePaths
+    ): Post {
+        return DB::transaction(
+            function () use (
+                $visibility,
+                $category,
+                $content,
+                $imagePaths,
                 $user,
                 $membership
             ) {
@@ -187,8 +285,15 @@ class PostController extends Controller
                     'user_id' => $user->id,
                     'visibility' => $visibility,
                     'category' => $category,
-                    'content' => $data['content'],
+                    'content' => $content,
                 ]);
+
+                foreach ($imagePaths as $index => $path) {
+                    $post->images()->create([
+                        'path' => $path,
+                        'sort' => $index,
+                    ]);
+                }
 
                 // โพสต์ชุมชนไม่แจ้งเตือนใคร (กันสแปม)
                 if ($visibility !== 'family') {
@@ -228,21 +333,6 @@ class PostController extends Controller
                 return $post;
             }
         );
-
-        $post->load([
-            'user:' . self::USER_COLUMNS,
-            'comments.user:' . self::USER_COLUMNS,
-        ]);
-
-        $post->setAttribute('is_mine', true);
-        $post->setAttribute('likes_count', 0);
-        $post->setAttribute('liked_by_me', false);
-
-        return response()->json([
-            'status' => true,
-            'message' => 'สร้างโพสต์สำเร็จ',
-            'post' => $post,
-        ], 201);
     }
 
     // =====================================================

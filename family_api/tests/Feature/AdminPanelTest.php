@@ -65,24 +65,30 @@ class AdminPanelTest extends TestCase
         $author = User::factory()->create();
         $family = $this->createFamily($author);
 
-        Post::create([
+        $public = Post::create([
             'family_id' => $family->id,
             'user_id' => $author->id,
             'visibility' => 'community',
             'content' => 'Public hello',
         ]);
 
-        Post::create([
+        $public->images()->create(['path' => 'post_images/public-photo.png']);
+
+        $private = Post::create([
             'family_id' => $family->id,
             'user_id' => $author->id,
             'content' => 'Private family note',
         ]);
 
+        $private->images()->create(['path' => 'post_images/family-photo.png']);
+
         $this->actingAs($this->admin())
             ->get('/admin/posts')
             ->assertOk()
             ->assertSee('Public hello')
-            ->assertDontSee('Private family note');
+            ->assertSee('post_images/public-photo.png')
+            ->assertDontSee('Private family note')
+            ->assertDontSee('post_images/family-photo.png');
     }
 
     // =====================================================
