@@ -10,6 +10,7 @@ use App\Models\PostReport;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class PostController extends Controller
 {
@@ -24,6 +25,7 @@ class PostController extends Controller
     //
     // ?scope=family    (ค่าเริ่มต้น) โพสต์ในครอบครัว
     // ?scope=community &page=N      โพสต์ชุมชนของทุกคน
+    //                  &category=qa กรองตามหมวด (ไม่ส่ง = ทุกหมวด)
     // =====================================================
 
     public function index(Request $request)
@@ -44,7 +46,11 @@ class PostController extends Controller
         }
 
         if ($request->query('scope') === 'community') {
-            return $this->communityFeed($user);
+            $data = $request->validate([
+                'category' => ['nullable', Rule::in(Post::CATEGORIES)],
+            ]);
+
+            return $this->communityFeed($user, $data['category'] ?? null);
         }
 
         $posts = Post::where(
@@ -76,11 +82,12 @@ class PostController extends Controller
     // - ไม่แสดงโพสต์/ความคิดเห็นของคนที่เราบล็อก
     // =====================================================
 
-    private function communityFeed(User $user)
+    private function communityFeed(User $user, ?string $category)
     {
         $blockedIds = $user->blockedUsers()->pluck('users.id');
 
         $paginator = Post::where('visibility', 'community')
+            ->when($category, fn ($query) => $query->where('category', $category))
             ->whereNull('hidden_at')
             ->whereDoesntHave('reports', function ($query) use ($user) {
                 $query->where('user_id', $user->id);
@@ -111,6 +118,7 @@ class PostController extends Controller
         return response()->json([
             'status' => true,
             'scope' => 'community',
+            'category' => $category,
             'current_user' => $this->currentUserPayload($user),
             'posts' => $posts,
             'page' => $paginator->currentPage(),
@@ -121,6 +129,7 @@ class PostController extends Controller
     // =====================================================
     // สร้าง Post
     // visibility: family (ค่าเริ่มต้น) / community
+    // category:   ใช้เฉพาะโพสต์ชุมชน (ค่าเริ่มต้น general)
     // =====================================================
 
     public function store(Request $request)
@@ -128,9 +137,15 @@ class PostController extends Controller
         $data = $request->validate([
             'content' => 'required|string|max:5000',
             'visibility' => 'nullable|in:family,community',
+            'category' => ['nullable', Rule::in(Post::CATEGORIES)],
         ]);
 
         $visibility = $data['visibility'] ?? 'family';
+
+        // โพสต์ครอบครัวไม่เก็บหมวด
+        $category = $visibility === 'community'
+            ? ($data['category'] ?? 'general')
+            : null;
 
         $user = $request->user();
 
@@ -162,6 +177,7 @@ class PostController extends Controller
             function () use (
                 $data,
                 $visibility,
+                $category,
                 $user,
                 $membership
             ) {
@@ -170,6 +186,7 @@ class PostController extends Controller
                         $membership->family_id,
                     'user_id' => $user->id,
                     'visibility' => $visibility,
+                    'category' => $category,
                     'content' => $data['content'],
                 ]);
 

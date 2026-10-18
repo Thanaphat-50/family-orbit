@@ -28,9 +28,11 @@ class PostService {
   // =====================================================
 
   // scope: 'family' (ครอบครัว) หรือ 'community' (ชุมชน แบ่งหน้า)
+  // category: กรองฟีดชุมชนตามหมวด (null = ทุกหมวด)
   static Future<Map<String, dynamic>> getPosts({
     String scope = 'family',
     int page = 1,
+    String? category,
   }) async {
     final headers = await _headers();
 
@@ -38,6 +40,7 @@ class PostService {
       queryParameters: {
         'scope': scope,
         if (scope == 'community') 'page': '$page',
+        if (scope == 'community' && category != null) 'category': category,
       },
     );
 
@@ -51,11 +54,13 @@ class PostService {
   // =====================================================
   // CREATE POST
   // visibility: 'family' (ค่าเริ่มต้น) หรือ 'community'
+  // category: หมวดของโพสต์ชุมชน (general, qa, news, help, event)
   // =====================================================
 
   static Future<Map<String, dynamic>> createPost(
     String content, {
     String visibility = 'family',
+    String? category,
   }) async {
     final headers = await _headers();
 
@@ -63,7 +68,11 @@ class PostService {
       () => http.post(
         Uri.parse('$baseUrl/posts'),
         headers: headers,
-        body: jsonEncode({'content': content, 'visibility': visibility}),
+        body: jsonEncode({
+          'content': content,
+          'visibility': visibility,
+          'category': ?category,
+        }),
       ),
     );
 

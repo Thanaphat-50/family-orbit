@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/post_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/community_sheets.dart';
+import '../widgets/post_categories.dart';
 
 // ฟีด "ครอบครัว" (เฉพาะครอบครัว) และ "ชุมชน" (ทุกคนในแอป)
 enum FeedScope { family, community }
@@ -74,6 +75,16 @@ class _FeedPageState extends State<FeedPage> {
   // โพสต์ที่กำลังส่งการถูกใจไป Server (กันกดรัว)
   final Set<int> likingPostIds = {};
 
+  // หมวดของโพสต์ชุมชนที่กำลังเขียน
+  String composeCategory = 'general';
+
+  // หมวดที่กรองฟีดชุมชนอยู่ (null = ทั้งหมด)
+  String? filterCategory;
+
+  // เพิ่มทุกครั้งที่เปลี่ยนตัวกรอง
+  // ผลโหลดของตัวกรองเก่าที่ตอบกลับช้าจะถูกทิ้ง
+  int feedGeneration = 0;
+
   @override
   void initState() {
     super.initState();
@@ -105,13 +116,16 @@ class _FeedPageState extends State<FeedPage> {
 
     final int page = loadMore ? state.page + 1 : 1;
 
+    final int generation = feedGeneration;
+
     try {
       final result = await PostService.getPosts(
         scope: apiScope(scope),
         page: page,
+        category: filterCategory,
       );
 
-      if (!mounted) return;
+      if (!mounted || generation != feedGeneration) return;
 
       if (result['status'] == true) {
         final dynamic rawPosts = result['posts'];
@@ -146,17 +160,37 @@ class _FeedPageState extends State<FeedPage> {
         handleLoadError(result['message']?.toString() ?? 'โหลดโพสต์ไม่สำเร็จ');
       }
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || generation != feedGeneration) return;
 
       handleLoadError(e.toString());
     } finally {
-      if (mounted) {
+      if (mounted && generation == feedGeneration) {
         setState(() {
           state.isLoading = false;
           state.isLoadingMore = false;
         });
       }
     }
+  }
+
+  // เลือกหมวดที่จะกรองฟีดชุมชน → ล้างฟีดแล้วโหลดใหม่
+  Future<void> changeFilter(String? category) async {
+    if (category == filterCategory) return;
+
+    setState(() {
+      filterCategory = category;
+      feedGeneration++;
+
+      feed.posts = [];
+      feed.isLoading = true;
+      feed.isLoadingMore = false;
+      feed.loadError = null;
+      feed.hasMore = false;
+
+      expandedPostIds.clear();
+    });
+
+    await loadPosts();
   }
 
   void applyCurrentUser(dynamic userData) {
@@ -259,10 +293,15 @@ class _FeedPageState extends State<FeedPage> {
       isPosting = true;
     });
 
+    final String? category = target == FeedScope.community
+        ? composeCategory
+        : null;
+
     try {
       final result = await PostService.createPost(
         content,
         visibility: apiScope(target),
+        category: category,
       );
 
       if (!mounted) return;
@@ -271,6 +310,16 @@ class _FeedPageState extends State<FeedPage> {
         postController.clear();
 
         dismissKeyboard();
+
+        setState(() {
+          composeCategory = 'general';
+
+          // กรองหมวดอื่นอยู่ → กลับไป "ทั้งหมด" ให้เห็นโพสต์ที่เพิ่งแชร์
+          if (filterCategory != null && filterCategory != category) {
+            filterCategory = null;
+            feedGeneration++;
+          }
+        });
 
         await loadPosts();
 
@@ -1210,6 +1259,10 @@ class _FeedPageState extends State<FeedPage> {
               ),
             ],
           ),
+          if (scope == FeedScope.community) ...[
+            const SizedBox(height: 12),
+            buildCategoryPicker(),
+          ],
           const SizedBox(height: 12),
           Row(
             children: [
@@ -1254,6 +1307,64 @@ class _FeedPageState extends State<FeedPage> {
               ),
             ],
           ),
+        ],
+      ),
+    );
+  }
+
+  // เลือกหมวดของโพสต์ชุมชนที่กำลังเขียน
+  Widget buildCategoryPicker() {
+    return buildChipStrip([
+      for (final category in postCategories)
+        CategoryChoiceChip(
+          label: category.label,
+          icon: category.icon,
+          color: category.color,
+          selected: composeCategory == category.key,
+          onTap: () {
+            setState(() {
+              composeCategory = category.key;
+            });
+          },
+        ),
+    ]);
+  }
+
+  // กรองฟีดชุมชนตามหมวด ("ทั้งหมด" + 5 หมวด)
+  Widget buildCategoryFilter() {
+    return buildChipStrip([
+      CategoryChoiceChip(
+        label: 'ทั้งหมด',
+        icon: Icons.apps_rounded,
+        color: communityColor,
+        selected: filterCategory == null,
+        onTap: () {
+          changeFilter(null);
+        },
+      ),
+      for (final category in postCategories)
+        CategoryChoiceChip(
+          label: category.label,
+          icon: category.icon,
+          color: category.color,
+          selected: filterCategory == category.key,
+          onTap: () {
+            changeFilter(category.key);
+          },
+        ),
+    ]);
+  }
+
+  // แถวชิปเลื่อนซ้าย-ขวาได้
+  Widget buildChipStrip(List<Widget> chips) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (int i = 0; i < chips.length; i++) ...[
+            if (i > 0) const SizedBox(width: 8),
+            chips[i],
+          ],
         ],
       ),
     );
@@ -1312,29 +1423,36 @@ class _FeedPageState extends State<FeedPage> {
 
   Widget buildSectionHeader() {
     if (scope == FeedScope.community) {
-      return Row(
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'ล่าสุดในชุมชน',
-            style: TextStyle(
-              color: AppColors.navy,
-              fontSize: 19,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const Spacer(),
-          TextButton.icon(
-            style: TextButton.styleFrom(
-              foregroundColor: AppColors.muted,
-              textStyle: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
+          Row(
+            children: [
+              const Text(
+                'ล่าสุดในชุมชน',
+                style: TextStyle(
+                  color: AppColors.navy,
+                  fontSize: 19,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
-            ),
-            onPressed: openBlockedUsers,
-            icon: const Icon(Icons.block_rounded, size: 16),
-            label: const Text('ผู้ใช้ที่บล็อก'),
+              const Spacer(),
+              TextButton.icon(
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.muted,
+                  textStyle: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                onPressed: openBlockedUsers,
+                icon: const Icon(Icons.block_rounded, size: 16),
+                label: const Text('ผู้ใช้ที่บล็อก'),
+              ),
+            ],
           ),
+          const SizedBox(height: 8),
+          buildCategoryFilter(),
         ],
       );
     }
@@ -1391,6 +1509,10 @@ class _FeedPageState extends State<FeedPage> {
 
     final bool deleting = postId != null && deletingPostIds.contains(postId);
 
+    final PostCategory? category = community
+        ? findPostCategory(post['category'] ?? 'general')
+        : null;
+
     return AnimatedOpacity(
       key: ValueKey('post-$postId'),
       duration: const Duration(milliseconds: 200),
@@ -1444,18 +1566,26 @@ class _FeedPageState extends State<FeedPage> {
                           const SizedBox(height: 3),
                           Row(
                             children: [
-                              Icon(
-                                community
-                                    ? Icons.public_rounded
-                                    : Icons.family_restroom_rounded,
-                                size: 13,
-                                color: AppColors.muted,
-                              ),
-                              const SizedBox(width: 4),
+                              // โพสต์ชุมชน: ป้ายหมวด / โพสต์ครอบครัว: ไอคอนบ้าน
+                              if (category != null) ...[
+                                CategoryBadge(category: category),
+                                const SizedBox(width: 6),
+                              ] else ...[
+                                Icon(
+                                  community
+                                      ? Icons.public_rounded
+                                      : Icons.family_restroom_rounded,
+                                  size: 13,
+                                  color: AppColors.muted,
+                                ),
+                                const SizedBox(width: 4),
+                              ],
                               Flexible(
                                 child: Text(
-                                  '${community ? 'ชุมชน' : 'ครอบครัว'} · '
-                                  '${formatDate(post['created_at'])}',
+                                  category != null
+                                      ? formatDate(post['created_at'])
+                                      : '${community ? 'ชุมชน' : 'ครอบครัว'} · '
+                                            '${formatDate(post['created_at'])}',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
@@ -1956,6 +2086,17 @@ class _FeedPageState extends State<FeedPage> {
   // =====================================================
 
   Widget buildEmptyState() {
+    final PostCategory? filter = findPostCategory(filterCategory);
+
+    if (scope == FeedScope.community && filter != null) {
+      return buildStateCard(
+        icon: filter.icon,
+        color: filter.color,
+        title: 'ยังไม่มีโพสต์หมวด "${filter.label}"',
+        message: 'ลองดูหมวดอื่น หรือเป็นคนแรกที่แชร์ในหมวดนี้',
+      );
+    }
+
     if (scope == FeedScope.community) {
       return buildStateCard(
         icon: Icons.public_rounded,

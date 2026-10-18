@@ -6,10 +6,20 @@ use Illuminate\Database\Eloquent\Model;
 
 class Post extends Model
 {
+    // หมวดหมู่ของโพสต์ชุมชน (โพสต์ครอบครัวไม่มีหมวด)
+    public const CATEGORIES = [
+        'general',
+        'qa',
+        'news',
+        'help',
+        'event',
+    ];
+
     protected $fillable = [
         'family_id',
         'user_id',
         'visibility',
+        'category',
         'content',
     ];
 

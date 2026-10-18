@@ -10,12 +10,22 @@ use Filament\Actions\DeleteBulkAction;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\Filter;
+use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 
 class PostsTable
 {
+    // ชื่อหมวดภาษาไทย (key ตรงกับ Post::CATEGORIES)
+    private const CATEGORY_LABELS = [
+        'general' => 'ทั่วไป',
+        'qa' => 'ถาม-ตอบ',
+        'news' => 'ข่าวสาร',
+        'help' => 'ช่วยเหลือ',
+        'event' => 'กิจกรรม',
+    ];
+
     public static function configure(Table $table): Table
     {
         return $table
@@ -31,6 +41,12 @@ class PostsTable
                     ->limit(200)
                     ->wrap()
                     ->searchable(),
+
+                TextColumn::make('category')
+                    ->label('หมวด')
+                    ->formatStateUsing(fn (string $state) => self::CATEGORY_LABELS[$state] ?? $state)
+                    ->badge()
+                    ->color('info'),
 
                 TextColumn::make('reports_count')
                     ->label('รายงาน')
@@ -53,6 +69,10 @@ class PostsTable
                 Filter::make('reported')
                     ->label('ถูกรายงาน')
                     ->query(fn (Builder $query) => $query->has('reports')),
+
+                SelectFilter::make('category')
+                    ->label('หมวด')
+                    ->options(self::CATEGORY_LABELS),
 
                 TernaryFilter::make('hidden_at')
                     ->label('สถานะ')
