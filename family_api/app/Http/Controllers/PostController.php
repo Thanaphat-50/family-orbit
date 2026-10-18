@@ -40,10 +40,24 @@ class PostController extends Controller
                 'comments.user:id,name,email,profile_photo',
             ])
             ->latest()
-            ->get();
+            ->get()
+            ->map(function ($post) use ($user) {
+                // ให้แอปรู้ว่าโพสต์ไหนเป็นของเรา (แสดงปุ่มลบ)
+                $post->setAttribute(
+                    'is_mine',
+                    (int) $post->user_id === (int) $user->id
+                );
+
+                return $post;
+            });
 
         return response()->json([
             'status' => true,
+            'current_user' => $user->only([
+                'id',
+                'name',
+                'profile_image_url',
+            ]),
             'posts' => $posts,
         ]);
     }
@@ -123,6 +137,8 @@ class PostController extends Controller
             'user:id,name,email,profile_photo',
             'comments.user:id,name,email,profile_photo',
         ]);
+
+        $post->setAttribute('is_mine', true);
 
         return response()->json([
             'status' => true,
