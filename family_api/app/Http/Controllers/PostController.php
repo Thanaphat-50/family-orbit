@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\AppNotification;
 use App\Models\FamilyMember;
 use App\Models\Post;
+use App\Models\PostLike;
 use App\Models\PostReport;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -55,6 +56,7 @@ class PostController extends Controller
                 'user:' . self::USER_COLUMNS,
                 'comments.user:' . self::USER_COLUMNS,
             ])
+            ->tap(fn ($query) => $this->withLikeInfo($query, $user))
             ->latest()
             ->get()
             ->map(fn ($post) => $this->withOwnership($post, $user));
@@ -97,6 +99,7 @@ class PostController extends Controller
                 },
                 'comments.user:' . self::USER_COLUMNS,
             ])
+            ->tap(fn ($query) => $this->withLikeInfo($query, $user))
             ->orderByDesc('created_at')
             ->orderByDesc('id')
             ->simplePaginate(self::COMMUNITY_PAGE_SIZE);
@@ -215,12 +218,57 @@ class PostController extends Controller
         ]);
 
         $post->setAttribute('is_mine', true);
+        $post->setAttribute('likes_count', 0);
+        $post->setAttribute('liked_by_me', false);
 
         return response()->json([
             'status' => true,
             'message' => 'สร้างโพสต์สำเร็จ',
             'post' => $post,
         ], 201);
+    }
+
+    // =====================================================
+    // ถูกใจ / ยกเลิกถูกใจ
+    // POST /api/posts/{post}/like (กดซ้ำ = ยกเลิก)
+    // =====================================================
+
+    public function like(
+        Request $request,
+        Post $post
+    ) {
+        $user = $request->user();
+
+        $membership = FamilyMember::where(
+            'user_id',
+            $user->id
+        )->first();
+
+        if (!$this->canInteract($post, $membership)) {
+            return response()->json([
+                'status' => false,
+                'message' => 'คุณไม่มีสิทธิ์ถูกใจโพสต์นี้',
+            ], 403);
+        }
+
+        $existing = PostLike::where('post_id', $post->id)
+            ->where('user_id', $user->id)
+            ->first();
+
+        if ($existing) {
+            $existing->delete();
+        } else {
+            PostLike::firstOrCreate([
+                'post_id' => $post->id,
+                'user_id' => $user->id,
+            ]);
+        }
+
+        return response()->json([
+            'status' => true,
+            'liked' => $existing === null,
+            'likes_count' => $post->likes()->count(),
+        ]);
     }
 
     // =====================================================
@@ -345,6 +393,31 @@ class PostController extends Controller
     // =====================================================
     // HELPERS
     // =====================================================
+
+    // ผู้ใช้ถูกใจ/โต้ตอบกับโพสต์นี้ได้หรือไม่
+    // - โพสต์ชุมชน: ต้องมีครอบครัว และโพสต์ต้องไม่ถูกซ่อน
+    // - โพสต์ครอบครัว: ต้องอยู่ครอบครัวเดียวกับโพสต์
+    private function canInteract(Post $post, ?FamilyMember $membership): bool
+    {
+        if (!$membership) {
+            return false;
+        }
+
+        if ($post->isCommunity()) {
+            return $post->hidden_at === null;
+        }
+
+        return (int) $post->family_id === (int) $membership->family_id;
+    }
+
+    // จำนวนถูกใจ (likes_count) และเราถูกใจแล้วหรือยัง (liked_by_me)
+    private function withLikeInfo($query, User $user)
+    {
+        return $query->withCount('likes')
+            ->withExists([
+                'likes as liked_by_me' => fn ($likes) => $likes->where('user_id', $user->id),
+            ]);
+    }
 
     // ให้แอปรู้ว่าโพสต์ไหนเป็นของเรา (แสดงปุ่มลบ)
     private function withOwnership(Post $post, User $user): Post

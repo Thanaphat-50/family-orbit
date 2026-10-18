@@ -90,6 +90,11 @@ Route::middleware('auth:sanctum')->group(function () {
         'report'
     ])->middleware('throttle:ugc');
 
+    Route::post('/posts/{post}/like', [
+        PostController::class,
+        'like'
+    ])->middleware('throttle:ugc');
+
     Route::post('/comments/{comment}/report', [
         CommentController::class,
         'report'

@@ -47,6 +47,9 @@ class _FeedPageState extends State<FeedPage> {
   // สีของป้าย/ปุ่มฝั่งชุมชน
   static const Color communityColor = Color(0xFF0B7FA6);
 
+  // สีปุ่มถูกใจ
+  static const Color likeColor = Color(0xFFE5486B);
+
   final TextEditingController postController = TextEditingController();
 
   final ScrollController scrollController = ScrollController();
@@ -67,6 +70,9 @@ class _FeedPageState extends State<FeedPage> {
 
   // โพสต์ที่กดดูความคิดเห็นทั้งหมดแล้ว
   final Set<int> expandedPostIds = {};
+
+  // โพสต์ที่กำลังส่งการถูกใจไป Server (กันกดรัว)
+  final Set<int> likingPostIds = {};
 
   @override
   void initState() {
@@ -412,6 +418,63 @@ class _FeedPageState extends State<FeedPage> {
   }
 
   // =====================================================
+  // ถูกใจ / ยกเลิกถูกใจ
+  // เปลี่ยนบนจอทันที ถ้า Server ตอบผิดพลาดค่อยคืนค่าเดิม
+  // =====================================================
+
+  Future<void> toggleLike(Map<String, dynamic> post, int postId) async {
+    if (likingPostIds.contains(postId)) return;
+
+    final bool wasLiked = isLikedByMe(post);
+
+    final int oldCount = likesCountOf(post);
+
+    void restore() {
+      post['liked_by_me'] = wasLiked;
+      post['likes_count'] = oldCount;
+    }
+
+    setState(() {
+      likingPostIds.add(postId);
+
+      post['liked_by_me'] = !wasLiked;
+      post['likes_count'] = wasLiked
+          ? (oldCount > 0 ? oldCount - 1 : 0)
+          : oldCount + 1;
+    });
+
+    try {
+      final result = await PostService.toggleLike(postId);
+
+      if (!mounted) return;
+
+      if (result['status'] == true) {
+        // ใช้ตัวเลขจริงจาก Server (มีคนอื่นกดพร้อมกันได้)
+        setState(() {
+          post['liked_by_me'] = result['liked'] == true;
+          post['likes_count'] = result['likes_count'] ?? post['likes_count'];
+        });
+      } else {
+        setState(restore);
+
+        showMessage(result['message']?.toString() ?? 'ถูกใจไม่สำเร็จ');
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(restore);
+
+      showMessage(e.toString());
+    } finally {
+      if (mounted) {
+        setState(() {
+          likingPostIds.remove(postId);
+        });
+      }
+    }
+  }
+
+  // =====================================================
   // รายงานโพสต์ชุมชน
   // =====================================================
 
@@ -734,6 +797,18 @@ class _FeedPageState extends State<FeedPage> {
 
   bool isCommunityPost(Map<String, dynamic> post) {
     return post['visibility'] == 'community';
+  }
+
+  int likesCountOf(Map<String, dynamic> post) {
+    final dynamic count = post['likes_count'];
+
+    return count is num ? count.toInt() : int.tryParse('$count') ?? 0;
+  }
+
+  bool isLikedByMe(Map<String, dynamic> post) {
+    final dynamic liked = post['liked_by_me'];
+
+    return liked == true || liked == 1;
   }
 
   // ใช้ is_mine จาก Laravel ถ้ามี
@@ -1434,23 +1509,38 @@ class _FeedPageState extends State<FeedPage> {
                 padding: const EdgeInsets.fromLTRB(16, 0, 12, 12),
                 child: Row(
                   children: [
-                    if (comments.isNotEmpty) ...[
-                      const Icon(
-                        Icons.chat_bubble_rounded,
-                        size: 14,
-                        color: AppColors.muted,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        '${comments.length} ความคิดเห็น',
-                        style: const TextStyle(
-                          color: AppColors.muted,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
+                    if (postId != null) ...[
+                      buildLikeButton(post, postId),
+                      const SizedBox(width: 10),
                     ],
-                    const Spacer(),
+
+                    // จำนวนความคิดเห็น (ย่อได้บนจอแคบ)
+                    Expanded(
+                      child: comments.isEmpty
+                          ? const SizedBox.shrink()
+                          : Row(
+                              children: [
+                                const Icon(
+                                  Icons.chat_bubble_rounded,
+                                  size: 14,
+                                  color: AppColors.muted,
+                                ),
+                                const SizedBox(width: 6),
+                                Flexible(
+                                  child: Text(
+                                    '${comments.length} ความคิดเห็น',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: AppColors.muted,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                    ),
                     if (postId != null)
                       Material(
                         color: AppColors.softPrimary,
@@ -1497,6 +1587,65 @@ class _FeedPageState extends State<FeedPage> {
               if (comments.isNotEmpty)
                 buildCommentsSection(postId: postId, comments: comments),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ปุ่ม ❤️ + จำนวนถูกใจ
+  Widget buildLikeButton(Map<String, dynamic> post, int postId) {
+    final bool liked = isLikedByMe(post);
+
+    final int count = likesCountOf(post);
+
+    final Color color = liked ? likeColor : AppColors.muted;
+
+    return Semantics(
+      button: true,
+      toggled: liked,
+      label: liked ? 'ยกเลิกถูกใจ' : 'ถูกใจ',
+      child: Material(
+        color: liked
+            ? likeColor.withValues(alpha: 0.10)
+            : const Color(0xFFF2F4F7),
+        borderRadius: BorderRadius.circular(999),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(999),
+          onTap: () {
+            toggleLike(post, postId);
+          },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // หัวใจเด้งเล็กน้อยตอนกด
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 220),
+                  transitionBuilder: (child, animation) {
+                    return ScaleTransition(scale: animation, child: child);
+                  },
+                  child: Icon(
+                    liked
+                        ? Icons.favorite_rounded
+                        : Icons.favorite_border_rounded,
+                    key: ValueKey(liked),
+                    color: color,
+                    size: 18,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  count > 0 ? '$count' : 'ถูกใจ',
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

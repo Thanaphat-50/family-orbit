@@ -37,6 +37,11 @@ class Post extends Model
         return $this->hasMany(PostReport::class);
     }
 
+    public function likes()
+    {
+        return $this->hasMany(PostLike::class);
+    }
+
     // โพสต์ที่ผู้ใช้ทุกคนในแอปเห็นได้
     public function isCommunity(): bool
     {

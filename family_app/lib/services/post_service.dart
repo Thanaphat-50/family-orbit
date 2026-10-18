@@ -42,10 +42,7 @@ class PostService {
     );
 
     final response = await ApiHelper.request(
-      () => http.get(
-        uri,
-        headers: headers,
-      ),
+      () => http.get(uri, headers: headers),
     );
 
     return ApiHelper.decode(response);
@@ -66,11 +63,24 @@ class PostService {
       () => http.post(
         Uri.parse('$baseUrl/posts'),
         headers: headers,
-        body: jsonEncode({
-          'content': content,
-          'visibility': visibility,
-        }),
+        body: jsonEncode({'content': content, 'visibility': visibility}),
       ),
+    );
+
+    return ApiHelper.decode(response);
+  }
+
+  // =====================================================
+  // LIKE / UNLIKE (กดซ้ำ = ยกเลิก)
+  // ตอบกลับ liked และ likes_count
+  // =====================================================
+
+  static Future<Map<String, dynamic>> toggleLike(int postId) async {
+    final headers = await _headers();
+
+    final response = await ApiHelper.request(
+      () =>
+          http.post(Uri.parse('$baseUrl/posts/$postId/like'), headers: headers),
     );
 
     return ApiHelper.decode(response);
@@ -91,9 +101,7 @@ class PostService {
       () => http.post(
         Uri.parse('$baseUrl/posts/$postId/report'),
         headers: headers,
-        body: jsonEncode({
-          'reason': reason,
-        }),
+        body: jsonEncode({'reason': reason}),
       ),
     );
 
@@ -114,9 +122,7 @@ class PostService {
       () => http.post(
         Uri.parse('$baseUrl/comments/$commentId/report'),
         headers: headers,
-        body: jsonEncode({
-          'reason': reason,
-        }),
+        body: jsonEncode({'reason': reason}),
       ),
     );
 
@@ -144,10 +150,7 @@ class PostService {
     final headers = await _headers();
 
     final response = await ApiHelper.request(
-      () => http.get(
-        Uri.parse('$baseUrl/blocks'),
-        headers: headers,
-      ),
+      () => http.get(Uri.parse('$baseUrl/blocks'), headers: headers),
     );
 
     return ApiHelper.decode(response);
@@ -183,24 +186,16 @@ class PostService {
   // DELETE POST
   // =====================================================
 
-  static Future<Map<String, dynamic>> deletePost(
-    int postId,
-  ) async {
+  static Future<Map<String, dynamic>> deletePost(int postId) async {
     final headers = await _headers();
 
     final response = await ApiHelper.request(
-      () => http.delete(
-        Uri.parse('$baseUrl/posts/$postId'),
-        headers: headers,
-      ),
+      () => http.delete(Uri.parse('$baseUrl/posts/$postId'), headers: headers),
     );
 
     // โพสต์ถูกลบไปแล้ว (เช่น กดลบซ้ำจากอีกเครื่อง)
     if (response.statusCode == 404) {
-      return {
-        'status': true,
-        'message': 'โพสต์นี้ถูกลบไปแล้ว',
-      };
+      return {'status': true, 'message': 'โพสต์นี้ถูกลบไปแล้ว'};
     }
 
     return ApiHelper.decode(response);
@@ -220,9 +215,7 @@ class PostService {
       () => http.post(
         Uri.parse('$baseUrl/posts/$postId/comments'),
         headers: headers,
-        body: jsonEncode({
-          'content': content,
-        }),
+        body: jsonEncode({'content': content}),
       ),
     );
 
