@@ -50,7 +50,9 @@ return [
     |
     */
 
-    'expiration' => null,
+    // Token ของแอปมือถือหมดอายุใน 30 วัน (หน่วยเป็นนาที)
+    // เปลี่ยนได้ด้วย SANCTUM_TOKEN_EXPIRATION ใน .env / Laravel Cloud
+    'expiration' => (int) env('SANCTUM_TOKEN_EXPIRATION', 60 * 24 * 30),
 
     /*
     |--------------------------------------------------------------------------
