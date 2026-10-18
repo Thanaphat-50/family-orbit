@@ -1,4 +1,4 @@
-package com.example.family_app
+package com.familyorbit.app
 
 import io.flutter.embedding.android.FlutterActivity
 

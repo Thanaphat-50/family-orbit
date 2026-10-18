@@ -1,11 +1,45 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// =====================================================
+// Release Signing (กุญแจอัปโหลดสำหรับ Play Store)
+//
+// อ่านจาก android/key.properties (ไฟล์นี้ไม่ขึ้น Git)
+// ถ้ายังไม่มีไฟล์ หรือกรอกไม่ครบ → เซ็นด้วย debug key ชั่วคราว
+// (Play Store ไม่รับไฟล์ที่เซ็นด้วย debug key)
+// =====================================================
+
+val keystoreProperties = Properties()
+val keystorePropertiesFile = rootProject.file("key.properties")
+
+if (keystorePropertiesFile.exists()) {
+    FileInputStream(keystorePropertiesFile).use { keystoreProperties.load(it) }
+}
+
+fun keystoreValue(name: String): String? =
+    keystoreProperties.getProperty(name)?.trim()?.takeIf { it.isNotEmpty() }
+
+val releaseStoreFile = keystoreValue("storeFile")?.let { file(it) }
+
+val hasReleaseKey =
+    releaseStoreFile?.exists() == true &&
+        listOf("storePassword", "keyAlias", "keyPassword").all { keystoreValue(it) != null }
+
+if (!hasReleaseKey) {
+    logger.warn(
+        "Release signing key is not configured (android/key.properties). " +
+            "Release builds will use the debug key and cannot be uploaded to Google Play.",
+    )
+}
+
 android {
-    namespace = "com.example.family_app"
+    namespace = "com.familyorbit.app"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -15,8 +49,8 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.family_app"
+        // ชื่อแอปบน Play Store — เปลี่ยนไม่ได้หลังอัปโหลดครั้งแรก
+        applicationId = "com.familyorbit.app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -29,11 +63,25 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (hasReleaseKey) {
+            create("release") {
+                storeFile = releaseStoreFile
+                storePassword = keystoreValue("storePassword")
+                keyAlias = keystoreValue("keyAlias")
+                keyPassword = keystoreValue("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig =
+                if (hasReleaseKey) {
+                    signingConfigs.getByName("release")
+                } else {
+                    signingConfigs.getByName("debug")
+                }
         }
     }
 }
