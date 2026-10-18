@@ -4,6 +4,7 @@ namespace App\Support;
 
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use RuntimeException;
 use Throwable;
 
 // =======================================================
@@ -56,6 +57,31 @@ class MediaStorage
 
             return null;
         }
+    }
+
+    // เก็บไฟล์ที่อัปโหลดหลายไฟล์ลง storage
+    // ถ้าล้มกลางทาง: ลบไฟล์ที่เก็บไปแล้วทิ้ง แล้วโยน Exception ต่อ
+    public static function storeAll(array $files, string $directory): array
+    {
+        $paths = [];
+
+        try {
+            foreach ($files as $file) {
+                $path = $file->store($directory, self::disk());
+
+                if (!$path) {
+                    throw new RuntimeException('Could not store the uploaded file.');
+                }
+
+                $paths[] = $path;
+            }
+        } catch (Throwable $e) {
+            self::delete($paths);
+
+            throw $e;
+        }
+
+        return $paths;
     }
 
     // ลบไฟล์ (ลบไม่สำเร็จแค่บันทึก Log ไม่ให้งานหลักล้ม)

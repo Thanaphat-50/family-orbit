@@ -56,6 +56,11 @@ class Shop extends Model
         return $this->belongsTo(User::class, 'user_id');
     }
 
+    public function products()
+    {
+        return $this->hasMany(Product::class);
+    }
+
     // ร้านที่แสดงในตลาด
     public function scopeActive(Builder $query): Builder
     {
@@ -130,13 +135,38 @@ class Shop extends Model
         ]);
     }
 
-    // ลบไฟล์โลโก้เมื่อร้านถูกลบด้วย $shop->delete()
+    // ลบไฟล์โลโก้และรูปสินค้าทั้งหมดเมื่อร้านถูกลบด้วย $shop->delete()
+    // (สินค้าและรูปถูกลบตาม cascade จึงต้องโหลด path ไว้ก่อน)
     protected static function booted(): void
     {
+        static::deleting(function (Shop $shop) {
+            $shop->loadMissing('products.images');
+        });
+
         static::deleted(function (Shop $shop) {
-            $paths = [$shop->logo_path];
+            $paths = [
+                $shop->logo_path,
+                ...$shop->products->flatMap(fn (Product $product) => $product->images->pluck('path'))->all(),
+            ];
 
             DB::afterCommit(fn () => MediaStorage::delete($paths));
         });
+    }
+
+    // path ของไฟล์ทั้งหมดในร้านของผู้ใช้ (โลโก้ + รูปสินค้า)
+    // ใช้ตอนลบบัญชี ซึ่งร้านถูกลบผ่าน cascade ของฐานข้อมูล
+    public static function mediaPathsOfOwner(int $userId): array
+    {
+        $shops = self::where('user_id', $userId)->get(['id', 'logo_path']);
+
+        $productImages = ProductImage::whereIn(
+            'product_id',
+            Product::whereIn('shop_id', $shops->pluck('id'))->select('id')
+        )->pluck('path');
+
+        return [
+            ...$shops->pluck('logo_path')->all(),
+            ...$productImages->all(),
+        ];
     }
 }

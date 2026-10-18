@@ -139,6 +139,33 @@ const List<String> thaiProvinces = [
 ];
 
 // =======================================================
+// ราคา: "฿1,250" / "฿35.50" / ไม่มีราคา = "สอบถามราคา"
+// =======================================================
+
+String formatPrice(dynamic price) {
+  final double? value = price is num
+      ? price.toDouble()
+      : double.tryParse('${price ?? ''}');
+
+  if (value == null) {
+    return 'สอบถามราคา';
+  }
+
+  final bool whole = value == value.roundToDouble();
+
+  final String fixed = value.toStringAsFixed(whole ? 0 : 2);
+
+  final List<String> parts = fixed.split('.');
+
+  final String digits = parts[0].replaceAllMapped(
+    RegExp(r'\B(?=(\d{3})+(?!\d))'),
+    (match) => ',',
+  );
+
+  return '฿$digits${parts.length > 1 ? '.${parts[1]}' : ''}';
+}
+
+// =======================================================
 // สถานะร้าน
 // =======================================================
 

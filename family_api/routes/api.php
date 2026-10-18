@@ -8,6 +8,7 @@ use App\Http\Controllers\LocationController;
 use App\Http\Controllers\PostController;
 use App\Http\Controllers\CommentController;
 use App\Http\Controllers\CommunityController;
+use App\Http\Controllers\MyProductController;
 use App\Http\Controllers\MyShopController;
 use App\Http\Controllers\ActivityController;
 use App\Http\Controllers\ProfileController;
@@ -142,6 +143,32 @@ Route::middleware('auth:sanctum')->group(function () {
         MyShopController::class,
         'update'
     ])->middleware('throttle:ugc');
+
+    // ตลาด: สินค้าในร้านของฉัน
+    Route::get('/my-shop/products', [
+        MyProductController::class,
+        'index'
+    ]);
+
+    Route::post('/my-shop/products', [
+        MyProductController::class,
+        'store'
+    ])->middleware('throttle:ugc');
+
+    Route::post('/my-shop/products/{product}/update', [
+        MyProductController::class,
+        'update'
+    ])->middleware('throttle:ugc');
+
+    Route::patch('/my-shop/products/{product}/status', [
+        MyProductController::class,
+        'updateStatus'
+    ]);
+
+    Route::delete('/my-shop/products/{product}', [
+        MyProductController::class,
+        'destroy'
+    ]);
 
     Route::get('/activities', [
         ActivityController::class,

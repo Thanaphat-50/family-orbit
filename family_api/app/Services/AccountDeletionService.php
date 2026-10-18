@@ -72,10 +72,8 @@ class AccountDeletionService
                 );
         })->pluck('path')->all();
 
-        // โลโก้ร้านของผู้ใช้ (ร้านถูกลบตาม cascade)
-        $shopLogoPaths = Shop::where('user_id', $user->id)
-            ->pluck('logo_path')
-            ->all();
+        // โลโก้ร้านและรูปสินค้าของผู้ใช้ (ร้านถูกลบตาม cascade)
+        $shopMediaPaths = Shop::mediaPathsOfOwner($user->id);
 
         DB::transaction(function () use ($user) {
             // Owner คนเดียวของครอบครัว → ลบครอบครัวด้วย
@@ -87,8 +85,8 @@ class AccountDeletionService
             $user->delete();
         });
 
-        // ลบไฟล์รูปในโพสต์และโลโก้ร้านหลังลบข้อมูลสำเร็จแล้ว
-        MediaStorage::delete([...$imagePaths, ...$shopLogoPaths]);
+        // ลบไฟล์รูปในโพสต์และไฟล์ของร้านหลังลบข้อมูลสำเร็จแล้ว
+        MediaStorage::delete([...$imagePaths, ...$shopMediaPaths]);
 
         // ลบรูปโปรไฟล์หลังลบข้อมูลสำเร็จแล้ว
         if ($photoPath) {

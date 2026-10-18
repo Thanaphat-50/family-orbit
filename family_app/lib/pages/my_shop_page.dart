@@ -4,6 +4,7 @@ import '../data/market_data.dart';
 import '../services/market_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/market_sheets.dart';
+import 'product_form_page.dart';
 import 'shop_form_page.dart';
 
 // =======================================================
@@ -27,10 +28,47 @@ class _MyShopPageState extends State<MyShopPage> {
   // มีการเปลี่ยนแปลง → หน้าก่อนหน้าโหลดข้อมูลใหม่
   bool changed = false;
 
+  // สินค้าของร้าน
+  List<Map<String, dynamic>> products = [];
+  bool productsLoaded = false;
+  int productLimit = 30;
+
+  // สินค้าที่กำลังซ่อน/แสดง/ลบ (กันกดซ้ำ)
+  final Set<int> busyProductIds = {};
+
   @override
   void initState() {
     super.initState();
-    loadShop();
+    refreshAll();
+  }
+
+  Future<void> refreshAll() async {
+    await Future.wait([loadShop(), loadProducts()]);
+  }
+
+  Future<void> loadProducts() async {
+    try {
+      final result = await MarketService.getMyProducts();
+
+      if (!mounted) return;
+
+      if (result['status'] == true) {
+        final dynamic raw = result['products'];
+
+        setState(() {
+          products = raw is List
+              ? raw
+                    .whereType<Map>()
+                    .map((item) => Map<String, dynamic>.from(item))
+                    .toList()
+              : [];
+          productLimit = (result['limit'] as num?)?.toInt() ?? productLimit;
+          productsLoaded = true;
+        });
+      }
+    } catch (e) {
+      if (mounted) showMessage(e.toString());
+    }
   }
 
   Future<void> loadShop() async {
@@ -73,6 +111,114 @@ class _MyShopPageState extends State<MyShopPage> {
         shop = Map<String, dynamic>.from(updated);
         changed = true;
       });
+    }
+  }
+
+  // =====================================================
+  // จัดการสินค้า
+  // =====================================================
+
+  Future<void> openProductForm([Map<String, dynamic>? product]) async {
+    final dynamic saved = await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => ProductFormPage(
+          product: product,
+          defaultCategory: shop?['category']?.toString(),
+        ),
+      ),
+    );
+
+    if (saved is Map && mounted) {
+      await loadProducts();
+    }
+  }
+
+  Future<void> toggleProductStatus(Map<String, dynamic> product) async {
+    final int? id = (product['id'] as num?)?.toInt();
+
+    if (id == null || busyProductIds.contains(id)) return;
+
+    final String next = product['status'] == 'hidden' ? 'active' : 'hidden';
+
+    setState(() {
+      busyProductIds.add(id);
+    });
+
+    try {
+      final result = await MarketService.setProductStatus(id, next);
+
+      if (!mounted) return;
+
+      if (result['status'] == true) {
+        setState(() {
+          product['status'] = next;
+        });
+      }
+
+      showMessage(result['message']?.toString() ?? 'บันทึกแล้ว');
+    } catch (e) {
+      if (mounted) showMessage(e.toString());
+    } finally {
+      if (mounted) {
+        setState(() {
+          busyProductIds.remove(id);
+        });
+      }
+    }
+  }
+
+  Future<void> confirmDeleteProduct(Map<String, dynamic> product) async {
+    final int? id = (product['id'] as num?)?.toInt();
+
+    if (id == null) return;
+
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('ลบสินค้านี้?'),
+          content: Text('"${product['title']}" และรูปทั้งหมดจะถูกลบถาวร'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('ยกเลิก'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('ลบสินค้า'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() {
+      busyProductIds.add(id);
+    });
+
+    try {
+      final result = await MarketService.deleteProduct(id);
+
+      if (!mounted) return;
+
+      if (result['status'] == true) {
+        setState(() {
+          products.removeWhere((item) => item['id'] == product['id']);
+        });
+      }
+
+      showMessage(result['message']?.toString() ?? 'ลบสินค้าแล้ว');
+    } catch (e) {
+      if (mounted) showMessage(e.toString());
+    } finally {
+      if (mounted) {
+        setState(() {
+          busyProductIds.remove(id);
+        });
+      }
     }
   }
 
@@ -296,6 +442,222 @@ class _MyShopPageState extends State<MyShopPage> {
     );
   }
 
+  // =====================================================
+  // รายการสินค้าของร้าน
+  // =====================================================
+
+  List<Widget> buildProductsSection(Map<String, dynamic> data) {
+    final bool suspended = data['status'] == 'suspended';
+
+    final bool canAdd = !suspended && products.length < productLimit;
+
+    return [
+      Row(
+        children: [
+          Expanded(
+            child: Text(
+              productsLoaded
+                  ? 'สินค้าของร้าน (${products.length}/$productLimit)'
+                  : 'สินค้าของร้าน',
+              style: const TextStyle(
+                color: AppColors.navy,
+                fontSize: 17,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          if (canAdd)
+            FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: marketColor,
+                minimumSize: const Size(0, 40),
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+              onPressed: () => openProductForm(),
+              icon: const Icon(Icons.add_rounded, size: 18),
+              label: const Text('เพิ่มสินค้า'),
+            ),
+        ],
+      ),
+      if (data['status'] == 'pending' || data['status'] == 'rejected')
+        const Padding(
+          padding: EdgeInsets.only(top: 6),
+          child: Text(
+            'เตรียมสินค้าไว้ก่อนได้ จะแสดงในตลาดเมื่อร้านผ่านการตรวจสอบ',
+            style: TextStyle(color: AppColors.muted, fontSize: 12.5),
+          ),
+        ),
+      const SizedBox(height: 12),
+      if (!productsLoaded)
+        const Padding(
+          padding: EdgeInsets.all(24),
+          child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+        )
+      else if (products.isEmpty)
+        Container(
+          padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
+          decoration: cardDecoration(),
+          child: const Column(
+            children: [
+              Icon(Icons.inventory_2_outlined, color: marketColor, size: 34),
+              SizedBox(height: 10),
+              Text(
+                'ยังไม่มีสินค้า',
+                style: TextStyle(
+                  color: AppColors.navy,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              SizedBox(height: 4),
+              Text(
+                'กด "เพิ่มสินค้า" เพื่อลงสินค้าชิ้นแรก',
+                style: TextStyle(color: AppColors.muted, fontSize: 13),
+              ),
+            ],
+          ),
+        )
+      else
+        ...products.map((product) => buildProductTile(product, suspended)),
+    ];
+  }
+
+  Widget buildProductTile(Map<String, dynamic> product, bool suspended) {
+    final List<dynamic> images = (product['images'] as List?) ?? const [];
+
+    final String? thumbnail = images.isNotEmpty && images.first is Map
+        ? (images.first as Map)['url']?.toString()
+        : null;
+
+    final int? id = (product['id'] as num?)?.toInt();
+
+    final bool busy = id != null && busyProductIds.contains(id);
+
+    final bool hiddenByOwner = product['status'] == 'hidden';
+
+    final bool hiddenByAdmin = product['hidden_at'] != null;
+
+    return Opacity(
+      opacity: busy ? 0.5 : 1,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        decoration: cardDecoration(),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(24),
+          onTap: busy || suspended ? null : () => openProductForm(product),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(10, 10, 4, 10),
+            child: Row(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: SizedBox(
+                    width: 68,
+                    height: 68,
+                    child: thumbnail == null
+                        ? const ColoredBox(color: Color(0xFFEDEFF5))
+                        : Image.network(
+                            thumbnail,
+                            fit: BoxFit.cover,
+                            cacheWidth: 220,
+                            errorBuilder: (context, error, stackTrace) {
+                              return const ColoredBox(color: Color(0xFFEDEFF5));
+                            },
+                          ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        product['title']?.toString() ?? '',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: AppColors.navy,
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        formatPrice(product['price']),
+                        style: const TextStyle(
+                          color: marketColor,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      if (hiddenByAdmin || hiddenByOwner) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          hiddenByAdmin
+                              ? 'ถูกซ่อนโดยผู้ดูแล'
+                              : 'ซ่อนอยู่ ผู้ซื้อมองไม่เห็น',
+                          style: TextStyle(
+                            color: hiddenByAdmin
+                                ? AppColors.danger
+                                : AppColors.muted,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                PopupMenuButton<String>(
+                  tooltip: 'ตัวเลือกสินค้า',
+                  enabled: !busy,
+                  icon: const Icon(
+                    Icons.more_vert_rounded,
+                    color: AppColors.muted,
+                  ),
+                  onSelected: (value) {
+                    switch (value) {
+                      case 'edit':
+                        openProductForm(product);
+                      case 'toggle':
+                        toggleProductStatus(product);
+                      case 'delete':
+                        confirmDeleteProduct(product);
+                    }
+                  },
+                  itemBuilder: (context) {
+                    return [
+                      if (!suspended)
+                        const PopupMenuItem(
+                          value: 'edit',
+                          child: Text('แก้ไขสินค้า'),
+                        ),
+                      PopupMenuItem(
+                        value: 'toggle',
+                        child: Text(
+                          hiddenByOwner ? 'แสดงสินค้า' : 'ซ่อนสินค้า',
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'delete',
+                        child: Text(
+                          'ลบสินค้า',
+                          style: TextStyle(color: AppColors.danger),
+                        ),
+                      ),
+                    ];
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final Map<String, dynamic>? data = shop;
@@ -330,7 +692,7 @@ class _MyShopPageState extends State<MyShopPage> {
                 ),
               )
             : RefreshIndicator(
-                onRefresh: loadShop,
+                onRefresh: refreshAll,
                 child: ListView(
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
@@ -338,7 +700,9 @@ class _MyShopPageState extends State<MyShopPage> {
                     buildHeader(data),
                     const SizedBox(height: 14),
                     buildStatusCard(data),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 24),
+                    ...buildProductsSection(data),
+                    const SizedBox(height: 24),
                     buildContactCard(data),
                     const SizedBox(height: 20),
                     OutlinedButton.icon(
