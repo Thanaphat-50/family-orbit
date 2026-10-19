@@ -1,4 +1,4 @@
-@extends('account.layout')
+@extends('layouts.public')
 
 @section('title', 'ลบบัญชีแล้ว')
 
@@ -8,7 +8,7 @@
         <h1 style="margin-top: 12px">ลบบัญชีเรียบร้อยแล้ว</h1>
         <p class="muted">
             บัญชีและข้อมูลทั้งหมดของคุณถูกลบออกจากระบบแล้ว
-            ขอบคุณที่เคยใช้ FAMILY ORBIT
+            ขอบคุณที่เคยใช้ {{ config('legal.app_name') }}
         </p>
     </div>
 @endsection

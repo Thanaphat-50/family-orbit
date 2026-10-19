@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../config/app_info.dart';
 import '../data/market_data.dart';
 import '../services/auth_service.dart';
 import '../services/profile_service.dart';
@@ -1189,6 +1190,15 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
+  // เปิดหน้านโยบายในเบราว์เซอร์
+  Future<void> openPolicy(String url) async {
+    final bool opened = await AppInfo.openUrl(url);
+
+    if (!opened) {
+      showMessage('เปิดหน้าเว็บไม่สำเร็จ: $url');
+    }
+  }
+
   // =====================================================
   // MESSAGE
   // =====================================================
@@ -1264,7 +1274,7 @@ class _ProfilePageState extends State<ProfilePage> {
           const SizedBox(height: 23),
 
           const Text(
-            'Family Orbit',
+            'ครอบครัว',
 
             style: TextStyle(
               color: AppColors.navy,
@@ -1355,12 +1365,54 @@ class _ProfilePageState extends State<ProfilePage> {
 
           const SizedBox(height: 23),
 
+          const Text(
+            'เกี่ยวกับแอป',
+
+            style: TextStyle(
+              color: AppColors.navy,
+
+              fontSize: 17,
+
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+
+          const SizedBox(height: 10),
+
+          buildSettingTile(
+            icon: Icons.privacy_tip_outlined,
+
+            title: 'นโยบายความเป็นส่วนตัว',
+
+            subtitle: 'ข้อมูลที่เราเก็บ และสิทธิ์ของคุณ',
+
+            color: AppColors.sky,
+
+            onTap: () => openPolicy(AppInfo.privacyUrl),
+          ),
+
+          const SizedBox(height: 9),
+
+          buildSettingTile(
+            icon: Icons.description_outlined,
+
+            title: 'ข้อกำหนดการใช้งาน',
+
+            subtitle: 'กฎชุมชน ตลาด และการใช้งานแอป',
+
+            color: AppColors.sky,
+
+            onTap: () => openPolicy(AppInfo.termsUrl),
+          ),
+
+          const SizedBox(height: 23),
+
           buildSettingTile(
             icon: Icons.logout_rounded,
 
             title: 'ออกจากระบบ',
 
-            subtitle: 'ออกจากบัญชี Family Orbit',
+            subtitle: 'ออกจากบัญชีบนเครื่องนี้',
 
             color: AppColors.danger,
 

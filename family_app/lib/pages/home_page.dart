@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
+import '../config/app_info.dart';
 import '../services/auth_service.dart';
 import '../services/family_service.dart';
 import '../services/notification_service.dart';
@@ -782,7 +783,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         return 'โปรไฟล์';
 
       default:
-        return 'Family Orbit';
+        return AppInfo.name;
     }
   }
 
@@ -921,7 +922,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       case 2:
         if (!hasFamily) {
           return buildFamilyRequiredPage(
-            message: 'เข้าร่วม Family Orbit ก่อนเพื่อดูตำแหน่งของสมาชิก',
+            message: 'เข้าร่วมครอบครัวก่อนเพื่อดูตำแหน่งของสมาชิก',
           );
         }
 
@@ -1139,12 +1140,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'FAMILY ORBIT',
+                        AppInfo.name,
                         style: TextStyle(
                           color: AppColors.primary,
-                          fontSize: 10,
+                          fontSize: 12,
                           fontWeight: FontWeight.w800,
-                          letterSpacing: 1.4,
                         ),
                       ),
 
@@ -1541,7 +1541,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         const SizedBox(height: 26),
 
         const Text(
-          'เริ่มต้น Family Orbit',
+          'เริ่มต้นครอบครัวของคุณ',
           style: TextStyle(
             color: AppColors.navy,
             fontSize: 20,
@@ -1642,7 +1642,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
                 icon: const Icon(Icons.add_rounded),
 
-                label: Text(isWorking ? 'กำลังสร้าง...' : 'สร้าง Family Orbit'),
+                label: Text(isWorking ? 'กำลังสร้าง...' : 'สร้างครอบครัว'),
               ),
             ],
           ),
@@ -1736,7 +1736,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
                 icon: const Icon(Icons.login_rounded),
 
-                label: const Text('เข้าร่วม Family Orbit'),
+                label: const Text('เข้าร่วมครอบครัว'),
               ),
             ],
           ),
@@ -2394,7 +2394,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   const SizedBox(height: 7),
 
                   const Text(
-                    'คุณเป็นผู้ดูแล Family Orbit นี้ '
+                    'คุณเป็นผู้ดูแลครอบครัวนี้ '
                     'หากต้องการออก กรุณาโอน Owner ให้สมาชิกคนอื่นก่อน',
                     style: TextStyle(
                       color: AppColors.muted,

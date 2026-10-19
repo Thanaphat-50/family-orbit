@@ -690,7 +690,7 @@ class _NotificationPageState
               AppColors.primary,
 
           label:
-              'FAMILY ORBIT',
+              'NOTICE',
         );
     }
   }

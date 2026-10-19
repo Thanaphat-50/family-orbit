@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../config/app_info.dart';
 import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/orbit_background.dart';
@@ -484,6 +485,42 @@ class _RegisterPageState
                                         'สร้างบัญชี',
                                       ),
                           ),
+
+                          const SizedBox(
+                            height: 12,
+                          ),
+
+                          // การสมัคร = ยอมรับข้อกำหนดและนโยบาย (กดอ่านได้)
+                          Wrap(
+                            alignment:
+                                WrapAlignment.center,
+                            crossAxisAlignment:
+                                WrapCrossAlignment.center,
+                            children: [
+                              const Text(
+                                'การสร้างบัญชีถือว่าคุณยอมรับ',
+                                style: TextStyle(
+                                  color: AppColors.muted,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              buildPolicyLink(
+                                'ข้อกำหนดการใช้งาน',
+                                AppInfo.termsUrl,
+                              ),
+                              const Text(
+                                'และ',
+                                style: TextStyle(
+                                  color: AppColors.muted,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              buildPolicyLink(
+                                'นโยบายความเป็นส่วนตัว',
+                                AppInfo.privacyUrl,
+                              ),
+                            ],
+                          ),
                         ],
                       ),
                     ),
@@ -513,6 +550,30 @@ class _RegisterPageState
           ),
         ),
       ),
+    );
+  }
+
+  Widget buildPolicyLink(String label, String url) {
+    return TextButton(
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        minimumSize: const Size(0, 32),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        textStyle: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      onPressed: () async {
+        final bool opened = await AppInfo.openUrl(url);
+
+        if (!opened && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('เปิดหน้าเว็บไม่สำเร็จ: $url')),
+          );
+        }
+      },
+      child: Text(label),
     );
   }
 

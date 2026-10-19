@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'config/app_info.dart';
 import 'pages/home_page.dart';
 import 'pages/login_page.dart';
 import 'pages/register_page.dart';
@@ -59,7 +60,7 @@ class FamilyOrbitApp
       debugShowCheckedModeBanner:
           false,
 
-      title: 'Family Orbit',
+      title: AppInfo.name,
 
       theme: AppTheme.light(),
 
@@ -161,15 +162,14 @@ class _AuthCheckPageState
               ),
 
               const Text(
-                'FAMILY ORBIT',
+                AppInfo.name,
                 style:
                     TextStyle(
                   color:
                       AppColors.navy,
+                  fontSize: 18,
                   fontWeight:
                       FontWeight.w800,
-                  letterSpacing:
-                      2,
                 ),
               ),
 

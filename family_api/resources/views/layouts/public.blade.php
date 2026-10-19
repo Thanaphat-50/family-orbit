@@ -3,8 +3,8 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="robots" content="noindex">
-    <title>@yield('title') · FAMILY ORBIT</title>
+    <meta name="robots" content="@yield('robots', 'noindex')">
+    <title>@yield('title') · {{ config('legal.app_name') }}</title>
     <style>
         :root {
             --navy: #111827;
@@ -133,12 +133,77 @@
             font-size: 48px;
             line-height: 1;
         }
+
+        /* หน้านโยบาย: กว้างขึ้น อ่านง่าย */
+        main.wide { max-width: 720px; }
+
+        .legal h2 {
+            margin: 28px 0 8px;
+            font-size: 18px;
+        }
+
+        .legal p,
+        .legal li { color: #344054; }
+
+        .legal li { margin-bottom: 4px; }
+
+        .legal ul { color: #344054; }
+
+        .legal table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+            margin: 8px 0;
+        }
+
+        .legal th,
+        .legal td {
+            border: 1px solid var(--border);
+            padding: 8px 10px;
+            text-align: left;
+            vertical-align: top;
+        }
+
+        .legal th { background: #fff; }
+
+        .updated {
+            color: var(--muted);
+            font-size: 14px;
+            margin-top: -10px;
+        }
+
+        a { color: var(--primary); }
+
+        footer {
+            margin-top: 36px;
+            padding-top: 18px;
+            border-top: 1px solid var(--border);
+            font-size: 14px;
+            color: var(--muted);
+        }
+
+        footer a {
+            margin-right: 14px;
+            white-space: nowrap;
+        }
     </style>
 </head>
 <body>
-    <main>
-        <div class="brand">FAMILY ORBIT</div>
+    <main class="@yield('main_class')">
+        <div class="brand">{{ config('legal.app_name') }}</div>
         @yield('content')
+
+        <footer>
+            <a href="{{ route('legal.privacy') }}">นโยบายความเป็นส่วนตัว</a>
+            <a href="{{ route('legal.terms') }}">ข้อกำหนดการใช้งาน</a>
+            <a href="{{ route('legal.child-safety') }}">ความปลอดภัยของเด็ก</a>
+            <a href="{{ route('account.delete') }}">ลบบัญชี</a>
+            @if (config('legal.support_email'))
+                <div style="margin-top: 8px">
+                    ติดต่อ: <a href="mailto:{{ config('legal.support_email') }}">{{ config('legal.support_email') }}</a>
+                </div>
+            @endif
+        </footer>
     </main>
 </body>
 </html>

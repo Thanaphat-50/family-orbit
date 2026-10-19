@@ -471,7 +471,7 @@ class _ActivityPageState extends State<ActivityPage> {
                       const SizedBox(height: 5),
 
                       const Text(
-                        'เลือกว่ากิจกรรมนี้เป็นเรื่องส่วนตัวหรือแชร์ใน Family Orbit',
+                        'เลือกว่ากิจกรรมนี้เป็นเรื่องส่วนตัวหรือแชร์กับครอบครัว',
                         style: TextStyle(color: AppColors.muted, fontSize: 10),
                       ),
 

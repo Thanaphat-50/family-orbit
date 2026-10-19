@@ -28,7 +28,7 @@ class AdminPanelProvider extends PanelProvider
             ->id('admin')
             ->path('admin')
             ->login()
-            ->brandName('FAMILY ORBIT Admin')
+            ->brandName(config('legal.app_name') . ' Admin')
             ->colors([
                 'primary' => Color::Indigo,
             ])

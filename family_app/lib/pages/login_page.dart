@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../config/app_info.dart';
 import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/orbit_background.dart';
@@ -166,18 +167,16 @@ class _LoginPageState
                     ),
 
                     const Text(
-                      'FAMILY ORBIT',
+                      AppInfo.name,
                       textAlign:
                           TextAlign.center,
                       style:
                           TextStyle(
                         color:
                             AppColors.navy,
-                        fontSize: 13,
+                        fontSize: 18,
                         fontWeight:
                             FontWeight.w800,
-                        letterSpacing:
-                            3.5,
                       ),
                     ),
 
@@ -294,7 +293,7 @@ class _LoginPageState
                           ),
 
                           const Text(
-                            'เข้าสู่บัญชี Family Orbit ของคุณ',
+                            'เข้าสู่บัญชี${AppInfo.name}ของคุณ',
                             style:
                                 TextStyle(
                               color:

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../config/app_info.dart';
+
 class SplashPage extends StatefulWidget {
   final Widget nextPage;
 
@@ -449,7 +451,7 @@ class _SplashPageState
                             ),
 
                             Text(
-                              'FAMILY ORBIT',
+                              AppInfo.name,
 
                               style:
                                   TextStyle(
@@ -462,14 +464,11 @@ class _SplashPageState
                                 ),
 
                                 fontSize:
-                                    9,
+                                    12,
 
                                 fontWeight:
                                     FontWeight
                                         .w700,
-
-                                letterSpacing:
-                                    2.4,
                               ),
                             ),
 

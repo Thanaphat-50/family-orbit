@@ -1,4 +1,4 @@
-@extends('account.layout')
+@extends('layouts.public')
 
 @section('title', 'ลบบัญชี')
 
