@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../data/market_data.dart';
 import '../services/auth_service.dart';
 import '../services/profile_service.dart';
 import '../theme/app_theme.dart';
 import 'login_page.dart';
+import 'my_shop_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -1287,6 +1289,38 @@ class _ProfilePageState extends State<ProfilePage> {
             onTap: () {
               showMessage(
                 family == null ? 'ยังไม่ได้เข้าร่วมครอบครัว' : 'คุณเป็น $role',
+              );
+            },
+          ),
+
+          const SizedBox(height: 23),
+
+          const Text(
+            'ตลาด',
+
+            style: TextStyle(
+              color: AppColors.navy,
+
+              fontSize: 17,
+
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+
+          const SizedBox(height: 10),
+
+          buildSettingTile(
+            icon: Icons.storefront_outlined,
+
+            title: 'บัญชีผู้ขาย',
+
+            subtitle: 'เปิดร้าน จัดการสินค้า และดูสถานะร้าน',
+
+            color: marketColor,
+
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (context) => const MyShopPage()),
               );
             },
           ),

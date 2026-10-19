@@ -8,7 +8,9 @@ import 'product_form_page.dart';
 import 'shop_form_page.dart';
 
 // =======================================================
-// ร้านของฉัน: สถานะร้าน ข้อมูลติดต่อ และแก้ไขข้อมูล
+// บัญชีผู้ขาย
+// - ยังไม่มีร้าน: ชวนเปิดร้าน
+// - มีร้านแล้ว: สถานะร้าน สินค้า ข้อมูลติดต่อ และแก้ไขข้อมูล
 // =======================================================
 
 class MyShopPage extends StatefulWidget {
@@ -25,7 +27,10 @@ class _MyShopPageState extends State<MyShopPage> {
 
   bool isLoading = false;
 
-  // มีการเปลี่ยนแปลง → หน้าก่อนหน้าโหลดข้อมูลใหม่
+  // โหลดข้อมูลร้านไม่สำเร็จ (แยกจาก "ยังไม่มีร้าน")
+  String? loadError;
+
+  // มีการเปลี่ยนแปลง → หน้าตลาดโหลดข้อมูลใหม่
   bool changed = false;
 
   // สินค้าของร้าน
@@ -74,6 +79,7 @@ class _MyShopPageState extends State<MyShopPage> {
   Future<void> loadShop() async {
     setState(() {
       isLoading = shop == null;
+      loadError = null;
     });
 
     try {
@@ -88,16 +94,44 @@ class _MyShopPageState extends State<MyShopPage> {
           shop = data is Map ? Map<String, dynamic>.from(data) : null;
         });
       } else {
-        showMessage(result['message']?.toString() ?? 'โหลดข้อมูลร้านไม่สำเร็จ');
+        final String message =
+            result['message']?.toString() ?? 'โหลดข้อมูลร้านไม่สำเร็จ';
+
+        setState(() {
+          loadError = message;
+        });
+
+        showMessage(message);
       }
     } catch (e) {
-      if (mounted) showMessage(e.toString());
+      if (mounted) {
+        setState(() {
+          loadError = e.toString();
+        });
+
+        showMessage(e.toString());
+      }
     } finally {
       if (mounted) {
         setState(() {
           isLoading = false;
         });
       }
+    }
+  }
+
+  // สมัครเปิดร้านใหม่
+  Future<void> openShopForm() async {
+    final dynamic created = await Navigator.of(context)
+        .push(MaterialPageRoute(builder: (context) => const ShopFormPage()));
+
+    if (created is Map && mounted) {
+      setState(() {
+        shop = Map<String, dynamic>.from(created);
+        changed = true;
+      });
+
+      await loadProducts();
     }
   }
 
@@ -129,6 +163,8 @@ class _MyShopPageState extends State<MyShopPage> {
     );
 
     if (saved is Map && mounted) {
+      changed = true;
+
       await loadProducts();
     }
   }
@@ -152,6 +188,7 @@ class _MyShopPageState extends State<MyShopPage> {
       if (result['status'] == true) {
         setState(() {
           product['status'] = next;
+          changed = true;
         });
       }
 
@@ -207,6 +244,7 @@ class _MyShopPageState extends State<MyShopPage> {
       if (result['status'] == true) {
         setState(() {
           products.removeWhere((item) => item['id'] == product['id']);
+          changed = true;
         });
       }
 
@@ -658,6 +696,127 @@ class _MyShopPageState extends State<MyShopPage> {
     );
   }
 
+  // =====================================================
+  // ยังไม่มีร้าน → ชวนเปิดร้าน
+  // =====================================================
+
+  Widget buildNoShop() {
+    const steps = [
+      (Icons.edit_note_rounded, 'กรอกข้อมูลร้าน เบอร์โทร และพื้นที่ขาย'),
+      (Icons.verified_outlined, 'ผู้ดูแลตรวจสอบร้าน แจ้งผลในหน้าการแจ้งเตือน'),
+      (
+        Icons.inventory_2_outlined,
+        'ลงสินค้าได้ 30 ชิ้น ให้ทุกครอบครัวในแอปเห็น',
+      ),
+    ];
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
+      children: [
+        Center(
+          child: Container(
+            width: 84,
+            height: 84,
+            decoration: BoxDecoration(
+              color: marketColor.withValues(alpha: 0.10),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.storefront_rounded,
+              color: marketColor,
+              size: 40,
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        const Text(
+          'เปิดร้านในแอป',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: AppColors.navy,
+            fontSize: 21,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 6),
+        const Text(
+          'ฟรีช่วงเปิดตัว ขายของกิน ของใช้ หรือบริการให้ครอบครัวในชุมชน',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: AppColors.muted,
+            fontSize: 13.5,
+            height: 1.45,
+          ),
+        ),
+        const SizedBox(height: 24),
+        Container(
+          padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+          decoration: cardDecoration(),
+          child: Column(
+            children: [
+              for (final (icon, text) in steps)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: Row(
+                    children: [
+                      Icon(icon, color: marketColor, size: 22),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          text,
+                          style: const TextStyle(
+                            color: AppColors.navy,
+                            fontSize: 13.5,
+                            height: 1.4,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+        FilledButton.icon(
+          style: FilledButton.styleFrom(
+            backgroundColor: marketColor,
+            minimumSize: const Size(double.infinity, 54),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+            ),
+          ),
+          onPressed: openShopForm,
+          icon: const Icon(Icons.add_business_outlined),
+          label: const Text('เปิดร้าน'),
+        ),
+      ],
+    );
+  }
+
+  Widget buildLoadError() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              loadError ?? 'โหลดข้อมูลร้านไม่สำเร็จ',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: AppColors.navy),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton(
+              onPressed: refreshAll,
+              child: const Text('ลองอีกครั้ง'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final Map<String, dynamic>? data = shop;
@@ -671,7 +830,7 @@ class _MyShopPageState extends State<MyShopPage> {
       },
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('ร้านของฉัน'),
+          title: const Text('บัญชีผู้ขาย'),
           actions: [
             IconButton(
               tooltip: 'กฎผู้ขาย',
@@ -685,12 +844,7 @@ class _MyShopPageState extends State<MyShopPage> {
         body: isLoading
             ? const Center(child: CircularProgressIndicator())
             : data == null
-            ? const Center(
-                child: Text(
-                  'ยังไม่มีร้าน',
-                  style: TextStyle(color: AppColors.muted),
-                ),
-              )
+            ? (loadError != null ? buildLoadError() : buildNoShop())
             : RefreshIndicator(
                 onRefresh: refreshAll,
                 child: ListView(

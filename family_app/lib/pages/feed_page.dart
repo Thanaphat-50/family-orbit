@@ -69,6 +69,14 @@ class _FeedPageState extends State<FeedPage> {
 
   bool isPosting = false;
 
+  // หน้าต่างเขียนโพสต์ (เปิดจากปุ่ม + ลอยมุมขวาล่าง)
+  // ร่างโพสต์เก็บไว้ที่หน้านี้ ปิดหน้าต่างไปแล้วเปิดใหม่ข้อความยังอยู่
+  BuildContext? composerContext;
+  String? composerError;
+
+  // เพิ่มค่าทุกครั้งที่ร่างโพสต์เปลี่ยน → หน้าต่างเขียนโพสต์วาดใหม่
+  final ValueNotifier<int> composerVersion = ValueNotifier<int>(0);
+
   // ฟีดนี้เป็นของครอบครัวหรือชุมชน (กำหนดจากหน้าที่เปิด)
   FeedScope get scope => widget.scope;
 
@@ -293,7 +301,7 @@ class _FeedPageState extends State<FeedPage> {
     final int remaining = maxPostImages - pickedImages.length;
 
     if (remaining <= 0) {
-      showMessage('แนบรูปได้สูงสุด $maxPostImages รูป');
+      composerMessage('แนบรูปได้สูงสุด $maxPostImages รูป');
       return;
     }
 
@@ -307,17 +315,78 @@ class _FeedPageState extends State<FeedPage> {
       if (!mounted || images.isEmpty) return;
 
       // เครื่องรุ่นเก่าบางรุ่นไม่จำกัดจำนวนให้ → ตัดเอง
-      setState(() {
+      updateComposer(() {
         pickedImages.addAll(images.take(remaining));
+        composerError = images.length > remaining
+            ? 'แนบรูปได้สูงสุด $maxPostImages รูป'
+            : null;
       });
-
-      if (images.length > remaining) {
-        showMessage('แนบรูปได้สูงสุด $maxPostImages รูป');
-      }
     } catch (e) {
       if (!mounted) return;
 
-      showMessage('เลือกรูปไม่สำเร็จ กรุณาลองอีกครั้ง');
+      composerMessage('เลือกรูปไม่สำเร็จ กรุณาลองอีกครั้ง');
+    }
+  }
+
+  // เปลี่ยนร่างโพสต์ แล้วให้หน้าต่างเขียนโพสต์วาดใหม่ด้วย
+  void updateComposer(VoidCallback change) {
+    setState(change);
+
+    composerVersion.value++;
+  }
+
+  // ข้อความ Error: แสดงในหน้าต่างเขียนโพสต์ถ้าเปิดอยู่ (SnackBar ถูกบัง)
+  void composerMessage(String message) {
+    if (composerContext != null) {
+      updateComposer(() => composerError = message);
+    } else {
+      showMessage(message);
+    }
+  }
+
+  // =====================================================
+  // หน้าต่างเขียนโพสต์ (Bottom Sheet)
+  // =====================================================
+
+  Future<void> openComposer() async {
+    composerError = null;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      backgroundColor: Colors.white,
+      builder: (sheetContext) {
+        composerContext = sheetContext;
+
+        return Padding(
+          // ยกหน้าต่างขึ้นเหนือคีย์บอร์ด
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
+          ),
+          child: ValueListenableBuilder<int>(
+            valueListenable: composerVersion,
+            builder: (context, version, child) {
+              return SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: buildComposer(),
+              );
+            },
+          ),
+        );
+      },
+    );
+
+    composerContext = null;
+    composerError = null;
+  }
+
+  void closeComposer() {
+    final BuildContext? sheet = composerContext;
+
+    if (sheet != null && sheet.mounted) {
+      Navigator.of(sheet).pop();
     }
   }
 
@@ -329,7 +398,7 @@ class _FeedPageState extends State<FeedPage> {
         .toList();
 
     if (content.isEmpty && imagePaths.isEmpty) {
-      showMessage('กรุณาพิมพ์ข้อความหรือเพิ่มรูปก่อนโพสต์');
+      composerMessage('กรุณาพิมพ์ข้อความหรือเพิ่มรูปก่อนโพสต์');
       return;
     }
 
@@ -341,8 +410,9 @@ class _FeedPageState extends State<FeedPage> {
       if (!ok || !mounted) return;
     }
 
-    setState(() {
+    updateComposer(() {
       isPosting = true;
+      composerError = null;
     });
 
     final String? category = target == FeedScope.community
@@ -364,7 +434,7 @@ class _FeedPageState extends State<FeedPage> {
 
         dismissKeyboard();
 
-        setState(() {
+        updateComposer(() {
           pickedImages.clear();
 
           composeCategory = 'general';
@@ -375,6 +445,12 @@ class _FeedPageState extends State<FeedPage> {
             feedGeneration++;
           }
         });
+
+        closeComposer();
+
+        if (scrollController.hasClients) {
+          scrollController.jumpTo(0);
+        }
 
         await loadPosts();
 
@@ -390,19 +466,19 @@ class _FeedPageState extends State<FeedPage> {
           communityTermsAccepted = false;
         });
 
-        showMessage(
+        composerMessage(
           result['message']?.toString() ?? 'กรุณายอมรับกฎชุมชนก่อนโพสต์',
         );
       } else {
-        showMessage(result['message']?.toString() ?? 'โพสต์ไม่สำเร็จ');
+        composerMessage(result['message']?.toString() ?? 'โพสต์ไม่สำเร็จ');
       }
     } catch (e) {
       if (!mounted) return;
 
-      showMessage(e.toString());
+      composerMessage(e.toString());
     } finally {
       if (mounted) {
-        setState(() {
+        updateComposer(() {
           isPosting = false;
         });
       }
@@ -1112,287 +1188,194 @@ class _FeedPageState extends State<FeedPage> {
   }
 
   // =====================================================
-  // Hero Header
+  // ปุ่ม + ลอยมุมขวาล่าง (มีจุดเมื่อมีร่างโพสต์ค้างอยู่)
   // =====================================================
 
-  Widget buildHeroHeader() {
+  Widget buildComposeButton() {
     final bool community = scope == FeedScope.community;
 
-    // หน้าชุมชนใช้โทนฟ้า-เขียว แยกจากหน้าครอบครัว
-    final List<Color> colors = community
-        ? const [Color(0xFF0B2E4A), Color(0xFF0B7FA6), Color(0xFF35B9DC)]
-        : const [Color(0xFF182458), Color(0xFF4650D8), Color(0xFF646BFF)];
+    return ValueListenableBuilder<TextEditingValue>(
+      valueListenable: postController,
+      builder: (context, value, child) {
+        final bool hasDraft =
+            value.text.trim().isNotEmpty || pickedImages.isNotEmpty;
 
-    return Container(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 22),
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: colors,
-        ),
-        borderRadius: BorderRadius.circular(28),
-        boxShadow: [
-          BoxShadow(
-            color: colors[1].withValues(alpha: 0.18),
-            blurRadius: 28,
-            offset: const Offset(0, 12),
+        return FloatingActionButton(
+          heroTag: null,
+          tooltip: community ? 'โพสต์ในชุมชน' : 'โพสต์ถึงครอบครัว',
+          backgroundColor: community ? communityColor : AppColors.primary,
+          foregroundColor: Colors.white,
+          shape: const CircleBorder(),
+          onPressed: openComposer,
+          child: Badge(
+            isLabelVisible: hasDraft,
+            smallSize: 10,
+            backgroundColor: AppColors.warm,
+            child: const Icon(Icons.add_rounded, size: 30),
           ),
-        ],
-      ),
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          // Orbit ใหญ่
-          Positioned(
-            right: -40,
-            top: -60,
-            child: Container(
-              width: 155,
-              height: 155,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.12),
-                  width: 1.5,
-                ),
-              ),
-            ),
-          ),
-
-          // Orbit เล็ก
-          Positioned(
-            right: 10,
-            bottom: -58,
-            child: Container(
-              width: 105,
-              height: 105,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: AppColors.sky.withValues(alpha: 0.25),
-                ),
-              ),
-            ),
-          ),
-
-          Positioned(
-            right: 32,
-            top: 22,
-            child: Container(
-              width: 9,
-              height: 9,
-              decoration: const BoxDecoration(
-                color: AppColors.sky,
-                shape: BoxShape.circle,
-              ),
-            ),
-          ),
-
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 11,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.13),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      community
-                          ? Icons.public_rounded
-                          : Icons.auto_awesome_rounded,
-                      color: AppColors.warm,
-                      size: 15,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      community ? 'COMMUNITY' : 'FAMILY ORBIT',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 1.5,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                community
-                    ? 'เรื่องราวจาก\nทุกครอบครัว'
-                    : 'วันนี้ครอบครัว\nเป็นอย่างไรกันบ้าง?',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 24,
-                  height: 1.25,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                community
-                    ? 'แชร์ ถาม-ตอบ และช่วยเหลือกันในชุมชน'
-                    : 'แชร์เรื่องเล็ก ๆ ให้คนสำคัญของคุณรับรู้',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.78),
-                  fontSize: 13,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
   // =====================================================
-  // กล่องสร้างโพสต์
+  // เนื้อหาหน้าต่างเขียนโพสต์
   // =====================================================
 
-  Widget buildCreatePost() {
+  Widget buildComposer() {
     final inputBorder = OutlineInputBorder(
       borderRadius: BorderRadius.circular(18),
       borderSide: BorderSide.none,
     );
 
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
-      decoration: cardDecoration(),
-      child: Column(
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              buildAvatar(
-                name: currentUser?['name']?.toString() ?? 'F',
-                imageUrl: getProfileImage(currentUser),
-                radius: 21,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: TextField(
-                  controller: postController,
-                  minLines: 2,
-                  maxLines: 6,
-                  maxLength: maxPostLength,
-                  textCapitalization: TextCapitalization.sentences,
+    final bool community = scope == FeedScope.community;
 
-                  // แสดงตัวนับเมื่อใกล้ถึงขีดจำกัด
-                  buildCounter:
-                      (
-                        context, {
-                        required currentLength,
-                        required isFocused,
-                        required maxLength,
-                      }) {
-                        if (currentLength < maxPostLength - 500) {
-                          return null;
-                        }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          community ? 'โพสต์ในชุมชน' : 'โพสต์ถึงครอบครัว',
+          style: const TextStyle(
+            color: AppColors.navy,
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 14),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            buildAvatar(
+              name: currentUser?['name']?.toString() ?? 'F',
+              imageUrl: getProfileImage(currentUser),
+              radius: 21,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: TextField(
+                controller: postController,
+                autofocus: true,
+                minLines: 4,
+                maxLines: 10,
+                maxLength: maxPostLength,
+                textCapitalization: TextCapitalization.sentences,
 
-                        return Text(
-                          '$currentLength/$maxPostLength',
-                          style: const TextStyle(
-                            color: AppColors.muted,
-                            fontSize: 11,
-                          ),
-                        );
-                      },
+                // แสดงตัวนับเมื่อใกล้ถึงขีดจำกัด
+                buildCounter:
+                    (
+                      context, {
+                      required currentLength,
+                      required isFocused,
+                      required maxLength,
+                    }) {
+                      if (currentLength < maxPostLength - 500) {
+                        return null;
+                      }
 
-                  decoration: InputDecoration(
-                    hintText: scope == FeedScope.community
-                        ? 'แชร์เรื่องราวให้ทุกครอบครัวในชุมชน...'
-                        : 'มีอะไรอยากเล่าให้ครอบครัวฟังไหม?',
-                    filled: true,
-                    fillColor: const Color(0xFFF7F8FC),
-                    contentPadding: const EdgeInsets.all(16),
-                    border: inputBorder,
-                    enabledBorder: inputBorder,
-                    focusedBorder: inputBorder.copyWith(
-                      borderSide: BorderSide(
-                        color: AppColors.primary.withValues(alpha: 0.45),
-                        width: 1.4,
-                      ),
+                      return Text(
+                        '$currentLength/$maxPostLength',
+                        style: const TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 11,
+                        ),
+                      );
+                    },
+
+                decoration: InputDecoration(
+                  hintText: scope == FeedScope.community
+                      ? 'แชร์เรื่องราวให้ทุกครอบครัวในชุมชน...'
+                      : 'มีอะไรอยากเล่าให้ครอบครัวฟังไหม?',
+                  filled: true,
+                  fillColor: const Color(0xFFF7F8FC),
+                  contentPadding: const EdgeInsets.all(16),
+                  border: inputBorder,
+                  enabledBorder: inputBorder,
+                  focusedBorder: inputBorder.copyWith(
+                    borderSide: BorderSide(
+                      color: AppColors.primary.withValues(alpha: 0.45),
+                      width: 1.4,
                     ),
                   ),
                 ),
               ),
-            ],
-          ),
-          if (pickedImages.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            buildPickedImages(),
+            ),
           ],
-          if (scope == FeedScope.community) ...[
-            const SizedBox(height: 12),
-            buildCategoryPicker(),
-          ],
+        ),
+        if (pickedImages.isNotEmpty) ...[
           const SizedBox(height: 12),
-          Row(
-            children: [
-              // ป้ายผู้เห็น + ปุ่มรูป ใช้พื้นที่ที่เหลือ
-              // (ย่อป้ายเฉพาะตอนจอแคบจริง ๆ)
-              Expanded(
-                child: Row(
-                  children: [
-                    Flexible(child: buildAudienceChip()),
-                    const SizedBox(width: 8),
-                    buildAddPhotoButton(),
-                  ],
-                ),
+          buildPickedImages(),
+        ],
+        if (scope == FeedScope.community) ...[
+          const SizedBox(height: 12),
+          buildCategoryPicker(),
+        ],
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            // ป้ายผู้เห็น + ปุ่มรูป ใช้พื้นที่ที่เหลือ
+            // (ย่อป้ายเฉพาะตอนจอแคบจริง ๆ)
+            Expanded(
+              child: Row(
+                children: [
+                  Flexible(child: buildAudienceChip()),
+                  const SizedBox(width: 8),
+                  buildAddPhotoButton(),
+                ],
               ),
-              const SizedBox(width: 8),
+            ),
+            const SizedBox(width: 8),
 
-              // ปุ่มแชร์กดได้เมื่อมีข้อความหรือมีรูป
-              ValueListenableBuilder<TextEditingValue>(
-                valueListenable: postController,
-                builder: (context, value, child) {
-                  final bool canPost =
-                      (value.text.trim().isNotEmpty ||
-                          pickedImages.isNotEmpty) &&
-                      !isPosting;
+            // ปุ่มแชร์กดได้เมื่อมีข้อความหรือมีรูป
+            ValueListenableBuilder<TextEditingValue>(
+              valueListenable: postController,
+              builder: (context, value, child) {
+                final bool canPost =
+                    (value.text.trim().isNotEmpty || pickedImages.isNotEmpty) &&
+                    !isPosting;
 
-                  return FilledButton.icon(
-                    onPressed: canPost ? createPost : null,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      foregroundColor: Colors.white,
-                      disabledBackgroundColor: AppColors.primary.withValues(
-                        alpha: 0.30,
-                      ),
-                      disabledForegroundColor: Colors.white,
-                      minimumSize: const Size(0, 42),
-                      padding: const EdgeInsets.symmetric(horizontal: 18),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
+                return FilledButton.icon(
+                  onPressed: canPost ? createPost : null,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor: AppColors.primary.withValues(
+                      alpha: 0.30,
                     ),
-                    icon: isPosting
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Icon(Icons.send_rounded, size: 17),
-                    label: Text(isPosting ? 'กำลังส่ง' : 'แชร์'),
-                  );
-                },
-              ),
-            ],
+                    disabledForegroundColor: Colors.white,
+                    minimumSize: const Size(0, 42),
+                    padding: const EdgeInsets.symmetric(horizontal: 18),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  icon: isPosting
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.send_rounded, size: 17),
+                  label: Text(isPosting ? 'กำลังส่ง' : 'แชร์'),
+                );
+              },
+            ),
+          ],
+        ),
+        if (composerError != null) ...[
+          const SizedBox(height: 10),
+          Text(
+            composerError!,
+            style: const TextStyle(
+              color: AppColors.danger,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
-      ),
+      ],
     );
   }
 
@@ -1472,7 +1455,7 @@ class _FeedPageState extends State<FeedPage> {
                     onTap: isPosting
                         ? null
                         : () {
-                            setState(() {
+                            updateComposer(() {
                               pickedImages.removeAt(index);
                             });
                           },
@@ -1509,7 +1492,7 @@ class _FeedPageState extends State<FeedPage> {
           color: category.color,
           selected: composeCategory == category.key,
           onTap: () {
-            setState(() {
+            updateComposer(() {
               composeCategory = category.key;
             });
           },
@@ -2549,28 +2532,33 @@ class _FeedPageState extends State<FeedPage> {
 
   @override
   Widget build(BuildContext context) {
-    return RefreshIndicator(
-      color: AppColors.primary,
-      onRefresh: () => loadPosts(),
-      child: ListView(
-        controller: scrollController,
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 35),
-        children: [
-          buildHeroHeader(),
-          const SizedBox(height: 16),
-          buildCreatePost(),
-          const SizedBox(height: 24),
-          buildSectionHeader(),
-          const SizedBox(height: 12),
-          ...buildFeedItems(),
-        ],
-      ),
+    return Stack(
+      children: [
+        RefreshIndicator(
+          color: AppColors.primary,
+          onRefresh: () => loadPosts(),
+          child: ListView(
+            controller: scrollController,
+            physics: const AlwaysScrollableScrollPhysics(),
+
+            // เว้นด้านล่างไว้ไม่ให้ปุ่ม + บังโพสต์สุดท้าย
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
+            children: [
+              buildSectionHeader(),
+              const SizedBox(height: 12),
+              ...buildFeedItems(),
+            ],
+          ),
+        ),
+        Positioned(right: 16, bottom: 16, child: buildComposeButton()),
+      ],
     );
   }
 
   @override
   void dispose() {
+    composerVersion.dispose();
+
     postController.dispose();
 
     scrollController.dispose();

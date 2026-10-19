@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
 import '../services/auth_service.dart';
@@ -10,6 +11,7 @@ import '../widgets/section_switch.dart';
 import 'activity_page.dart';
 import 'feed_page.dart';
 import 'map_page.dart';
+import 'my_shop_page.dart';
 import 'notification_page.dart';
 import 'profile_page.dart';
 import 'shop_page.dart';
@@ -42,6 +44,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   // ครอบครัว: โพสต์ | สมาชิก
   FamilySection familySection = FamilySection.posts;
+
+  // แถบเมนูล่าง: ในแท็บหน้าหลัก เลื่อนลงแล้วซ่อน เลื่อนขึ้นแล้วแสดง
+  bool bottomBarVisible = true;
+
+  // เพิ่มเมื่อร้านของเราเปลี่ยน → หน้าตลาดโหลดใหม่
+  int marketRefreshToken = 0;
 
   bool isLoading = true;
   bool isWorking = false;
@@ -982,71 +990,187 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   // =====================================================
+  // แท็บ ชุมชน | ตลาด บนแถบด้านบน
+  // =====================================================
+
+  bool get showHomeTabs => selectedIndex == 0 && hasFamily && !isLoading;
+
+  void switchHomeSection(HomeSection section) {
+    if (section == homeSection) return;
+
+    setState(() {
+      homeSection = section;
+      bottomBarVisible = true;
+    });
+  }
+
+  Widget buildAppLogo() {
+    return Container(
+      width: 38,
+      height: 38,
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [AppColors.primary, Color(0xFF787CFF)],
+        ),
+        borderRadius: BorderRadius.circular(13),
+      ),
+      child: const Icon(
+        Icons.family_restroom_rounded,
+        color: Colors.white,
+        size: 21,
+      ),
+    );
+  }
+
+  Widget buildHomeTabs() {
+    return Row(
+      children: [
+        buildAppLogo(),
+        const SizedBox(width: 8),
+        buildHomeTabButton(HomeSection.community, 'ชุมชน'),
+        buildHomeTabButton(HomeSection.shop, 'ตลาด'),
+      ],
+    );
+  }
+
+  // แท็บที่เลือกอยู่: ตัวหนา + ขีดใต้ / แท็บอื่น: สีจาง
+  Widget buildHomeTabButton(HomeSection section, String label) {
+    final bool selected = homeSection == section;
+
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => switchHomeSection(section),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 10, 10, 6),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  color: selected ? AppColors.navy : AppColors.muted,
+                  fontSize: selected ? 20 : 17,
+                  fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 4),
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                width: selected ? 22 : 0,
+                height: 3,
+                decoration: BoxDecoration(
+                  color: AppColors.primary,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ปุ่ม 🏪 บัญชีผู้ขาย (แสดงเมื่ออยู่หน้าตลาด)
+  Future<void> openSellerAccount() async {
+    final dynamic changed = await Navigator.of(context)
+        .push(MaterialPageRoute(builder: (context) => const MyShopPage()));
+
+    if (changed == true && mounted) {
+      setState(() {
+        marketRefreshToken++;
+      });
+    }
+  }
+
+  // เลื่อนลง → ซ่อนแถบล่าง / เลื่อนขึ้น → แสดง (เฉพาะแท็บหน้าหลัก)
+  bool handleUserScroll(UserScrollNotification notification) {
+    if (selectedIndex != 0 || notification.metrics.axis != Axis.vertical) {
+      return false;
+    }
+
+    // แจ้งครั้งเดียวตอนเริ่มลาก (ตอนนั้นยังอยู่บนสุด) จึงดูแค่ทิศทาง
+    final ScrollDirection direction = notification.direction;
+
+    final bool atTop =
+        notification.metrics.pixels <= notification.metrics.minScrollExtent;
+
+    final bool show =
+        direction == ScrollDirection.forward ||
+        (direction == ScrollDirection.idle && atTop);
+
+    if (direction == ScrollDirection.reverse && bottomBarVisible) {
+      setState(() => bottomBarVisible = false);
+    } else if (show && !bottomBarVisible) {
+      setState(() => bottomBarVisible = true);
+    }
+
+    return false;
+  }
+
+  // =====================================================
   // MAIN
   // =====================================================
 
   @override
   Widget build(BuildContext context) {
+    final bool showBottomBar = bottomBarVisible || selectedIndex != 0;
+
     return Scaffold(
       appBar: AppBar(
         toolbarHeight: 68,
 
         titleSpacing: 16,
 
-        title: Row(
-          children: [
-            Container(
-              width: 38,
-              height: 38,
+        // หน้าหลัก: แท็บ ชุมชน | ตลาด / หน้าอื่น: ชื่อหน้า
+        title: showHomeTabs
+            ? buildHomeTabs()
+            : Row(
+                children: [
+                  buildAppLogo(),
 
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [AppColors.primary, Color(0xFF787CFF)],
-                ),
+                  const SizedBox(width: 11),
 
-                borderRadius: BorderRadius.circular(13),
-              ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'FAMILY ORBIT',
+                        style: TextStyle(
+                          color: AppColors.primary,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.4,
+                        ),
+                      ),
 
-              child: const Icon(
-                Icons.family_restroom_rounded,
-                color: Colors.white,
-                size: 21,
-              ),
-            ),
+                      const SizedBox(height: 1),
 
-            const SizedBox(width: 11),
-
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'FAMILY ORBIT',
-                  style: TextStyle(
-                    color: AppColors.primary,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1.4,
+                      Text(
+                        getPageTitle(),
+                        style: const TextStyle(
+                          color: AppColors.navy,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-
-                const SizedBox(height: 1),
-
-                Text(
-                  getPageTitle(),
-                  style: const TextStyle(
-                    color: AppColors.navy,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
+                ],
+              ),
 
         actions: [
+          if (showHomeTabs && homeSection == HomeSection.shop)
+            IconButton(
+              tooltip: 'บัญชีผู้ขาย',
+              onPressed: openSellerAccount,
+              icon: const Icon(Icons.storefront_outlined, size: 26),
+            ),
+
           buildNotificationButton(),
 
           PopupMenuButton<String>(
@@ -1078,7 +1202,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         ],
       ),
 
-      body: getCurrentPage(),
+      body: NotificationListener<UserScrollNotification>(
+        onNotification: handleUserScroll,
+        child: getCurrentPage(),
+      ),
 
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
@@ -1096,52 +1223,68 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         child: SafeArea(
           top: false,
 
-          child: NavigationBar(
-            selectedIndex: selectedIndex,
+          // ซ่อนแถบด้วยการย่อความสูงลงจนเหลือ 0 (เนื้อหาด้านบนขยายลงมาแทน)
+          child: ClipRect(
+            child: TweenAnimationBuilder<double>(
+              tween: Tween<double>(end: showBottomBar ? 1 : 0),
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              builder: (context, factor, child) {
+                return Align(
+                  alignment: Alignment.topCenter,
+                  heightFactor: factor,
+                  child: child,
+                );
+              },
+              child: NavigationBar(
+                selectedIndex: selectedIndex,
 
-            onDestinationSelected: (index) {
-              setState(() {
-                selectedIndex = index;
-              });
+                onDestinationSelected: (index) {
+                  setState(() {
+                    selectedIndex = index;
+                    bottomBarVisible = true;
+                  });
 
-              loadUnreadNotificationCount();
+                  loadUnreadNotificationCount();
 
-              if (index == 0 || index == 1 || index == 2) {
-                loadFamily(showLoading: false);
-              }
-            },
+                  if (index == 0 || index == 1 || index == 2) {
+                    loadFamily(showLoading: false);
+                  }
+                },
 
-            destinations: const [
-              NavigationDestination(
-                icon: Icon(Icons.home_outlined),
-                selectedIcon: Icon(Icons.home_rounded),
-                label: 'หน้าหลัก',
+                destinations: const [
+                  NavigationDestination(
+                    icon: Icon(Icons.home_outlined),
+                    selectedIcon: Icon(Icons.home_rounded),
+                    label: 'หน้าหลัก',
+                  ),
+
+                  NavigationDestination(
+                    icon: Icon(Icons.favorite_border_rounded),
+                    selectedIcon: Icon(Icons.favorite_rounded),
+                    label: 'ครอบครัว',
+                  ),
+
+                  NavigationDestination(
+                    icon: Icon(Icons.location_on_outlined),
+                    selectedIcon: Icon(Icons.location_on_rounded),
+                    label: 'ตำแหน่ง',
+                  ),
+
+                  NavigationDestination(
+                    icon: Icon(Icons.event_note_outlined),
+                    selectedIcon: Icon(Icons.event_note_rounded),
+                    label: 'กิจกรรม',
+                  ),
+
+                  NavigationDestination(
+                    icon: Icon(Icons.person_outline_rounded),
+                    selectedIcon: Icon(Icons.person_rounded),
+                    label: 'โปรไฟล์',
+                  ),
+                ],
               ),
-
-              NavigationDestination(
-                icon: Icon(Icons.favorite_border_rounded),
-                selectedIcon: Icon(Icons.favorite_rounded),
-                label: 'ครอบครัว',
-              ),
-
-              NavigationDestination(
-                icon: Icon(Icons.location_on_outlined),
-                selectedIcon: Icon(Icons.location_on_rounded),
-                label: 'ตำแหน่ง',
-              ),
-
-              NavigationDestination(
-                icon: Icon(Icons.event_note_outlined),
-                selectedIcon: Icon(Icons.event_note_rounded),
-                label: 'กิจกรรม',
-              ),
-
-              NavigationDestination(
-                icon: Icon(Icons.person_outline_rounded),
-                selectedIcon: Icon(Icons.person_rounded),
-                label: 'โปรไฟล์',
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -1242,42 +1385,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   // หน้าหลัก: ชุมชน | ตลาด
   // =====================================================
 
+  // สลับหน้าด้วยแท็บบนแถบด้านบน (buildHomeTabs)
   Widget buildHomeTab() {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-          child: SectionSwitch<HomeSection>(
-            value: homeSection,
-            options: const [
-              SectionOption(
-                value: HomeSection.community,
-                icon: Icons.public_rounded,
-                label: 'ชุมชน',
-              ),
-              SectionOption(
-                value: HomeSection.shop,
-                icon: Icons.storefront_rounded,
-                label: 'ตลาด',
-              ),
-            ],
-            onChanged: (value) {
-              setState(() {
-                homeSection = value;
-              });
-            },
-          ),
-        ),
-        Expanded(
-          child: homeSection == HomeSection.shop
-              ? const ShopPage()
-              : const FeedPage(
-                  key: ValueKey('feed-community'),
-                  scope: FeedScope.community,
-                ),
-        ),
-      ],
-    );
+    return homeSection == HomeSection.shop
+        ? ShopPage(refreshToken: marketRefreshToken)
+        : const FeedPage(
+            key: ValueKey('feed-community'),
+            scope: FeedScope.community,
+          );
   }
 
   // =====================================================

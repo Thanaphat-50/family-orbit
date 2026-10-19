@@ -5,7 +5,6 @@ import '../services/market_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/market_sheets.dart';
 import '../widgets/market_widgets.dart';
-import '../widgets/my_shop_banner.dart';
 import '../widgets/post_categories.dart';
 import 'market_product_page.dart';
 import 'market_shop_page.dart';
@@ -16,7 +15,10 @@ import 'market_shop_page.dart';
 // =======================================================
 
 class ShopPage extends StatefulWidget {
-  const ShopPage({super.key});
+  // เปลี่ยนค่า → โหลดตลาดใหม่ (เช่น หลังแก้ไขร้านของเรา)
+  final int refreshToken;
+
+  const ShopPage({super.key, this.refreshToken = 0});
 
   @override
   State<ShopPage> createState() => _ShopPageState();
@@ -50,6 +52,15 @@ class _ShopPageState extends State<ShopPage> {
     super.initState();
     scrollController.addListener(onScroll);
     refresh();
+  }
+
+  @override
+  void didUpdateWidget(covariant ShopPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (oldWidget.refreshToken != widget.refreshToken) {
+      applyFilters(reloadShops: true);
+    }
   }
 
   // =====================================================
@@ -248,56 +259,6 @@ class _ShopPageState extends State<ShopPage> {
   // =====================================================
   // UI
   // =====================================================
-
-  Widget buildHero() {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF5C240B), marketColor, Color(0xFFFFAE5C)],
-        ),
-        borderRadius: BorderRadius.circular(26),
-      ),
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Positioned(
-            right: -6,
-            bottom: -16,
-            child: Icon(
-              Icons.storefront_rounded,
-              size: 96,
-              color: Colors.white.withValues(alpha: 0.14),
-            ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'ตลาดใกล้บ้าน',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 23,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'ของกิน ของใช้ และบริการจากร้านในชุมชน',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.85),
-                  fontSize: 13,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget buildSearchField() {
     return TextField(
@@ -530,7 +491,7 @@ class _ShopPageState extends State<ShopPage> {
             Text(
               isFiltering || province != null
                   ? 'ลองเปลี่ยนคำค้น จังหวัด หรือหมวด'
-                  : 'เปิดร้านแล้วเป็นร้านแรกในตลาดได้เลย',
+                  : 'กดไอคอนร้าน 🏪 ด้านบนเพื่อเปิดร้านแรกในตลาด',
               style: const TextStyle(color: AppColors.muted, fontSize: 13),
             ),
           ],
@@ -580,17 +541,11 @@ class _ShopPageState extends State<ShopPage> {
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
             sliver: SliverList.list(
               children: [
-                buildHero(),
-                const SizedBox(height: 14),
                 buildSearchField(),
                 const SizedBox(height: 10),
                 buildFilters(),
-                const SizedBox(height: 16),
-
-                // เปิดร้าน / ร้านของฉัน
-                const MyShopBanner(),
                 if (showShops) ...[
-                  const SizedBox(height: 22),
+                  const SizedBox(height: 20),
                   buildSectionTitle('ร้านในตลาด'),
                   const SizedBox(height: 10),
                   buildShopStrip(),
