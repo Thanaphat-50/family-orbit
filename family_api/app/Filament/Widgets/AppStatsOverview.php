@@ -49,7 +49,10 @@ class AppStatsOverview extends StatsOverviewWidget
                 ->color($pendingReports > 0 ? 'danger' : 'success'),
 
             Stat::make('ร้านรออนุมัติ', $pendingShops)
-                ->description('เปิดขายอยู่: ' . Shop::where('status', Shop::STATUS_ACTIVE)->count() . ' ร้าน')
+                ->description(
+                    'เปิดขายอยู่: ' . Shop::where('status', Shop::STATUS_ACTIVE)->count() . ' ร้าน · '
+                        . 'ร้านแนะนำ: ' . Shop::featured()->count() . '/' . (int) config('market.featured_slots')
+                )
                 ->color($pendingShops > 0 ? 'warning' : 'success'),
         ];
     }

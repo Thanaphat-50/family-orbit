@@ -124,15 +124,13 @@ class MarketService {
     return ApiHelper.decode(response);
   }
 
-  // ร้านที่เปิดขายและมีสินค้า (แถบร้านหน้าตลาด)
-  static Future<Map<String, dynamic>> getMarketShops({String? province}) async {
+  // ร้านแนะนำ (ร้านที่เช่าพื้นที่) สำหรับแบนเนอร์ด้านบนตลาด
+  // ร้านละมี preview_images (รูปสินค้าล่าสุดไม่เกิน 3 รูป)
+  static Future<Map<String, dynamic>> getFeaturedShops() async {
     final headers = await _headers();
 
-    final uri = Uri.parse('$baseUrl/market/shops')
-        .replace(queryParameters: {'province': ?province});
-
     final response = await ApiHelper.request(
-      () => http.get(uri, headers: headers),
+      () => http.get(Uri.parse('$baseUrl/market/featured'), headers: headers),
     );
 
     return ApiHelper.decode(response);

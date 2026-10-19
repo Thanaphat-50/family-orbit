@@ -145,9 +145,10 @@ Route::middleware('auth:sanctum')->group(function () {
         'reportProduct'
     ])->middleware('throttle:ugc');
 
-    Route::get('/market/shops', [
+    // ร้านแนะนำ (ร้านที่เช่าพื้นที่) บนสุดของตลาด
+    Route::get('/market/featured', [
         MarketController::class,
-        'shops'
+        'featured'
     ]);
 
     Route::get('/market/shops/{shop}', [

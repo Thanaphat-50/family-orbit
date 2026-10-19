@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Filament\Resources\Products\Pages\ListProducts;
+use App\Filament\Resources\Shops\Pages\ListShops;
+use App\Models\AppNotification;
 use App\Models\Product;
 use App\Models\Shop;
 use App\Models\User;
@@ -171,26 +173,131 @@ class MarketTest extends TestCase
             ->assertJsonPath('shop.is_mine', true);
     }
 
-    public function test_shop_page_and_shop_strip(): void
+    public function test_shop_page_lists_shown_products(): void
     {
         $shop = $this->shop();
         $this->product($shop, 'ผักกาด');
         $this->product($shop, 'ซ่อนไว้', ['status' => Product::STATUS_HIDDEN]);
-
-        // ร้านเปิดแต่ยังไม่มีสินค้า → ไม่แสดงในแถบร้าน
-        $this->shop('ร้านว่าง');
 
         Sanctum::actingAs(User::factory()->create());
 
         $this->getJson("/api/market/shops/{$shop->id}")
             ->assertOk()
             ->assertJsonPath('shop.name', 'ร้านป้าแดง')
+            ->assertJsonPath('shop.is_featured', false)
             ->assertJsonCount(1, 'products');
+    }
 
-        $this->getJson('/api/market/shops')
+    // =====================================================
+    // ร้านแนะนำ (ร้านที่เช่าพื้นที่)
+    // =====================================================
+
+    public function test_featured_endpoint_lists_only_current_featured_shops(): void
+    {
+        $featured = $this->shop('ร้านเช่า');
+        $featured->update(['featured_until' => now()->addDays(10)]);
+        $this->product($featured, 'ผักกาด');
+        $this->product($featured, 'ซ่อนไว้', ['status' => Product::STATUS_HIDDEN]);
+
+        // หมดเวลาแล้ว / ร้านถูกระงับ / ร้านปกติ → ไม่ขึ้นแบนเนอร์
+        $this->shop('ร้านหมดเวลา')->update(['featured_until' => now()->subDay()]);
+        $this->shop('ร้านถูกระงับ', Shop::STATUS_SUSPENDED)->update(['featured_until' => now()->addDays(10)]);
+        $this->shop('ร้านปกติ');
+
+        Sanctum::actingAs(User::factory()->create());
+
+        $response = $this->getJson('/api/market/featured')
             ->assertOk()
             ->assertJsonCount(1, 'shops')
-            ->assertJsonPath('shops.0.products_count', 1);
+            ->assertJsonPath('shops.0.name', 'ร้านเช่า')
+            ->assertJsonPath('shops.0.is_featured', true)
+            ->assertJsonPath('shops.0.products_count', 1)
+            ->assertJsonCount(1, 'shops.0.preview_images')
+            ->assertJsonMissingPath('shops.0.user_id');
+
+        $this->assertStringContainsString('/storage/product_images/', $response->json('shops.0.preview_images.0'));
+
+        $this->getJson("/api/market/shops/{$featured->id}")
+            ->assertJsonPath('shop.is_featured', true);
+    }
+
+    public function test_featured_shop_of_blocked_owner_is_hidden(): void
+    {
+        $owner = User::factory()->create();
+        $this->shop(owner: $owner)->update(['featured_until' => now()->addDays(10)]);
+
+        $viewer = User::factory()->create();
+        $viewer->blockedUsers()->attach($owner->id);
+
+        Sanctum::actingAs($viewer);
+
+        $this->getJson('/api/market/featured')->assertJsonCount(0, 'shops');
+    }
+
+    public function test_admin_can_feature_and_unfeature_shop(): void
+    {
+        $admin = User::factory()->create();
+        $admin->is_admin = true;
+        $admin->save();
+
+        $owner = User::factory()->create();
+        $shop = $this->shop(owner: $owner);
+
+        $this->actingAs($admin);
+
+        Livewire::test(ListShops::class)
+            ->callAction(
+                TestAction::make('feature')->table($shop),
+                ['until' => now()->addDays(30)->toDateString()]
+            )
+            ->assertHasNoFormErrors();
+
+        $shop->refresh();
+
+        $this->assertTrue($shop->isFeatured());
+
+        // วันที่ที่เลือก = 23:59 ของวันนั้นตามเวลาไทย
+        $this->assertSame(
+            now()->addDays(30)->toDateString() . ' 23:59:59',
+            $shop->featured_until->copy()->setTimezone('Asia/Bangkok')->format('Y-m-d H:i:s')
+        );
+
+        $this->assertStringContainsString(
+            now()->addDays(30)->format('d/m/Y'),
+            AppNotification::where('user_id', $owner->id)->latest('id')->value('message')
+        );
+
+        $this->assertSame(
+            1,
+            AppNotification::where('user_id', $owner->id)->where('type', 'shop_status')->count()
+        );
+
+        Livewire::test(ListShops::class)
+            ->callAction(TestAction::make('unfeature')->table($shop));
+
+        $this->assertFalse($shop->fresh()->isFeatured());
+    }
+
+    public function test_featured_slots_are_limited(): void
+    {
+        config(['market.featured_slots' => 1]);
+
+        $admin = User::factory()->create();
+        $admin->is_admin = true;
+        $admin->save();
+
+        $this->shop('ร้านเช่าแล้ว')->update(['featured_until' => now()->addDays(10)]);
+        $second = $this->shop('ร้านที่สอง');
+
+        $this->actingAs($admin);
+
+        Livewire::test(ListShops::class)
+            ->callAction(
+                TestAction::make('feature')->table($second),
+                ['until' => now()->addDays(30)->toDateString()]
+            );
+
+        $this->assertFalse($second->fresh()->isFeatured());
     }
 
     public function test_blocked_owner_shop_is_hidden(): void
@@ -206,7 +313,6 @@ class MarketTest extends TestCase
 
         $this->assertSame([], $this->titles($this->getJson('/api/market/products')));
         $this->getJson("/api/market/shops/{$shop->id}")->assertNotFound();
-        $this->getJson('/api/market/shops')->assertJsonCount(0, 'shops');
     }
 
     // =====================================================

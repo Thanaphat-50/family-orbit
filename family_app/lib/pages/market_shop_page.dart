@@ -4,6 +4,7 @@ import '../data/market_data.dart';
 import '../services/market_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/community_sheets.dart';
+import '../widgets/featured_shops_banner.dart';
 import '../widgets/market_widgets.dart';
 import 'market_product_page.dart';
 
@@ -172,6 +173,10 @@ class _MarketShopPageState extends State<MarketShopPage> {
                         fontWeight: FontWeight.w800,
                       ),
                     ),
+                    if (data['is_featured'] == true) ...[
+                      const SizedBox(height: 4),
+                      const FeaturedBadge(),
+                    ],
                     const SizedBox(height: 4),
                     Text(
                       [

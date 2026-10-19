@@ -5,7 +5,9 @@ namespace App\Filament\Resources\Shops\Tables;
 use App\Models\Shop;
 use App\Support\MediaStorage;
 use Filament\Actions\Action;
+use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Textarea;
+use Filament\Notifications\Notification;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\ImageColumn;
 use Filament\Tables\Columns\TextColumn;
@@ -13,6 +15,7 @@ use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Carbon;
 
 class ShopsTable
 {
@@ -71,12 +74,62 @@ class ShopsTable
                         default => 'danger',
                     }),
 
+                // ร้านแนะนำ: แสดงวันหมดอายุ (เลยวันแล้วเป็นสีเทา)
+                TextColumn::make('featured_until')
+                    ->label('แนะนำถึง')
+                    ->date('d/m/Y', config('market.timezone'))
+                    ->placeholder('-')
+                    ->badge()
+                    ->color(fn (Shop $record) => $record->isFeatured() ? 'warning' : 'gray')
+                    ->sortable(),
+
                 TextColumn::make('created_at')
                     ->label('สมัครเมื่อ')
                     ->since()
                     ->sortable(),
             ])
             ->recordActions([
+                // ร้านที่เช่าพื้นที่ → ขึ้นแบนเนอร์ร้านแนะนำจนถึงวันที่เลือก
+                Action::make('feature')
+                    ->label(fn (Shop $record) => $record->isFeatured() ? 'ต่ออายุแนะนำ' : 'ตั้งร้านแนะนำ')
+                    ->icon(Heroicon::OutlinedStar)
+                    ->color('warning')
+                    ->visible(fn (Shop $record) => $record->isActive())
+                    ->schema([
+                        DatePicker::make('until')
+                            ->label('แสดงเป็นร้านแนะนำถึงวันที่')
+                            ->required()
+                            ->minDate(today()->addDay())
+                            ->default(today()->addDays(30)),
+                    ])
+                    ->action(function (Shop $record, array $data, Action $action) {
+                        $slots = (int) config('market.featured_slots');
+
+                        $used = Shop::featured()->whereKeyNot($record->getKey())->count();
+
+                        if ($used >= $slots) {
+                            Notification::make()
+                                ->title("ร้านแนะนำเต็มแล้ว ({$slots} ร้าน)")
+                                ->body('ยกเลิกร้านแนะนำร้านอื่นก่อน หรือเพิ่มจำนวนใน MARKET_FEATURED_SLOTS')
+                                ->danger()
+                                ->send();
+
+                            $action->halt();
+                        }
+
+                        $record->feature(
+                            Carbon::parse($data['until'], config('market.timezone'))->endOfDay()
+                        );
+                    }),
+
+                Action::make('unfeature')
+                    ->label('ยกเลิกแนะนำ')
+                    ->icon(Heroicon::OutlinedXMark)
+                    ->color('gray')
+                    ->requiresConfirmation()
+                    ->visible(fn (Shop $record) => $record->isFeatured())
+                    ->action(fn (Shop $record) => $record->unfeature()),
+
                 // ตรวจแล้วผ่าน → เปิดขาย (ใช้คืนร้านที่ถูกระงับด้วย)
                 Action::make('approve')
                     ->label(fn (Shop $record) => $record->status === Shop::STATUS_SUSPENDED ? 'เปิดร้านอีกครั้ง' : 'อนุมัติ')
@@ -134,6 +187,10 @@ class ShopsTable
                 Filter::make('reported')
                     ->label('ถูกรายงาน')
                     ->query(fn (Builder $query) => $query->has('reports')),
+
+                Filter::make('featured')
+                    ->label('ร้านแนะนำ')
+                    ->query(fn (Builder $query) => $query->featured()),
             ]);
     }
 }

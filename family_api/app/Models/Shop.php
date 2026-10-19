@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Support\MediaStorage;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class Shop extends Model
@@ -35,6 +36,7 @@ class Shop extends Model
         'status',
         'status_reason',
         'approved_at',
+        'featured_until',
         'terms_accepted_at',
     ];
 
@@ -44,10 +46,12 @@ class Shop extends Model
 
     protected $appends = [
         'logo_url',
+        'is_featured',
     ];
 
     protected $casts = [
         'approved_at' => 'datetime',
+        'featured_until' => 'datetime',
         'terms_accepted_at' => 'datetime',
     ];
 
@@ -75,6 +79,49 @@ class Shop extends Model
     public function isActive(): bool
     {
         return $this->status === self::STATUS_ACTIVE;
+    }
+
+    // ร้านแนะนำที่ยังไม่หมดเวลา (ร้านต้องเปิดขายอยู่ด้วย)
+    public function scopeFeatured(Builder $query): Builder
+    {
+        return $query->active()
+            ->whereNotNull('featured_until')
+            ->where('featured_until', '>', now());
+    }
+
+    public function isFeatured(): bool
+    {
+        return $this->isActive()
+            && $this->featured_until !== null
+            && $this->featured_until->isFuture();
+    }
+
+    public function getIsFeaturedAttribute(): bool
+    {
+        return $this->isFeatured();
+    }
+
+    // =====================================================
+    // ร้านแนะนำ (ตั้งโดย Admin) + แจ้งเจ้าของร้าน
+    // =====================================================
+
+    public function feature(\DateTimeInterface $until): void
+    {
+        // แปลงเป็น UTC ก่อนบันทึก (Laravel บันทึกเวลาโดยไม่แปลงเขตเวลาให้)
+        $this->featured_until = Carbon::instance($until)->utc();
+        $this->save();
+
+        $this->notifyOwner(
+            'ร้านของคุณขึ้นร้านแนะนำแล้ว',
+            'ร้าน "' . $this->name . '" แสดงด้านบนของตลาดถึงวันที่ '
+                . $this->featured_until->copy()->setTimezone(config('market.timezone'))->format('d/m/Y')
+        );
+    }
+
+    public function unfeature(): void
+    {
+        $this->featured_until = null;
+        $this->save();
     }
 
     public function getLogoUrlAttribute(): ?string

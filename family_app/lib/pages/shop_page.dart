@@ -4,6 +4,7 @@ import '../data/market_data.dart';
 import '../services/market_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/market_sheets.dart';
+import '../widgets/featured_shops_banner.dart';
 import '../widgets/market_widgets.dart';
 import '../widgets/post_categories.dart';
 import 'market_product_page.dart';
@@ -11,7 +12,7 @@ import 'market_shop_page.dart';
 
 // =======================================================
 // หน้าตลาด
-// ค้นหา / กรองจังหวัดและหมวด / ร้านในตลาด / สินค้าใหม่
+// ค้นหา / กรองจังหวัดและหมวด / ร้านแนะนำ (ร้านที่เช่า) / สินค้าใหม่
 // =======================================================
 
 class ShopPage extends StatefulWidget {
@@ -34,7 +35,7 @@ class _ShopPageState extends State<ShopPage> {
   String? province;
 
   List<Map<String, dynamic>> products = [];
-  List<Map<String, dynamic>> shops = [];
+  List<Map<String, dynamic>> featuredShops = [];
 
   bool isLoading = true;
   bool isLoadingMore = false;
@@ -59,7 +60,8 @@ class _ShopPageState extends State<ShopPage> {
     super.didUpdateWidget(oldWidget);
 
     if (oldWidget.refreshToken != widget.refreshToken) {
-      applyFilters(reloadShops: true);
+      applyFilters();
+      loadFeatured();
     }
   }
 
@@ -68,7 +70,7 @@ class _ShopPageState extends State<ShopPage> {
   // =====================================================
 
   Future<void> refresh() async {
-    await Future.wait([loadProducts(), loadShops()]);
+    await Future.wait([loadProducts(), loadFeatured()]);
   }
 
   Future<void> loadProducts({bool loadMore = false}) async {
@@ -140,20 +142,17 @@ class _ShopPageState extends State<ShopPage> {
     }
   }
 
-  Future<void> loadShops() async {
-    final String? selected = province;
-
+  // ร้านแนะนำ (ร้านที่เช่าพื้นที่) แสดงทุกครั้งที่เข้าตลาด ไม่ขึ้นกับตัวกรอง
+  Future<void> loadFeatured() async {
     try {
-      final result = await MarketService.getMarketShops(province: selected);
+      final result = await MarketService.getFeaturedShops();
 
-      if (!mounted || selected != province || result['status'] != true) {
-        return;
-      }
+      if (!mounted || result['status'] != true) return;
 
       final dynamic raw = result['shops'];
 
       setState(() {
-        shops = raw is List
+        featuredShops = raw is List
             ? raw
                   .whereType<Map>()
                   .map((item) => Map<String, dynamic>.from(item))
@@ -161,12 +160,12 @@ class _ShopPageState extends State<ShopPage> {
             : [];
       });
     } catch (_) {
-      // แถบร้านเป็นส่วนเสริม โหลดไม่ได้ก็ซ่อนไว้
+      // แบนเนอร์เป็นส่วนเสริม โหลดไม่ได้ก็ซ่อนไว้
     }
   }
 
-  // เปลี่ยนตัวกรอง → ล้างผลเดิมแล้วโหลดใหม่
-  void applyFilters({bool reloadShops = false}) {
+  // เปลี่ยนตัวกรอง → ล้างผลเดิมแล้วโหลดสินค้าใหม่
+  void applyFilters() {
     setState(() {
       generation++;
       products = [];
@@ -177,8 +176,6 @@ class _ShopPageState extends State<ShopPage> {
     });
 
     loadProducts();
-
-    if (reloadShops) loadShops();
   }
 
   void onScroll() {
@@ -218,12 +215,12 @@ class _ShopPageState extends State<ShopPage> {
     if (picked == null || picked == province || !mounted) return;
 
     province = picked;
-    applyFilters(reloadShops: true);
+    applyFilters();
   }
 
   void clearProvince() {
     province = null;
-    applyFilters(reloadShops: true);
+    applyFilters();
   }
 
   Future<void> openProduct(Map<String, dynamic> product) async {
@@ -367,80 +364,6 @@ class _ShopPageState extends State<ShopPage> {
     );
   }
 
-  // แถบร้านในตลาด
-  Widget buildShopStrip() {
-    return SizedBox(
-      height: 132,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: shops.length,
-        separatorBuilder: (context, index) => const SizedBox(width: 10),
-        itemBuilder: (context, index) {
-          final Map<String, dynamic> shop = shops[index];
-
-          final String? logoUrl = shop['logo_url']?.toString();
-
-          final int? id = (shop['id'] as num?)?.toInt();
-
-          return SizedBox(
-            width: 116,
-            child: Material(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(20),
-                onTap: id == null ? null : () => openShop(id),
-                child: Ink(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: AppColors.border),
-                  ),
-                  child: Column(
-                    children: [
-                      CircleAvatar(
-                        radius: 24,
-                        backgroundColor: marketColor.withValues(alpha: 0.10),
-                        foregroundImage: logoUrl != null
-                            ? NetworkImage(logoUrl)
-                            : null,
-                        child: const Icon(
-                          Icons.storefront_rounded,
-                          color: marketColor,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        shop['name']?.toString() ?? '',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: AppColors.navy,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        shop['province']?.toString() ?? '',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: AppColors.muted,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
   // ยังไม่มีสินค้า / โหลดไม่สำเร็จ / ท้ายรายการ
   Widget buildFeedState() {
     if (isLoading) {
@@ -527,7 +450,8 @@ class _ShopPageState extends State<ShopPage> {
 
   @override
   Widget build(BuildContext context) {
-    final bool showShops = shops.isNotEmpty && !isFiltering;
+    // ร้านแนะนำแสดงตลอด ยกเว้นตอนค้นหา / เลือกหมวด (ให้เห็นผลลัพธ์ทันที)
+    final bool showFeatured = featuredShops.isNotEmpty && !isFiltering;
 
     return RefreshIndicator(
       color: marketColor,
@@ -544,11 +468,27 @@ class _ShopPageState extends State<ShopPage> {
                 buildSearchField(),
                 const SizedBox(height: 10),
                 buildFilters(),
-                if (showShops) ...[
+                if (showFeatured) ...[
                   const SizedBox(height: 20),
-                  buildSectionTitle('ร้านในตลาด'),
+                  const Row(
+                    children: [
+                      Icon(Icons.star_rounded, color: featuredColor, size: 22),
+                      SizedBox(width: 4),
+                      Text(
+                        'ร้านแนะนำ',
+                        style: TextStyle(
+                          color: AppColors.navy,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 10),
-                  buildShopStrip(),
+                  FeaturedShopsBanner(
+                    shops: featuredShops,
+                    onOpenShop: openShop,
+                  ),
                 ],
                 const SizedBox(height: 22),
                 buildSectionTitle(isFiltering ? 'ผลการค้นหา' : 'สินค้าใหม่'),

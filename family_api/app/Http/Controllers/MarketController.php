@@ -21,9 +21,6 @@ class MarketController extends Controller
 {
     private const PAGE_SIZE = 20;
 
-    // จำนวนร้านในแถบ "ร้านในตลาด" หน้าแรก
-    private const SHOP_STRIP_SIZE = 12;
-
     // =====================================================
     // GET /api/market/products?q=&category=&province=&page=
     // =====================================================
@@ -104,25 +101,25 @@ class MarketController extends Controller
     }
 
     // =====================================================
-    // GET /api/market/shops?province=
-    // ร้านที่เปิดขายและมีสินค้าแสดงอยู่ (ใหม่ล่าสุดก่อน)
+    // GET /api/market/featured
+    // ร้านแนะนำ (ร้านที่เช่าพื้นที่) สำหรับแบนเนอร์ด้านบนตลาด
+    // - สลับลำดับทุกครั้ง ให้ทุกร้านที่เช่ามีโอกาสขึ้นก่อนเท่ากัน
+    // - ส่งรูปสินค้าล่าสุดไม่เกิน 3 รูปไปแสดงในแบนเนอร์
     // =====================================================
 
-    public function shops(Request $request)
+    public function featured(Request $request)
     {
-        $filters = $request->validate([
-            'province' => ['nullable', Rule::in(config('market.provinces'))],
-        ]);
-
         $blockedIds = $request->user()->blockedUsers()->pluck('users.id');
 
-        $shops = Shop::active()
+        $shops = Shop::featured()
             ->whereNotIn('user_id', $blockedIds)
-            ->when($filters['province'] ?? null, fn ($query, $province) => $query->where('province', $province))
-            ->whereHas('products', fn ($products) => $this->onlyShown($products))
             ->withCount(['products as products_count' => fn ($products) => $this->onlyShown($products)])
-            ->latest('approved_at')
-            ->limit(self::SHOP_STRIP_SIZE)
+            ->with([
+                'products' => fn ($products) => $this->onlyShown($products)->latest(),
+                'products.images',
+            ])
+            ->inRandomOrder()
+            ->limit((int) config('market.featured_slots'))
             ->get();
 
         return response()->json([
@@ -130,6 +127,11 @@ class MarketController extends Controller
             'shops' => $shops->map(fn (Shop $shop) => [
                 ...$this->shopPayload($shop),
                 'products_count' => $shop->products_count,
+                'preview_images' => $shop->products
+                    ->map(fn (Product $product) => $product->images->first()?->url)
+                    ->filter()
+                    ->take(3)
+                    ->values(),
             ])->values(),
         ]);
     }
@@ -294,6 +296,7 @@ class MarketController extends Controller
             'province',
             'district',
             'logo_url',
+            'is_featured',
         ]);
     }
 

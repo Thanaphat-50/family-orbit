@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../data/market_data.dart';
 import '../services/market_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/featured_shops_banner.dart';
 import '../widgets/market_sheets.dart';
 import 'product_form_page.dart';
 import 'shop_form_page.dart';
@@ -354,12 +355,44 @@ class _MyShopPageState extends State<MyShopPage> {
                     ],
                   ),
                 ),
+
+                // ร้านที่เช่าพื้นที่: แสดงวันหมดอายุของร้านแนะนำ
+                if (data['is_featured'] == true) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      const FeaturedBadge(),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          'ถึง ${formatShortDate(data['featured_until'])}',
+                          style: const TextStyle(
+                            color: AppColors.muted,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
         ],
       ),
     );
+  }
+
+  // "2026-11-18T16:59:59.000000Z" → "18/11/2026" (เวลาเครื่อง)
+  String formatShortDate(dynamic value) {
+    final DateTime? date = DateTime.tryParse('${value ?? ''}')?.toLocal();
+
+    if (date == null) return '-';
+
+    final String day = date.day.toString().padLeft(2, '0');
+    final String month = date.month.toString().padLeft(2, '0');
+
+    return '$day/$month/${date.year}';
   }
 
   // =====================================================
