@@ -130,6 +130,16 @@ Route::middleware('auth:sanctum')->group(function () {
         'unblock'
     ]);
 
+    Route::get('/users/{user}/profile', [
+        CommunityController::class,
+        'profile'
+    ]);
+
+    Route::post('/users/{user}/report', [
+        CommunityController::class,
+        'report'
+    ])->middleware('throttle:ugc');
+
     Route::delete('/comments/{comment}', [
         CommentController::class,
         'destroy'

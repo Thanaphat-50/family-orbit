@@ -4,8 +4,10 @@ import 'package:image_picker/image_picker.dart';
 import '../data/market_data.dart';
 import '../services/profile_service.dart';
 import '../theme/app_theme.dart';
+import 'my_posts_page.dart';
 import 'my_shop_page.dart';
 import 'settings_page.dart';
+import 'user_profile_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -130,6 +132,45 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   bool get hasPhoto => photoUrl != null;
+
+  int? get userId {
+    final dynamic value = user['id'];
+
+    return value is num ? value.toInt() : null;
+  }
+
+  // ตัวเลขจาก /api/profile (posts, likes_received)
+  int stat(String key) {
+    final dynamic stats = profileData['stats'];
+
+    final dynamic value = stats is Map ? stats[key] : null;
+
+    return value is num ? value.toInt() : 0;
+  }
+
+  // =====================================================
+  // เปิดหน้าอื่น
+  // =====================================================
+
+  Future<void> openMyPosts() async {
+    await Navigator.of(context)
+        .push(MaterialPageRoute(builder: (context) => const MyPostsPage()));
+
+    // อาจลบโพสต์ไปแล้ว → โหลดตัวเลขใหม่
+    if (mounted) loadProfile();
+  }
+
+  void openPublicProfile() {
+    final int? id = userId;
+
+    if (id == null) return;
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => UserProfilePage(userId: id, name: userName),
+      ),
+    );
+  }
 
   String get initial {
     final name = userName.trim();
@@ -577,7 +618,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Widget buildProfileHeader() {
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 28, 20, 25),
+      padding: const EdgeInsets.fromLTRB(20, 26, 20, 20),
 
       decoration: BoxDecoration(
         gradient: const LinearGradient(
@@ -595,7 +636,7 @@ class _ProfilePageState extends State<ProfilePage> {
         children: [
           buildAvatar(),
 
-          const SizedBox(height: 17),
+          const SizedBox(height: 15),
 
           Text(
             userName,
@@ -611,7 +652,7 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
           ),
 
-          const SizedBox(height: 5),
+          const SizedBox(height: 4),
 
           Text(
             email,
@@ -623,8 +664,9 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
           ),
 
-          const SizedBox(height: 17),
+          const SizedBox(height: 14),
 
+          // ครอบครัว + บทบาท
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
 
@@ -650,14 +692,14 @@ class _ProfilePageState extends State<ProfilePage> {
 
                 Flexible(
                   child: Text(
-                    familyName,
+                    family == null ? familyName : '$familyName · $role',
 
                     overflow: TextOverflow.ellipsis,
 
                     style: const TextStyle(
                       color: Colors.white,
 
-                      fontSize: 10,
+                      fontSize: 12,
 
                       fontWeight: FontWeight.w600,
                     ),
@@ -666,7 +708,86 @@ class _ProfilePageState extends State<ProfilePage> {
               ],
             ),
           ),
+
+          const SizedBox(height: 18),
+
+          Row(
+            children: [
+              Expanded(
+                child: buildHeaderStat(
+                  value: stat('posts'),
+
+                  label: 'โพสต์',
+
+                  onTap: openMyPosts,
+                ),
+              ),
+
+              const SizedBox(width: 10),
+
+              Expanded(
+                child: buildHeaderStat(
+                  value: stat('likes_received'),
+
+                  label: 'ถูกใจที่ได้รับ',
+
+                  onTap: openMyPosts,
+                ),
+              ),
+            ],
+          ),
         ],
+      ),
+    );
+  }
+
+  // กล่องตัวเลขในหัวโปรไฟล์ กดแล้วเปิดโพสต์ของฉัน
+  Widget buildHeaderStat({
+    required int value,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.white.withValues(alpha: 0.12),
+
+      borderRadius: BorderRadius.circular(16),
+
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+
+        onTap: onTap,
+
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+
+          child: Column(
+            children: [
+              Text(
+                '$value',
+
+                style: const TextStyle(
+                  color: Colors.white,
+
+                  fontSize: 20,
+
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+
+              const SizedBox(height: 1),
+
+              Text(
+                label,
+
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.78),
+
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -828,7 +949,7 @@ class _ProfilePageState extends State<ProfilePage> {
           const SizedBox(height: 23),
 
           const Text(
-            'ครอบครัว',
+            'กิจกรรมของฉัน',
 
             style: TextStyle(
               color: AppColors.navy,
@@ -842,20 +963,31 @@ class _ProfilePageState extends State<ProfilePage> {
           const SizedBox(height: 10),
 
           buildSettingTile(
-            icon: Icons.family_restroom_rounded,
+            icon: Icons.article_outlined,
 
-            title: familyName,
+            title: 'โพสต์ของฉัน',
 
-            subtitle: role,
+            subtitle: '${stat('posts')} โพสต์ ในครอบครัวและชุมชน',
 
-            color: AppColors.sky,
-
-            onTap: () {
-              showMessage(
-                family == null ? 'ยังไม่ได้เข้าร่วมครอบครัว' : 'คุณเป็น $role',
-              );
-            },
+            onTap: openMyPosts,
           ),
+
+          // ชุมชนใช้ได้เมื่อมีครอบครัวแล้ว
+          if (family != null) ...[
+            const SizedBox(height: 9),
+
+            buildSettingTile(
+              icon: Icons.public_rounded,
+
+              title: 'โปรไฟล์ในชุมชน',
+
+              subtitle: 'ดูว่าคนในชุมชนเห็นคุณแบบไหน',
+
+              color: const Color(0xFF0B7FA6),
+
+              onTap: openPublicProfile,
+            ),
+          ],
 
           const SizedBox(height: 23),
 

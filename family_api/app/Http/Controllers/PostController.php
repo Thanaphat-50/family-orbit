@@ -34,6 +34,8 @@ class PostController extends Controller
     // ?scope=family    (ค่าเริ่มต้น) โพสต์ในครอบครัว
     // ?scope=community &page=N      โพสต์ชุมชนของทุกคน
     //                  &category=qa กรองตามหมวด (ไม่ส่ง = ทุกหมวด)
+    //                  &user_id=5   เฉพาะโพสต์ของผู้ใช้คนนี้ (หน้าโปรไฟล์)
+    // ?scope=mine      &page=N      โพสต์ของเราเอง (ครอบครัว + ชุมชน)
     // =====================================================
 
     public function index(Request $request)
@@ -56,9 +58,18 @@ class PostController extends Controller
         if ($request->query('scope') === 'community') {
             $data = $request->validate([
                 'category' => ['nullable', Rule::in(Post::CATEGORIES)],
+                'user_id' => 'nullable|integer',
             ]);
 
-            return $this->communityFeed($user, $data['category'] ?? null);
+            return $this->communityFeed(
+                $user,
+                $data['category'] ?? null,
+                isset($data['user_id']) ? (int) $data['user_id'] : null
+            );
+        }
+
+        if ($request->query('scope') === 'mine') {
+            return $this->myPosts($user, $membership);
         }
 
         $posts = Post::where(
@@ -91,13 +102,14 @@ class PostController extends Controller
     // - ไม่แสดงโพสต์/ความคิดเห็นของคนที่เราบล็อก
     // =====================================================
 
-    private function communityFeed(User $user, ?string $category)
+    private function communityFeed(User $user, ?string $category, ?int $authorId = null)
     {
         $blockedIds = $user->blockedUsers()->pluck('users.id');
 
         $paginator = Post::query()
             ->tap(fn ($query) => $this->visibleInCommunity($query, $user, $blockedIds))
             ->when($category, fn ($query) => $query->where('category', $category))
+            ->when($authorId, fn ($query) => $query->where('user_id', $authorId))
             ->with($this->communityRelations($user, $blockedIds))
             ->tap(fn ($query) => $this->withLikeInfo($query, $user))
             ->orderByDesc('created_at')
@@ -112,6 +124,48 @@ class PostController extends Controller
             'status' => true,
             'scope' => 'community',
             'category' => $category,
+            'current_user' => $this->currentUserPayload($user),
+            'posts' => $posts,
+            'page' => $paginator->currentPage(),
+            'has_more' => $paginator->hasMorePages(),
+        ]);
+    }
+
+    // =====================================================
+    // โพสต์ของเราเอง (หน้า "โพสต์ของฉัน")
+    // - โพสต์ครอบครัวในครอบครัวปัจจุบัน + โพสต์ชุมชนทั้งหมด
+    // - โพสต์ชุมชนที่ถูกซ่อนก็แสดง (is_hidden) ให้เจ้าของรู้
+    // =====================================================
+
+    private function myPosts(User $user, FamilyMember $membership)
+    {
+        $blockedIds = $user->blockedUsers()->pluck('users.id');
+
+        $paginator = Post::where('user_id', $user->id)
+            ->where(function ($query) use ($membership) {
+                $query->where('visibility', 'community')
+                    ->orWhere(function ($family) use ($membership) {
+                        $family->where('visibility', 'family')
+                            ->where('family_id', $membership->family_id);
+                    });
+            })
+            ->with($this->communityRelations($user, $blockedIds))
+            ->tap(fn ($query) => $this->withLikeInfo($query, $user))
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->simplePaginate(self::COMMUNITY_PAGE_SIZE);
+
+        $posts = collect($paginator->items())
+            ->map(function (Post $post) use ($user) {
+                $post->setAttribute('is_hidden', $post->hidden_at !== null);
+
+                return $this->withOwnership($post, $user);
+            })
+            ->values();
+
+        return response()->json([
+            'status' => true,
+            'scope' => 'mine',
             'current_user' => $this->currentUserPayload($user),
             'posts' => $posts,
             'page' => $paginator->currentPage(),
@@ -547,12 +601,7 @@ class PostController extends Controller
     // ไม่ถูกซ่อน, ไม่ใช่โพสต์ที่เรารายงานแล้ว, ไม่ใช่ของคนที่เราบล็อก
     private function visibleInCommunity($query, User $user, $blockedIds)
     {
-        return $query->where('visibility', 'community')
-            ->whereNull('hidden_at')
-            ->whereDoesntHave('reports', function ($reports) use ($user) {
-                $reports->where('user_id', $user->id);
-            })
-            ->whereNotIn('user_id', $blockedIds);
+        return $query->visibleInCommunityTo($user, $blockedIds);
     }
 
     // ข้อมูลที่โหลดมากับโพสต์ชุมชน

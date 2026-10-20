@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\Family;
 use App\Models\FamilyMember;
+use App\Models\Post;
+use App\Models\PostLike;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -36,7 +38,31 @@ class ProfileController extends Controller
                 'name' => $family->name,
             ] : null,
             'role' => $membership ? $membership->role : null,
+            'stats' => $this->stats($user, $membership),
         ]);
+    }
+
+    // ตัวเลขบนหน้าโปรไฟล์
+    // posts:          โพสต์ของเรา (ชุมชน + ครอบครัวปัจจุบัน) ตรงกับหน้า "โพสต์ของฉัน"
+    // likes_received: ถูกใจที่ได้รับในโพสต์เหล่านั้น
+    private function stats(User $user, ?FamilyMember $membership): array
+    {
+        $myPosts = fn () => Post::where('user_id', $user->id)
+            ->where(function ($query) use ($membership) {
+                $query->where('visibility', 'community');
+
+                if ($membership) {
+                    $query->orWhere(function ($family) use ($membership) {
+                        $family->where('visibility', 'family')
+                            ->where('family_id', $membership->family_id);
+                    });
+                }
+            });
+
+        return [
+            'posts' => $myPosts()->count(),
+            'likes_received' => PostLike::whereIn('post_id', $myPosts()->select('id'))->count(),
+        ];
     }
 
     // PUT /api/profile

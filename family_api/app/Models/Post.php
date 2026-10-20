@@ -82,4 +82,18 @@ class Post extends Model
     {
         return $this->visibility === 'community';
     }
+
+    // โพสต์ชุมชนที่ $viewer เห็นได้
+    // ไม่ถูกซ่อน, $viewer ยังไม่ได้รายงาน และไม่ใช่ของคนที่ $viewer บล็อก
+    public function scopeVisibleInCommunityTo($query, User $viewer, $blockedIds = null)
+    {
+        $blockedIds ??= $viewer->blockedUsers()->pluck('users.id');
+
+        return $query->where('visibility', 'community')
+            ->whereNull('hidden_at')
+            ->whereDoesntHave('reports', function ($reports) use ($viewer) {
+                $reports->where('user_id', $viewer->id);
+            })
+            ->whereNotIn('user_id', $blockedIds);
+    }
 }

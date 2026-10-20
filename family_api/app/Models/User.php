@@ -69,6 +69,12 @@ class User extends Authenticatable implements FilamentUser
         )->withTimestamps();
     }
 
+    // รายงานที่ผู้ใช้คนนี้ถูกรายงาน (Admin ดูในหน้าผู้ใช้)
+    public function reportsReceived()
+    {
+        return $this->hasMany(UserReport::class, 'reported_user_id')->latest();
+    }
+
     protected $appends = [
         'profile_image_url',
         'profile_photo_url',

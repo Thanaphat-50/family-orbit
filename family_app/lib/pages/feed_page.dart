@@ -8,9 +8,10 @@ import '../theme/app_theme.dart';
 import '../widgets/community_sheets.dart';
 import '../widgets/photo_viewer.dart';
 import '../widgets/post_categories.dart';
+import 'user_profile_page.dart';
 
 // ฟีด "ครอบครัว" (เฉพาะครอบครัว) และ "ชุมชน" (ทุกคนในแอป)
-enum FeedScope { family, community }
+enum FeedScope { family, community, mine }
 
 // ข้อมูลของแต่ละฟีด แยกกันเพื่อสลับแท็บได้โดยไม่ต้องโหลดใหม่
 class _ScopeFeed {
@@ -30,9 +31,11 @@ class _ScopeFeed {
   bool hasMore = false;
 }
 
-// ฟีดโพสต์ ใช้ได้ 3 แบบ
+// ฟีดโพสต์ ใช้ได้หลายแบบ
 // - FeedScope.community: หน้าหลัก (ทุกครอบครัวเห็น)
 // - FeedScope.family:    แท็บครอบครัว (เฉพาะครอบครัว)
+// - FeedScope.mine:      โพสต์ของฉัน (ครอบครัว + ชุมชน)
+// - community + authorId: โพสต์ชุมชนของผู้ใช้คนเดียว (หน้าโปรไฟล์)
 // - postId:              โพสต์เดียว (เปิดจากการแจ้งเตือน)
 //                        scope จะใช้ตามโพสต์ที่โหลดมา
 class FeedPage extends StatefulWidget {
@@ -40,7 +43,23 @@ class FeedPage extends StatefulWidget {
 
   final int? postId;
 
-  const FeedPage({super.key, required this.scope, this.postId});
+  // แสดงเฉพาะโพสต์ชุมชนของผู้ใช้คนนี้
+  final int? authorId;
+
+  // แสดงแทนหัวข้อฟีด (เช่น ข้อมูลโปรไฟล์)
+  final Widget? header;
+
+  // บล็อกผู้ใช้จากเมนูโพสต์สำเร็จ (หน้าโปรไฟล์ใช้อัปเดตสถานะ)
+  final ValueChanged<int>? onUserBlocked;
+
+  const FeedPage({
+    super.key,
+    required this.scope,
+    this.postId,
+    this.authorId,
+    this.header,
+    this.onUserBlocked,
+  });
 
   @override
   State<FeedPage> createState() => _FeedPageState();
@@ -89,6 +108,17 @@ class _FeedPageState extends State<FeedPage> {
 
   bool get isSinglePost => widget.postId != null;
 
+  bool get isAuthorFeed => widget.authorId != null;
+
+  // ฟีดหลักที่เขียนโพสต์ได้ (ชุมชน / ครอบครัว)
+  bool get isMainFeed =>
+      !isSinglePost && !isAuthorFeed && scope != FeedScope.mine;
+
+  // ฟีดที่โหลดทีละหน้า
+  bool get isPaged =>
+      !isSinglePost &&
+      (scope == FeedScope.community || scope == FeedScope.mine);
+
   final _ScopeFeed feed = _ScopeFeed();
 
   Map<String, dynamic>? currentUser;
@@ -122,7 +152,14 @@ class _FeedPageState extends State<FeedPage> {
   }
 
   String apiScope(FeedScope value) {
-    return value == FeedScope.community ? 'community' : 'family';
+    switch (value) {
+      case FeedScope.community:
+        return 'community';
+      case FeedScope.mine:
+        return 'mine';
+      case FeedScope.family:
+        return 'family';
+    }
   }
 
   // =====================================================
@@ -156,7 +193,8 @@ class _FeedPageState extends State<FeedPage> {
       final result = await PostService.getPosts(
         scope: apiScope(scope),
         page: page,
-        category: filterCategory,
+        category: isMainFeed ? filterCategory : null,
+        userId: widget.authorId,
       );
 
       if (!mounted || generation != feedGeneration) return;
@@ -300,11 +338,9 @@ class _FeedPageState extends State<FeedPage> {
     await loadPosts();
   }
 
-  // เลื่อนใกล้ท้ายฟีดชุมชน → โหลดหน้าถัดไป
+  // เลื่อนใกล้ท้ายฟีด → โหลดหน้าถัดไป
   void onScroll() {
-    if (isSinglePost ||
-        scope != FeedScope.community ||
-        !scrollController.hasClients) {
+    if (!isPaged || !scrollController.hasClients) {
       return;
     }
 
@@ -771,6 +807,8 @@ class _FeedPageState extends State<FeedPage> {
           removeUserFromCommunity(userId);
         });
 
+        widget.onUserBlocked?.call(userId);
+
         showMessage(result['message']?.toString() ?? 'บล็อก $name แล้ว');
       } else {
         showMessage(result['message']?.toString() ?? 'บล็อกไม่สำเร็จ');
@@ -1184,6 +1222,77 @@ class _FeedPageState extends State<FeedPage> {
   // =====================================================
   // Avatar
   // =====================================================
+
+  // กดรูป/ชื่อ → เปิดโปรไฟล์ในชุมชน
+  // (ไม่เปิดซ้ำเมื่ออยู่ในหน้าโปรไฟล์ของคนนั้นอยู่แล้ว)
+  Widget buildProfileLink({
+    required int? userId,
+    required String name,
+    required Widget child,
+  }) {
+    if (userId == null || userId == widget.authorId) return child;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => openUserProfile(userId, name),
+      child: child,
+    );
+  }
+
+  void openUserProfile(int userId, String name) {
+    dismissKeyboard();
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => UserProfilePage(
+          userId: userId,
+          name: name,
+          onBlockChanged: (blocked) {
+            if (!mounted) return;
+
+            // บล็อก → ซ่อนโพสต์ของเขาจากฟีดนี้ / เลิกบล็อก → โหลดใหม่
+            if (blocked) {
+              setState(() => removeUserFromCommunity(userId));
+            } else {
+              loadPosts();
+            }
+          },
+        ),
+      ),
+    );
+  }
+
+  // โพสต์ของเราที่ถูกซ่อนจากชุมชน (หน้าโพสต์ของฉัน)
+  Widget buildHiddenNotice() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+      decoration: BoxDecoration(
+        color: AppColors.danger.withValues(alpha: 0.07),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: const Row(
+        children: [
+          Icon(
+            Icons.visibility_off_outlined,
+            size: 16,
+            color: AppColors.danger,
+          ),
+          SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'ซ่อนจากชุมชนแล้ว เพราะถูกรายงาน (รอผู้ดูแลตรวจ)',
+              style: TextStyle(
+                color: AppColors.danger,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget buildAvatar({
     required String name,
@@ -1767,14 +1876,20 @@ class _FeedPageState extends State<FeedPage> {
               // Header
               // ===========================================
 
+              if (post['is_hidden'] == true) buildHiddenNotice(),
+
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 4, 0),
                 child: Row(
                   children: [
-                    buildAvatar(
+                    buildProfileLink(
+                      userId: community ? authorIdOf(post) : null,
                       name: name,
-                      imageUrl: getProfileImage(user),
-                      radius: 21,
+                      child: buildAvatar(
+                        name: name,
+                        imageUrl: getProfileImage(user),
+                        radius: 21,
+                      ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -1784,14 +1899,18 @@ class _FeedPageState extends State<FeedPage> {
                           Row(
                             children: [
                               Flexible(
-                                child: Text(
-                                  name,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    color: AppColors.navy,
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w800,
+                                child: buildProfileLink(
+                                  userId: community ? authorIdOf(post) : null,
+                                  name: name,
+                                  child: Text(
+                                    name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: AppColors.navy,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w800,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -2354,10 +2473,14 @@ class _FeedPageState extends State<FeedPage> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            buildAvatar(
+            buildProfileLink(
+              userId: scope == FeedScope.community ? authorId : null,
               name: commentName,
-              imageUrl: getProfileImage(commentUser),
-              radius: 15,
+              child: buildAvatar(
+                name: commentName,
+                imageUrl: getProfileImage(commentUser),
+                radius: 15,
+              ),
             ),
             const SizedBox(width: 9),
             Expanded(
@@ -2454,6 +2577,24 @@ class _FeedPageState extends State<FeedPage> {
         color: AppColors.muted,
         title: 'ไม่มีโพสต์นี้แล้ว',
         message: 'โพสต์อาจถูกลบหรือซ่อนไปแล้ว',
+      );
+    }
+
+    if (isAuthorFeed) {
+      return buildStateCard(
+        icon: Icons.public_rounded,
+        color: communityColor,
+        title: 'ยังไม่มีโพสต์ในชุมชน',
+        message: 'โพสต์ชุมชนของผู้ใช้นี้จะแสดงที่นี่',
+      );
+    }
+
+    if (scope == FeedScope.mine) {
+      return buildStateCard(
+        icon: Icons.edit_note_rounded,
+        color: AppColors.primary,
+        title: 'ยังไม่มีโพสต์',
+        message: 'โพสต์ที่คุณแชร์ทั้งในครอบครัวและชุมชนจะแสดงที่นี่',
       );
     }
 
@@ -2564,10 +2705,7 @@ class _FeedPageState extends State<FeedPage> {
       return [buildEmptyState()];
     }
 
-    return [
-      ...feed.posts.map(buildPostCard),
-      if (scope == FeedScope.community && !isSinglePost) buildFeedFooter(),
-    ];
+    return [...feed.posts.map(buildPostCard), if (isPaged) buildFeedFooter()];
   }
 
   // ท้ายฟีดชุมชน: กำลังโหลดเพิ่ม / ไม่มีโพสต์เพิ่มแล้ว
@@ -2612,10 +2750,13 @@ class _FeedPageState extends State<FeedPage> {
             physics: const AlwaysScrollableScrollPhysics(),
 
             // เว้นด้านล่างไว้ไม่ให้ปุ่ม + บังโพสต์สุดท้าย
-            padding: EdgeInsets.fromLTRB(16, 12, 16, isSinglePost ? 32 : 96),
+            padding: EdgeInsets.fromLTRB(16, 12, 16, isMainFeed ? 96 : 32),
             children: [
-              // โหมดโพสต์เดียว: ไม่มีหัวข้อฟีด ตัวกรอง และปุ่มเขียนโพสต์
-              if (!isSinglePost) ...[
+              // ฟีดหลักมีหัวข้อ + ตัวกรอง / หน้าโปรไฟล์ใช้ header ของตัวเอง
+              if (widget.header != null) ...[
+                widget.header!,
+                const SizedBox(height: 14),
+              ] else if (isMainFeed) ...[
                 buildSectionHeader(),
                 const SizedBox(height: 12),
               ],
@@ -2623,7 +2764,7 @@ class _FeedPageState extends State<FeedPage> {
             ],
           ),
         ),
-        if (!isSinglePost)
+        if (isMainFeed)
           Positioned(right: 16, bottom: 16, child: buildComposeButton()),
       ],
     );

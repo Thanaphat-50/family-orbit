@@ -16,6 +16,16 @@ const Map<String, String> reportReasons = {
   'other': 'อื่น ๆ',
 };
 
+// เหตุผลการรายงานผู้ใช้ (ตรงกับ Laravel: UserReport::REASONS)
+const Map<String, String> userReportReasons = {
+  'spam': 'สแปม / โฆษณา',
+  'harassment': 'ด่าทอ / คุกคาม',
+  'inappropriate': 'เนื้อหาไม่เหมาะสม',
+  'scam': 'หลอกลวง / ข้อมูลเท็จ',
+  'impersonation': 'แอบอ้างเป็นคนอื่น',
+  'other': 'อื่น ๆ',
+};
+
 // =======================================================
 // กฎชุมชน
 // คืนค่า true เมื่อผู้ใช้กด "ยอมรับ"
@@ -237,11 +247,13 @@ Future<String?> showCommentActionsSheet(
 // คืนค่า key ของเหตุผล หรือ null ถ้ายกเลิก
 // =======================================================
 
-// reasons: เหตุผลให้เลือก (ตลาดใช้ชุดของตัวเอง)
+// reasons: เหตุผลให้เลือก (ตลาด/ผู้ใช้ใช้ชุดของตัวเอง)
+// note:    ข้อความใต้หัวข้อ
 Future<String?> showReportReasonSheet(
   BuildContext context, {
   String title = 'รายงานโพสต์นี้',
   Map<String, String> reasons = reportReasons,
+  String note = 'เจ้าของจะไม่รู้ว่าใครเป็นคนรายงาน',
 }) {
   return showModalBottomSheet<String>(
     context: context,
@@ -263,9 +275,9 @@ Future<String?> showReportReasonSheet(
                 ),
               ),
               const SizedBox(height: 4),
-              const Text(
-                'เจ้าของจะไม่รู้ว่าใครเป็นคนรายงาน',
-                style: TextStyle(
+              Text(
+                note,
+                style: const TextStyle(
                   color: AppColors.muted,
                   fontSize: 13,
                 ),

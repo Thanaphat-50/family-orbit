@@ -2,7 +2,9 @@
 
 namespace App\Filament\Resources\Users\Schemas;
 
+use App\Models\UserReport;
 use Filament\Infolists\Components\IconEntry;
+use Filament\Infolists\Components\RepeatableEntry;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Schemas\Schema;
 
@@ -30,6 +32,30 @@ class UserInfolist
                 TextEntry::make('created_at')
                     ->label('สมัครเมื่อ')
                     ->dateTime(),
+
+                // รายงานจากผู้ใช้คนอื่น (ล่าสุดก่อน)
+                RepeatableEntry::make('reportsReceived')
+                    ->label('ถูกรายงาน')
+                    ->placeholder('ยังไม่มีรายงาน')
+                    ->columnSpanFull()
+                    ->columns(3)
+                    ->schema([
+                        TextEntry::make('reason')
+                            ->label('เหตุผล')
+                            ->formatStateUsing(fn (string $state) => UserReport::REASONS[$state] ?? $state),
+
+                        TextEntry::make('user.name')
+                            ->label('ผู้รายงาน'),
+
+                        TextEntry::make('created_at')
+                            ->label('เมื่อ')
+                            ->since(),
+
+                        TextEntry::make('details')
+                            ->label('รายละเอียด')
+                            ->placeholder('-')
+                            ->columnSpanFull(),
+                    ]),
             ]);
     }
 }

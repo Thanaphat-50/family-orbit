@@ -159,4 +159,46 @@ class ProfileService {
 
     return ApiHelper.decode(response);
   }
+
+  // =====================================================
+  // PUBLIC PROFILE (โปรไฟล์ในชุมชนของผู้ใช้คนอื่น)
+  // ไม่พบ / ไม่มีสิทธิ์ดู → status false + message
+  // =====================================================
+
+  static Future<Map<String, dynamic>> getPublicProfile(int userId) async {
+    final headers = await _headers();
+
+    final response = await ApiHelper.request(
+      () => http.get(
+        Uri.parse('$baseUrl/users/$userId/profile'),
+
+        headers: headers,
+      ),
+    );
+
+    return ApiHelper.decode(response);
+  }
+
+  // =====================================================
+  // REPORT USER
+  // =====================================================
+
+  static Future<Map<String, dynamic>> reportUser({
+    required int userId,
+    required String reason,
+  }) async {
+    final headers = await _headers();
+
+    final response = await ApiHelper.request(
+      () => http.post(
+        Uri.parse('$baseUrl/users/$userId/report'),
+
+        headers: headers,
+
+        body: jsonEncode({'reason': reason}),
+      ),
+    );
+
+    return ApiHelper.decode(response);
+  }
 }
