@@ -13,6 +13,7 @@ use App\Http\Controllers\MyProductController;
 use App\Http\Controllers\MyShopController;
 use App\Http\Controllers\ActivityController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\NotificationController;
 
 Route::get('/user', function (Request $request) {
@@ -226,6 +227,17 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/activities/{activity}', [
         ActivityController::class,
         'destroy'
+    ]);
+
+    // ตั้งค่า: แชร์ตำแหน่ง และการแจ้งเตือน
+    Route::get('/settings', [
+        SettingsController::class,
+        'show'
+    ]);
+
+    Route::put('/settings', [
+        SettingsController::class,
+        'update'
     ]);
 
     Route::get('/profile', [

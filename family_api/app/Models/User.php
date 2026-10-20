@@ -25,6 +25,8 @@ class User extends Authenticatable implements FilamentUser
         'password',
         'remember_token',
         'is_admin',
+        // ส่งผ่าน /api/settings ของเจ้าของบัญชีเท่านั้น
+        'notification_settings',
     ];
 
     protected function casts(): array
@@ -34,7 +36,20 @@ class User extends Authenticatable implements FilamentUser
             'password' => 'hashed',
             'community_terms_accepted_at' => 'datetime',
             'is_admin' => 'boolean',
+            'location_sharing' => 'boolean',
+            'notification_settings' => 'array',
         ];
+    }
+
+    // ผู้ใช้ต้องการรับการแจ้งเตือนประเภทนี้ไหม (ค่าเริ่มต้น = รับ)
+    // ประเภทที่ปิดไม่ได้ เช่น ผลตรวจร้านค้า รับเสมอ
+    public function wantsNotification(string $type): bool
+    {
+        if (!in_array($type, AppNotification::OPTIONAL_TYPES, true)) {
+            return true;
+        }
+
+        return ($this->notification_settings[$type] ?? true) === true;
     }
 
     // เข้าหน้า Admin (/admin) ได้เฉพาะผู้ดูแลระบบ

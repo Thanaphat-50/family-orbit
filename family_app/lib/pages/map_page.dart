@@ -5,6 +5,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../services/location_service.dart';
+import '../services/location_tracker.dart';
+import '../services/settings_service.dart';
 import '../theme/app_theme.dart';
 
 class MapPage extends StatefulWidget {
@@ -24,6 +26,11 @@ class _MapPageState extends State<MapPage> {
   Position? currentPosition;
 
   List<Map<String, dynamic>> familyLocations = [];
+
+  // ชื่อสมาชิกคนอื่นที่ปิดการแชร์ตำแหน่งอยู่
+  List<String> pausedNames = [];
+
+  bool isTurningOnSharing = false;
 
   bool locationAllowed = false;
 
@@ -128,7 +135,8 @@ class _MapPageState extends State<MapPage> {
         currentPosition = position;
       });
 
-      await sendLocation(position);
+      // ส่งตำแหน่งนี้ทันที แล้วให้ LocationTracker ส่งต่อเองขณะเปิดแอป (ทุกแท็บ)
+      await LocationTracker.start(current: position);
 
       await moveToMyLocation();
 
@@ -167,31 +175,12 @@ class _MapPageState extends State<MapPage> {
             .listen((position) {
               if (!mounted) return;
 
+              // ใช้แสดงจุดของเราบนแผนที่เท่านั้น
+              // (LocationTracker เป็นคนส่งตำแหน่งให้ครอบครัว)
               setState(() {
                 currentPosition = position;
               });
-
-              sendLocation(position);
             });
-  }
-
-  // =====================================================
-  // SEND LOCATION TO LARAVEL
-  // =====================================================
-
-  Future<void> sendLocation(Position position) async {
-    try {
-      await LocationService.updateLocation(
-        latitude: position.latitude,
-
-        longitude: position.longitude,
-
-        accuracy: position.accuracy,
-      );
-    } catch (_) {
-      // ถ้า Server มีปัญหา
-      // Google Map ยังใช้งานต่อได้
-    }
   }
 
   // =====================================================
@@ -217,8 +206,18 @@ class _MapPageState extends State<MapPage> {
           }
         }
 
+        final dynamic rawPaused = result['paused'];
+
         setState(() {
           familyLocations = locations;
+
+          pausedNames = rawPaused is List
+              ? rawPaused
+                    .whereType<Map>()
+                    .map((member) => member['name']?.toString() ?? '')
+                    .where((name) => name.isNotEmpty)
+                    .toList()
+              : [];
 
           lastRefresh = DateTime.now();
         });
@@ -226,6 +225,39 @@ class _MapPageState extends State<MapPage> {
     } catch (_) {
       // Timer จะลองใหม่อีกรอบ
     }
+  }
+
+  // เปิดการแชร์ตำแหน่งอีกครั้ง (จากแถบแจ้งบนแผนที่)
+  Future<void> turnOnSharing() async {
+    setState(() => isTurningOnSharing = true);
+
+    try {
+      final result = await SettingsService.updateSettings(
+        locationSharing: true,
+      );
+
+      if (!mounted) return;
+
+      if (result['status'] == true) {
+        await prepareLocation();
+
+        // ถ้าหน้านี้กำลังอ่าน GPS อยู่ตอนกดเปิด prepareLocation จะไม่ทำซ้ำ
+        // → สั่งเริ่มส่งตรงนี้ด้วย (ถ้าเริ่มไปแล้วจะไม่ส่งซ้ำ)
+        await LocationTracker.start();
+      } else {
+        showSnack(result['message']?.toString() ?? 'เปิดการแชร์ไม่สำเร็จ');
+      }
+    } catch (e) {
+      if (mounted) showSnack(e.toString());
+    } finally {
+      if (mounted) setState(() => isTurningOnSharing = false);
+    }
+  }
+
+  void showSnack(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   // =====================================================
@@ -679,7 +711,7 @@ class _MapPageState extends State<MapPage> {
 
   Widget buildLocationError() {
     if (locationError == null) {
-      return const SizedBox.shrink();
+      return buildSharingNotice();
     }
 
     return Positioned(
@@ -731,6 +763,75 @@ class _MapPageState extends State<MapPage> {
           ],
         ),
       ),
+    );
+  }
+
+  // =====================================================
+  // แถบแจ้งการปิดแชร์ตำแหน่ง
+  // - เราปิดอยู่: มีปุ่มเปิดแชร์อีกครั้ง
+  // - คนอื่นปิดอยู่: บอกชื่อ ครอบครัวจะได้รู้ว่าทำไมไม่เห็น
+  // =====================================================
+
+  Widget buildSharingNotice() {
+    return ValueListenableBuilder<bool?>(
+      valueListenable: SettingsService.locationSharing,
+      builder: (context, sharing, child) {
+        final bool selfPaused = sharing == false;
+
+        if (!selfPaused && pausedNames.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        final String message = selfPaused
+            ? 'คุณปิดการแชร์ตำแหน่งอยู่ ครอบครัวจะไม่เห็นตำแหน่งของคุณ'
+            : 'ปิดการแชร์ตำแหน่งอยู่: ${pausedNames.join(', ')}';
+
+        return Positioned(
+          top: 88,
+          left: 14,
+          right: 14,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(17),
+              border: Border.all(color: AppColors.border),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.navy.withValues(alpha: 0.08),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.location_off_outlined,
+                  color: AppColors.muted,
+                  size: 21,
+                ),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Text(
+                    message,
+                    style: const TextStyle(
+                      color: AppColors.navy,
+                      fontSize: 12,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+                if (selfPaused)
+                  TextButton(
+                    onPressed: isTurningOnSharing ? null : turnOnSharing,
+                    child: Text(isTurningOnSharing ? 'กำลังเปิด' : 'เปิดแชร์'),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 

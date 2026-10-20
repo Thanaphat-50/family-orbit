@@ -5,7 +5,9 @@ import 'package:flutter/services.dart';
 import '../config/app_info.dart';
 import '../services/auth_service.dart';
 import '../services/family_service.dart';
+import '../services/location_tracker.dart';
 import '../services/notification_service.dart';
+import '../services/settings_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/section_switch.dart';
 
@@ -15,6 +17,7 @@ import 'map_page.dart';
 import 'my_shop_page.dart';
 import 'notification_page.dart';
 import 'profile_page.dart';
+import 'settings_page.dart';
 import 'shop_page.dart';
 
 // หน้าย่อยของแท็บ "หน้าหลัก"
@@ -74,10 +77,40 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      // loadFamily เริ่มส่งตำแหน่งต่อให้เอง
       loadFamily(showLoading: false);
 
       loadUnreadNotificationCount();
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.detached) {
+      // ไม่ส่งตำแหน่งตอนแอปอยู่เบื้องหลัง
+      LocationTracker.stop();
     }
+  }
+
+  // =====================================================
+  // ส่งตำแหน่งให้ครอบครัว ขณะเปิดแอป (ทุกแท็บ)
+  // =====================================================
+
+  Future<void> startLocationSharing() async {
+    if (!hasFamily) {
+      LocationTracker.stop();
+      return;
+    }
+
+    // โหลดค่า "แชร์ตำแหน่ง" ครั้งแรกก่อนเริ่ม
+    if (SettingsService.locationSharing.value == null) {
+      try {
+        await SettingsService.getSettings();
+      } catch (_) {
+        // โหลดไม่ได้ → ใช้ค่าเริ่มต้น (แชร์)
+      }
+    }
+
+    if (!mounted) return;
+
+    await LocationTracker.start();
   }
 
   // =====================================================
@@ -99,6 +132,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       setState(() {
         familyData = result;
       });
+
+      startLocationSharing();
     } catch (e) {
       if (!mounted) return;
 
@@ -132,9 +167,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   Future<void> openNotifications() async {
-    final NotificationTarget? target = await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const NotificationPage()),
-    );
+    final NotificationTarget? target = await Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => const NotificationPage()));
 
     if (!mounted) return;
 
@@ -770,6 +804,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   // LOGOUT
   // =====================================================
 
+  Future<void> openSettings() async {
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const SettingsPage()));
+  }
+
   Future<void> logout() async {
     await AuthService.logout();
 
@@ -1198,12 +1238,24 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             icon: const Icon(Icons.more_horiz_rounded),
 
             onSelected: (value) {
-              if (value == 'logout') {
+              if (value == 'settings') {
+                openSettings();
+              } else if (value == 'logout') {
                 logout();
               }
             },
 
             itemBuilder: (_) => const [
+              PopupMenuItem(
+                value: 'settings',
+                child: Row(
+                  children: [
+                    Icon(Icons.settings_outlined, color: AppColors.navy),
+                    SizedBox(width: 10),
+                    Text('ตั้งค่า'),
+                  ],
+                ),
+              ),
               PopupMenuItem(
                 value: 'logout',
                 child: Row(
@@ -2455,6 +2507,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+
+    // ออกจากระบบ / ลบบัญชี → หยุดส่งตำแหน่ง และล้างค่าตั้งค่าของบัญชีนี้
+    LocationTracker.stop();
+    SettingsService.locationSharing.value = null;
 
     familyNameController.dispose();
     inviteCodeController.dispose();

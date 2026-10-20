@@ -1,0 +1,974 @@
+import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+
+import '../config/app_info.dart';
+import '../services/auth_service.dart';
+import '../services/location_tracker.dart';
+import '../services/profile_service.dart';
+import '../services/settings_service.dart';
+import '../theme/app_theme.dart';
+import '../widgets/community_sheets.dart';
+import 'login_page.dart';
+
+// =======================================================
+// ตั้งค่า
+// - การแจ้งเตือน: เปิด/ปิดแต่ละประเภท
+// - ตำแหน่ง: แชร์ตำแหน่งกับครอบครัว
+// - ความเป็นส่วนตัว: ผู้ใช้ที่บล็อก
+// - บัญชี: เปลี่ยนรหัสผ่าน / ออกจากระบบ / ลบบัญชี
+// - เกี่ยวกับแอป: นโยบาย และเวอร์ชัน
+// =======================================================
+
+class SettingsPage extends StatefulWidget {
+  const SettingsPage({super.key});
+
+  @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> {
+  // ประเภทการแจ้งเตือนที่ปิดได้ (ตรงกับ AppNotification::OPTIONAL_TYPES)
+  static const List<_NotificationOption> notificationOptions = [
+    _NotificationOption(
+      type: 'new_post',
+      title: 'โพสต์ใหม่ในครอบครัว',
+      icon: Icons.dynamic_feed_rounded,
+    ),
+    _NotificationOption(
+      type: 'new_comment',
+      title: 'ความคิดเห็นในโพสต์ของฉัน',
+      icon: Icons.chat_bubble_outline_rounded,
+    ),
+    _NotificationOption(
+      type: 'new_activity',
+      title: 'กิจกรรมใหม่ในครอบครัว',
+      icon: Icons.event_available_rounded,
+    ),
+    _NotificationOption(
+      type: 'member_joined',
+      title: 'มีสมาชิกใหม่เข้าครอบครัว',
+      icon: Icons.person_add_alt_1_rounded,
+    ),
+  ];
+
+  bool isLoading = true;
+  String? loadError;
+
+  bool locationSharing = true;
+  Map<String, bool> notifications = {};
+
+  // ค่าที่กำลังบันทึก (กันกดซ้ำ)
+  final Set<String> savingKeys = {};
+
+  String version = '';
+
+  @override
+  void initState() {
+    super.initState();
+    loadSettings();
+    loadVersion();
+  }
+
+  // =====================================================
+  // โหลด / บันทึกการตั้งค่า
+  // =====================================================
+
+  Future<void> loadSettings() async {
+    setState(() {
+      isLoading = true;
+      loadError = null;
+    });
+
+    try {
+      final result = await SettingsService.getSettings();
+
+      if (!mounted) return;
+
+      final dynamic settings = result['settings'];
+
+      if (result['status'] == true && settings is Map) {
+        final dynamic rawNotifications = settings['notifications'];
+
+        setState(() {
+          locationSharing = settings['location_sharing'] != false;
+
+          notifications = {
+            for (final option in notificationOptions)
+              option.type: rawNotifications is Map
+                  ? rawNotifications[option.type] != false
+                  : true,
+          };
+        });
+      } else {
+        setState(() {
+          loadError =
+              result['message']?.toString() ?? 'โหลดการตั้งค่าไม่สำเร็จ';
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => loadError = e.toString());
+    } finally {
+      if (mounted) setState(() => isLoading = false);
+    }
+  }
+
+  Future<void> loadVersion() async {
+    try {
+      final PackageInfo info = await PackageInfo.fromPlatform();
+
+      if (mounted) {
+        setState(() {
+          version = '${info.version} (${info.buildNumber})';
+        });
+      }
+    } catch (_) {
+      // อ่านเวอร์ชันไม่ได้ → ไม่แสดง
+    }
+  }
+
+  // เปิด/ปิดการแจ้งเตือน: เปลี่ยนบนจอทันที ถ้าบันทึกไม่สำเร็จค่อยคืนค่าเดิม
+  Future<void> setNotification(String type, bool enabled) async {
+    if (savingKeys.contains(type)) return;
+
+    final bool previous = notifications[type] ?? true;
+
+    setState(() {
+      notifications[type] = enabled;
+      savingKeys.add(type);
+    });
+
+    try {
+      final result = await SettingsService.updateSettings(
+        notifications: {type: enabled},
+      );
+
+      if (!mounted) return;
+
+      if (result['status'] != true) {
+        setState(() => notifications[type] = previous);
+        showMessage(result['message']?.toString() ?? 'บันทึกไม่สำเร็จ');
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() => notifications[type] = previous);
+      showMessage(e.toString());
+    } finally {
+      if (mounted) setState(() => savingKeys.remove(type));
+    }
+  }
+
+  Future<void> setLocationSharing(bool enabled) async {
+    const String key = 'location_sharing';
+
+    if (savingKeys.contains(key)) return;
+
+    // ปิดแชร์ → ยืนยันก่อน เพราะครอบครัวจะไม่เห็นตำแหน่งของเรา
+    if (!enabled) {
+      final bool? confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: const Text('ปิดการแชร์ตำแหน่ง?'),
+            content: const Text(
+              'ครอบครัวจะไม่เห็นตำแหน่งของคุณ และตำแหน่งล่าสุดที่บันทึกไว้จะถูกลบ '
+              'เปิดกลับได้ทุกเมื่อ',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('ยกเลิก'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: const Text('ปิดการแชร์'),
+              ),
+            ],
+          );
+        },
+      );
+
+      if (confirmed != true || !mounted) return;
+    }
+
+    final bool previous = locationSharing;
+
+    setState(() {
+      locationSharing = enabled;
+      savingKeys.add(key);
+    });
+
+    try {
+      final result = await SettingsService.updateSettings(
+        locationSharing: enabled,
+      );
+
+      if (!mounted) return;
+
+      if (result['status'] != true) {
+        setState(() => locationSharing = previous);
+        showMessage(result['message']?.toString() ?? 'บันทึกไม่สำเร็จ');
+        return;
+      }
+
+      if (enabled) {
+        await startSharingWithPermission();
+      } else {
+        LocationTracker.stop();
+        showMessage('ปิดการแชร์ตำแหน่งแล้ว');
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() => locationSharing = previous);
+      showMessage(e.toString());
+    } finally {
+      if (mounted) setState(() => savingKeys.remove(key));
+    }
+  }
+
+  // เปิดแชร์แล้ว → ขอสิทธิ์ตำแหน่ง (ถ้ายังไม่ได้ให้) แล้วเริ่มส่ง
+  Future<void> startSharingWithPermission() async {
+    LocationPermission permission = await Geolocator.checkPermission();
+
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+
+    if (!mounted) return;
+
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
+      showMessage('เปิดแชร์แล้ว แต่ยังไม่ได้อนุญาตตำแหน่งในเครื่อง');
+      return;
+    }
+
+    await LocationTracker.start();
+
+    if (mounted) showMessage('เปิดการแชร์ตำแหน่งแล้ว');
+  }
+
+  Future<void> openBlockedUsers() async {
+    await showBlockedUsersSheet(context, onChanged: () {});
+  }
+
+  Future<void> openPolicy(String url) async {
+    final bool opened = await AppInfo.openUrl(url);
+
+    if (!opened) showMessage('เปิดหน้าเว็บไม่สำเร็จ: $url');
+  }
+
+  void showMessage(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  // =====================================================
+  // PASSWORD
+  // =====================================================
+
+  Future<void> changePassword() async {
+    String currentPassword = '';
+
+    String newPassword = '';
+
+    String confirmation = '';
+
+    bool hideCurrent = true;
+    bool hideNew = true;
+    bool hideConfirm = true;
+
+    final result = await showModalBottomSheet<Map<String, String>>(
+      context: context,
+
+      isScrollControlled: true,
+
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return SafeArea(
+              child: SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(
+                  20,
+                  15,
+                  20,
+                  MediaQuery.of(context).viewInsets.bottom + 25,
+                ),
+
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+
+                  children: [
+                    const Text(
+                      'เปลี่ยนรหัสผ่าน',
+
+                      style: TextStyle(
+                        color: AppColors.navy,
+
+                        fontSize: 21,
+
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+
+                    const SizedBox(height: 6),
+
+                    const Text(
+                      'รหัสผ่านใหม่ต้องมีอย่างน้อย 8 ตัวอักษร',
+
+                      style: TextStyle(color: AppColors.muted, fontSize: 11),
+                    ),
+
+                    const SizedBox(height: 22),
+
+                    TextField(
+                      obscureText: hideCurrent,
+
+                      onChanged: (value) {
+                        currentPassword = value;
+                      },
+
+                      decoration: InputDecoration(
+                        labelText: 'รหัสผ่านปัจจุบัน',
+
+                        prefixIcon: const Icon(Icons.lock_outline_rounded),
+
+                        suffixIcon: IconButton(
+                          onPressed: () {
+                            setSheetState(() {
+                              hideCurrent = !hideCurrent;
+                            });
+                          },
+
+                          icon: Icon(
+                            hideCurrent
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    TextField(
+                      obscureText: hideNew,
+
+                      onChanged: (value) {
+                        newPassword = value;
+                      },
+
+                      decoration: InputDecoration(
+                        labelText: 'รหัสผ่านใหม่',
+
+                        prefixIcon: const Icon(Icons.key_rounded),
+
+                        suffixIcon: IconButton(
+                          onPressed: () {
+                            setSheetState(() {
+                              hideNew = !hideNew;
+                            });
+                          },
+
+                          icon: Icon(
+                            hideNew
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    TextField(
+                      obscureText: hideConfirm,
+
+                      onChanged: (value) {
+                        confirmation = value;
+                      },
+
+                      decoration: InputDecoration(
+                        labelText: 'ยืนยันรหัสผ่านใหม่',
+
+                        prefixIcon: const Icon(Icons.verified_user_outlined),
+
+                        suffixIcon: IconButton(
+                          onPressed: () {
+                            setSheetState(() {
+                              hideConfirm = !hideConfirm;
+                            });
+                          },
+
+                          icon: Icon(
+                            hideConfirm
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 22),
+
+                    FilledButton(
+                      onPressed: () {
+                        if (currentPassword.isEmpty ||
+                            newPassword.length < 8 ||
+                            newPassword != confirmation) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('กรุณาตรวจสอบข้อมูลรหัสผ่าน'),
+                            ),
+                          );
+
+                          return;
+                        }
+
+                        Navigator.of(sheetContext).pop({
+                          'current': currentPassword,
+
+                          'password': newPassword,
+
+                          'confirmation': confirmation,
+                        });
+                      },
+
+                      child: const Text('เปลี่ยนรหัสผ่าน'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    if (result == null || !mounted) {
+      return;
+    }
+
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+
+    try {
+      final response = await ProfileService.updatePassword(
+        currentPassword: result['current']!,
+
+        password: result['password']!,
+
+        passwordConfirmation: result['confirmation']!,
+      );
+
+      if (!mounted) return;
+
+      showMessage(
+        response['message'] ??
+            (response['status'] == true
+                ? 'เปลี่ยนรหัสผ่านแล้ว'
+                : 'เปลี่ยนรหัสผ่านไม่สำเร็จ'),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      showMessage('เปลี่ยนรหัสผ่านไม่สำเร็จ');
+    }
+  }
+
+  // =====================================================
+  // DELETE ACCOUNT
+  // ลบบัญชีและข้อมูลทั้งหมด (ยืนยันด้วยรหัสผ่าน)
+  // =====================================================
+
+  Future<void> deleteAccount() async {
+    String password = '';
+
+    bool hidePassword = true;
+    bool confirmed = false;
+
+    final String? result = await showModalBottomSheet<String>(
+      context: context,
+
+      isScrollControlled: true,
+
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return SafeArea(
+              child: SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(
+                  20,
+                  15,
+                  20,
+                  MediaQuery.of(context).viewInsets.bottom + 25,
+                ),
+
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+
+                  children: [
+                    const Text(
+                      'ลบบัญชี',
+
+                      style: TextStyle(
+                        color: AppColors.danger,
+
+                        fontSize: 21,
+
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+
+                    const SizedBox(height: 10),
+
+                    const Text(
+                      'ข้อมูลต่อไปนี้จะถูกลบถาวร และกู้คืนไม่ได้\n'
+                      '• บัญชีและรูปโปรไฟล์\n'
+                      '• การเป็นสมาชิกครอบครัวและตำแหน่ง\n'
+                      '• โพสต์ ความคิดเห็น และกิจกรรมทั้งหมด\n'
+                      '• ร้านค้า สินค้า และรูปทั้งหมด',
+
+                      style: TextStyle(
+                        color: AppColors.muted,
+
+                        fontSize: 13,
+
+                        height: 1.6,
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    TextField(
+                      obscureText: hidePassword,
+
+                      onChanged: (value) {
+                        password = value;
+                      },
+
+                      decoration: InputDecoration(
+                        labelText: 'ยืนยันด้วยรหัสผ่าน',
+
+                        prefixIcon: const Icon(Icons.lock_outline_rounded),
+
+                        suffixIcon: IconButton(
+                          onPressed: () {
+                            setSheetState(() {
+                              hidePassword = !hidePassword;
+                            });
+                          },
+
+                          icon: Icon(
+                            hidePassword
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    CheckboxListTile(
+                      value: confirmed,
+
+                      contentPadding: EdgeInsets.zero,
+
+                      controlAffinity: ListTileControlAffinity.leading,
+
+                      activeColor: AppColors.danger,
+
+                      title: const Text(
+                        'ฉันเข้าใจว่าข้อมูลทั้งหมดจะถูกลบถาวร',
+
+                        style: TextStyle(
+                          color: AppColors.navy,
+
+                          fontSize: 13,
+
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+
+                      onChanged: (value) {
+                        setSheetState(() {
+                          confirmed = value ?? false;
+                        });
+                      },
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    FilledButton(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.danger,
+
+                        disabledBackgroundColor: AppColors.danger.withValues(
+                          alpha: 0.35,
+                        ),
+
+                        disabledForegroundColor: Colors.white,
+
+                        minimumSize: const Size(double.infinity, 52),
+                      ),
+
+                      onPressed: confirmed
+                          ? () {
+                              if (password.isEmpty) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('กรุณากรอกรหัสผ่าน'),
+                                  ),
+                                );
+
+                                return;
+                              }
+
+                              Navigator.of(sheetContext).pop(password);
+                            }
+                          : null,
+
+                      child: const Text('ลบบัญชีถาวร'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    if (result == null || !mounted) {
+      return;
+    }
+
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+
+    try {
+      final response = await ProfileService.deleteAccount(password: result);
+
+      if (!mounted) return;
+
+      if (response['status'] != true) {
+        showMessage(response['message'] ?? 'ลบบัญชีไม่สำเร็จ');
+        return;
+      }
+
+      // บัญชีถูกลบแล้ว → ล้าง Token ในเครื่อง แล้วกลับหน้า Login
+      await AuthService.clearToken();
+
+      if (!mounted) return;
+
+      final messenger = ScaffoldMessenger.of(context);
+
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LoginPage()),
+        (route) => false,
+      );
+
+      messenger.showSnackBar(
+        SnackBar(content: Text(response['message'] ?? 'ลบบัญชีเรียบร้อยแล้ว')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      showMessage(e.toString());
+    }
+  }
+
+  // =====================================================
+  // LOGOUT
+  // =====================================================
+
+  Future<void> logout() async {
+    try {
+      await AuthService.logout();
+    } catch (_) {}
+
+    if (!mounted) return;
+
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginPage()),
+      (route) => false,
+    );
+  }
+
+  // =====================================================
+  // UI
+  // =====================================================
+
+  Widget buildSectionTitle(String title) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 22, 4, 8),
+      child: Text(
+        title,
+        style: const TextStyle(
+          color: AppColors.muted,
+          fontSize: 13,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+
+  // กล่องสีขาวที่รวมหลายแถว
+  Widget buildGroup(List<Widget> children) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.border),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          for (int i = 0; i < children.length; i++) ...[
+            if (i > 0)
+              const Divider(height: 1, indent: 60, color: AppColors.border),
+            children[i],
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget buildIcon(IconData icon, Color color) {
+    return Container(
+      width: 36,
+      height: 36,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(11),
+      ),
+      child: Icon(icon, color: color, size: 20),
+    );
+  }
+
+  Widget buildSwitchRow({
+    required IconData icon,
+    required Color color,
+    required String title,
+    String? subtitle,
+    required bool value,
+    required bool busy,
+    required ValueChanged<bool> onChanged,
+  }) {
+    return SwitchListTile(
+      value: value,
+      onChanged: busy ? null : onChanged,
+      secondary: buildIcon(icon, color),
+      contentPadding: const EdgeInsets.fromLTRB(12, 2, 8, 2),
+      title: Text(
+        title,
+        style: const TextStyle(
+          color: AppColors.navy,
+          fontSize: 14.5,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      subtitle: subtitle == null
+          ? null
+          : Text(
+              subtitle,
+              style: const TextStyle(
+                color: AppColors.muted,
+                fontSize: 12,
+                height: 1.4,
+              ),
+            ),
+    );
+  }
+
+  Widget buildActionRow({
+    required IconData icon,
+    required String title,
+    String? subtitle,
+    Color color = AppColors.primary,
+    bool danger = false,
+    required VoidCallback onTap,
+  }) {
+    return ListTile(
+      onTap: onTap,
+      leading: buildIcon(icon, color),
+      contentPadding: const EdgeInsets.fromLTRB(12, 2, 12, 2),
+      title: Text(
+        title,
+        style: TextStyle(
+          color: danger ? AppColors.danger : AppColors.navy,
+          fontSize: 14.5,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      subtitle: subtitle == null
+          ? null
+          : Text(
+              subtitle,
+              style: const TextStyle(color: AppColors.muted, fontSize: 12),
+            ),
+      trailing: const Icon(Icons.chevron_right_rounded, color: AppColors.muted),
+    );
+  }
+
+  List<Widget> buildPreferenceSections() {
+    if (isLoading) {
+      return const [
+        Padding(
+          padding: EdgeInsets.all(32),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      ];
+    }
+
+    if (loadError != null) {
+      return [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 24, 8, 8),
+          child: Column(
+            children: [
+              Text(
+                loadError!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: AppColors.navy),
+              ),
+              const SizedBox(height: 10),
+              OutlinedButton(
+                onPressed: loadSettings,
+                child: const Text('ลองอีกครั้ง'),
+              ),
+            ],
+          ),
+        ),
+      ];
+    }
+
+    return [
+      buildSectionTitle('ตำแหน่ง'),
+      buildGroup([
+        buildSwitchRow(
+          icon: Icons.location_on_outlined,
+          color: AppColors.success,
+          title: 'แชร์ตำแหน่งกับครอบครัว',
+          subtitle: locationSharing
+              ? 'ครอบครัวเห็นตำแหน่งล่าสุดของคุณขณะเปิดแอป (ไม่ติดตามตอนปิดแอป)'
+              : 'ปิดอยู่ ครอบครัวไม่เห็นตำแหน่งของคุณ',
+          value: locationSharing,
+          busy: savingKeys.contains('location_sharing'),
+          onChanged: setLocationSharing,
+        ),
+      ]),
+      buildSectionTitle('การแจ้งเตือน'),
+      buildGroup([
+        for (final option in notificationOptions)
+          buildSwitchRow(
+            icon: option.icon,
+            color: AppColors.primary,
+            title: option.title,
+            value: notifications[option.type] ?? true,
+            busy: savingKeys.contains(option.type),
+            onChanged: (value) => setNotification(option.type, value),
+          ),
+      ]),
+      const Padding(
+        padding: EdgeInsets.fromLTRB(6, 8, 6, 0),
+        child: Text(
+          'ผลการตรวจสอบร้านค้าจะแจ้งเสมอ',
+          style: TextStyle(color: AppColors.muted, fontSize: 12),
+        ),
+      ),
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('ตั้งค่า')),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
+        children: [
+          ...buildPreferenceSections(),
+          buildSectionTitle('ความเป็นส่วนตัว'),
+          buildGroup([
+            buildActionRow(
+              icon: Icons.block_rounded,
+              title: 'ผู้ใช้ที่บล็อก',
+              subtitle: 'ดูและเลิกบล็อกผู้ใช้ในชุมชน',
+              color: AppColors.muted,
+              onTap: openBlockedUsers,
+            ),
+          ]),
+          buildSectionTitle('บัญชี'),
+          buildGroup([
+            buildActionRow(
+              icon: Icons.password_rounded,
+              title: 'เปลี่ยนรหัสผ่าน',
+              color: AppColors.warm,
+              onTap: changePassword,
+            ),
+            buildActionRow(
+              icon: Icons.logout_rounded,
+              title: 'ออกจากระบบ',
+              color: AppColors.danger,
+              danger: true,
+              onTap: logout,
+            ),
+            buildActionRow(
+              icon: Icons.delete_forever_rounded,
+              title: 'ลบบัญชี',
+              subtitle: 'ลบบัญชีและข้อมูลทั้งหมดถาวร',
+              color: AppColors.danger,
+              danger: true,
+              onTap: deleteAccount,
+            ),
+          ]),
+          buildSectionTitle('เกี่ยวกับแอป'),
+          buildGroup([
+            buildActionRow(
+              icon: Icons.privacy_tip_outlined,
+              title: 'นโยบายความเป็นส่วนตัว',
+              color: AppColors.sky,
+              onTap: () => openPolicy(AppInfo.privacyUrl),
+            ),
+            buildActionRow(
+              icon: Icons.description_outlined,
+              title: 'ข้อกำหนดการใช้งาน',
+              color: AppColors.sky,
+              onTap: () => openPolicy(AppInfo.termsUrl),
+            ),
+            buildActionRow(
+              icon: Icons.child_care_rounded,
+              title: 'มาตรฐานความปลอดภัยของเด็ก',
+              color: AppColors.sky,
+              onTap: () => openPolicy(AppInfo.childSafetyUrl),
+            ),
+          ]),
+          if (version.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 22),
+              child: Text(
+                '${AppInfo.name} เวอร์ชัน $version',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: AppColors.muted, fontSize: 12),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NotificationOption {
+  final String type;
+  final String title;
+  final IconData icon;
+
+  const _NotificationOption({
+    required this.type,
+    required this.title,
+    required this.icon,
+  });
+}
