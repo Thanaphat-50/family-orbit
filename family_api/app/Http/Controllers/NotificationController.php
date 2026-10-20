@@ -7,24 +7,40 @@ use Illuminate\Http\Request;
 
 class NotificationController extends Controller
 {
+    // จำนวนการแจ้งเตือนต่อหน้า
+    private const PAGE_SIZE = 20;
+
     // =========================================
-    // ดู Notification ทั้งหมดของ User
+    // ดู Notification ของ User (ใหม่ล่าสุดก่อน)
+    // GET /api/notifications              → ชุดแรก
+    // GET /api/notifications?before_id=N  → ชุดถัดไป (เก่ากว่ารายการ N)
+    //
+    // ใช้ before_id แทนเลขหน้า เพราะถ้าลบรายการระหว่างเลื่อน
+    // เลขหน้าจะเลื่อนตำแหน่งแล้วข้ามบางรายการไป
     // =========================================
 
     public function index(Request $request)
     {
-        $notifications =
-            AppNotification::where(
-                'user_id',
-                $request->user()->id
+        $data = $request->validate([
+            'before_id' => 'nullable|integer|min:1',
+        ]);
+
+        $rows = AppNotification::where(
+            'user_id',
+            $request->user()->id
+        )
+            ->when(
+                $data['before_id'] ?? null,
+                fn ($query, $beforeId) => $query->where('id', '<', $beforeId)
             )
-            ->latest()
-            ->limit(50)
+            ->orderByDesc('id')
+            ->limit(self::PAGE_SIZE + 1)
             ->get();
 
         return response()->json([
             'status' => true,
-            'notifications' => $notifications,
+            'notifications' => $rows->take(self::PAGE_SIZE)->values(),
+            'has_more' => $rows->count() > self::PAGE_SIZE,
         ]);
     }
 
@@ -60,15 +76,8 @@ class NotificationController extends Controller
         Request $request,
         AppNotification $notification
     ) {
-        if (
-            $notification->user_id !==
-            $request->user()->id
-        ) {
-            return response()->json([
-                'status' => false,
-                'message' =>
-                    'คุณไม่มีสิทธิ์เข้าถึงการแจ้งเตือนนี้',
-            ], 403);
+        if (!$this->owns($request, $notification)) {
+            return $this->forbidden();
         }
 
         $notification->is_read = true;
@@ -105,5 +114,70 @@ class NotificationController extends Controller
             'message' =>
                 'อ่านการแจ้งเตือนทั้งหมดแล้ว',
         ]);
+    }
+
+    // =========================================
+    // ลบ Notification 1 รายการ
+    // DELETE /api/notifications/{notification}
+    // =========================================
+
+    public function destroy(
+        Request $request,
+        AppNotification $notification
+    ) {
+        if (!$this->owns($request, $notification)) {
+            return $this->forbidden();
+        }
+
+        $notification->delete();
+
+        return response()->json([
+            'status' => true,
+            'message' => 'ลบการแจ้งเตือนแล้ว',
+        ]);
+    }
+
+    // =========================================
+    // ลบทุกรายการที่อ่านแล้ว
+    // DELETE /api/notifications/read
+    // =========================================
+
+    public function clearRead(
+        Request $request
+    ) {
+        $deleted = AppNotification::where(
+            'user_id',
+            $request->user()->id
+        )
+            ->where('is_read', true)
+            ->delete();
+
+        return response()->json([
+            'status' => true,
+            'deleted' => $deleted,
+            'message' => $deleted > 0
+                ? "ลบการแจ้งเตือนที่อ่านแล้ว {$deleted} รายการ"
+                : 'ไม่มีการแจ้งเตือนที่อ่านแล้ว',
+        ]);
+    }
+
+    // =========================================
+    // HELPERS
+    // =========================================
+
+    private function owns(
+        Request $request,
+        AppNotification $notification
+    ): bool {
+        return (int) $notification->user_id === (int) $request->user()->id;
+    }
+
+    private function forbidden()
+    {
+        return response()->json([
+            'status' => false,
+            'message' =>
+                'คุณไม่มีสิทธิ์เข้าถึงการแจ้งเตือนนี้',
+        ], 403);
     }
 }

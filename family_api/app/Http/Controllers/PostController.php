@@ -95,27 +95,10 @@ class PostController extends Controller
     {
         $blockedIds = $user->blockedUsers()->pluck('users.id');
 
-        $paginator = Post::where('visibility', 'community')
+        $paginator = Post::query()
+            ->tap(fn ($query) => $this->visibleInCommunity($query, $user, $blockedIds))
             ->when($category, fn ($query) => $query->where('category', $category))
-            ->whereNull('hidden_at')
-            ->whereDoesntHave('reports', function ($query) use ($user) {
-                $query->where('user_id', $user->id);
-            })
-            ->whereNotIn('user_id', $blockedIds)
-            ->with([
-                'user:' . self::USER_COLUMNS,
-                'images',
-                // ไม่แสดงความคิดเห็นที่ถูกซ่อน, ที่เรารายงานแล้ว
-                // หรือของคนที่เราบล็อก
-                'comments' => function ($query) use ($blockedIds, $user) {
-                    $query->whereNull('hidden_at')
-                        ->whereDoesntHave('reports', function ($reports) use ($user) {
-                            $reports->where('user_id', $user->id);
-                        })
-                        ->whereNotIn('user_id', $blockedIds);
-                },
-                'comments.user:' . self::USER_COLUMNS,
-            ])
+            ->with($this->communityRelations($user, $blockedIds))
             ->tap(fn ($query) => $this->withLikeInfo($query, $user))
             ->orderByDesc('created_at')
             ->orderByDesc('id')
@@ -133,6 +116,65 @@ class PostController extends Controller
             'posts' => $posts,
             'page' => $paginator->currentPage(),
             'has_more' => $paginator->hasMorePages(),
+        ]);
+    }
+
+    // =====================================================
+    // ดูโพสต์เดียว (เปิดจากการแจ้งเตือน)
+    // GET /api/posts/{post}
+    // - โพสต์ครอบครัว: ต้องอยู่ครอบครัวเดียวกัน
+    // - โพสต์ชุมชน: ใช้กฎเดียวกับฟีดชุมชน
+    // เห็นไม่ได้ → 404 (ไม่บอกว่ามีโพสต์นี้อยู่)
+    // =====================================================
+
+    public function show(Request $request, Post $post)
+    {
+        $user = $request->user();
+
+        $membership = FamilyMember::where(
+            'user_id',
+            $user->id
+        )->first();
+
+        if (!$membership) {
+            return response()->json([
+                'status' => false,
+                'message' => 'คุณยังไม่ได้อยู่ในครอบครัว',
+            ], 403);
+        }
+
+        $query = Post::query()->whereKey($post->id);
+
+        if ($post->isCommunity()) {
+            $blockedIds = $user->blockedUsers()->pluck('users.id');
+
+            $query->tap(fn ($posts) => $this->visibleInCommunity($posts, $user, $blockedIds))
+                ->with($this->communityRelations($user, $blockedIds));
+        } else {
+            $query->where('visibility', 'family')
+                ->where('family_id', $membership->family_id)
+                ->with([
+                    'user:' . self::USER_COLUMNS,
+                    'images',
+                    'comments.user:' . self::USER_COLUMNS,
+                ]);
+        }
+
+        $found = $query
+            ->tap(fn ($posts) => $this->withLikeInfo($posts, $user))
+            ->first();
+
+        if (!$found) {
+            return response()->json([
+                'status' => false,
+                'message' => 'ไม่พบโพสต์นี้ หรือโพสต์ถูกลบไปแล้ว',
+            ], 404);
+        }
+
+        return response()->json([
+            'status' => true,
+            'current_user' => $this->currentUserPayload($user),
+            'post' => $this->withOwnership($found, $user),
         ]);
     }
 
@@ -500,6 +542,36 @@ class PostController extends Controller
     // =====================================================
     // HELPERS
     // =====================================================
+
+    // โพสต์ชุมชนที่ผู้ใช้คนนี้เห็นได้:
+    // ไม่ถูกซ่อน, ไม่ใช่โพสต์ที่เรารายงานแล้ว, ไม่ใช่ของคนที่เราบล็อก
+    private function visibleInCommunity($query, User $user, $blockedIds)
+    {
+        return $query->where('visibility', 'community')
+            ->whereNull('hidden_at')
+            ->whereDoesntHave('reports', function ($reports) use ($user) {
+                $reports->where('user_id', $user->id);
+            })
+            ->whereNotIn('user_id', $blockedIds);
+    }
+
+    // ข้อมูลที่โหลดมากับโพสต์ชุมชน
+    // ไม่แสดงความคิดเห็นที่ถูกซ่อน, ที่เรารายงานแล้ว หรือของคนที่เราบล็อก
+    private function communityRelations(User $user, $blockedIds): array
+    {
+        return [
+            'user:' . self::USER_COLUMNS,
+            'images',
+            'comments' => function ($query) use ($blockedIds, $user) {
+                $query->whereNull('hidden_at')
+                    ->whereDoesntHave('reports', function ($reports) use ($user) {
+                        $reports->where('user_id', $user->id);
+                    })
+                    ->whereNotIn('user_id', $blockedIds);
+            },
+            'comments.user:' . self::USER_COLUMNS,
+        ];
+    }
 
     // ผู้ใช้ถูกใจ/โต้ตอบกับโพสต์นี้ได้หรือไม่
     // - โพสต์ชุมชน: ต้องมีครอบครัว และโพสต์ต้องไม่ถูกซ่อน

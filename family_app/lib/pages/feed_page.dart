@@ -30,13 +30,17 @@ class _ScopeFeed {
   bool hasMore = false;
 }
 
-// ฟีดโพสต์ ใช้ได้ 2 แบบ
+// ฟีดโพสต์ ใช้ได้ 3 แบบ
 // - FeedScope.community: หน้าหลัก (ทุกครอบครัวเห็น)
 // - FeedScope.family:    แท็บครอบครัว (เฉพาะครอบครัว)
+// - postId:              โพสต์เดียว (เปิดจากการแจ้งเตือน)
+//                        scope จะใช้ตามโพสต์ที่โหลดมา
 class FeedPage extends StatefulWidget {
   final FeedScope scope;
 
-  const FeedPage({super.key, required this.scope});
+  final int? postId;
+
+  const FeedPage({super.key, required this.scope, this.postId});
 
   @override
   State<FeedPage> createState() => _FeedPageState();
@@ -77,8 +81,13 @@ class _FeedPageState extends State<FeedPage> {
   // เพิ่มค่าทุกครั้งที่ร่างโพสต์เปลี่ยน → หน้าต่างเขียนโพสต์วาดใหม่
   final ValueNotifier<int> composerVersion = ValueNotifier<int>(0);
 
-  // ฟีดนี้เป็นของครอบครัวหรือชุมชน (กำหนดจากหน้าที่เปิด)
-  FeedScope get scope => widget.scope;
+  // ฟีดนี้เป็นของครอบครัวหรือชุมชน
+  // (กำหนดจากหน้าที่เปิด / โหมดโพสต์เดียวใช้ตามโพสต์ที่โหลดมา)
+  FeedScope get scope => singlePostScope ?? widget.scope;
+
+  FeedScope? singlePostScope;
+
+  bool get isSinglePost => widget.postId != null;
 
   final _ScopeFeed feed = _ScopeFeed();
 
@@ -122,6 +131,11 @@ class _FeedPageState extends State<FeedPage> {
   // =====================================================
 
   Future<void> loadPosts({bool loadMore = false}) async {
+    if (isSinglePost) {
+      if (!loadMore) await loadSinglePost();
+      return;
+    }
+
     final state = feed;
 
     if (loadMore) {
@@ -193,6 +207,50 @@ class _FeedPageState extends State<FeedPage> {
     }
   }
 
+  // โหมดโพสต์เดียว: โหลดโพสต์จาก postId
+  Future<void> loadSinglePost() async {
+    try {
+      final result = await PostService.getPost(widget.postId!);
+
+      if (!mounted) return;
+
+      final dynamic raw = result['post'];
+
+      if (result['status'] == true && raw is Map) {
+        final post = Map<String, dynamic>.from(raw);
+
+        setState(() {
+          feed.posts = [post];
+          feed.hasMore = false;
+          feed.loaded = true;
+          feed.loadError = null;
+
+          singlePostScope = isCommunityPost(post)
+              ? FeedScope.community
+              : FeedScope.family;
+
+          // เปิดความคิดเห็นทั้งหมด (มาจากการแจ้งเตือนความคิดเห็น)
+          final int? id = postIdOf(post);
+          if (id != null) expandedPostIds.add(id);
+
+          applyCurrentUser(result['current_user']);
+        });
+      } else {
+        handleLoadError(
+          result['message']?.toString() ?? 'ไม่พบโพสต์นี้ หรือโพสต์ถูกลบไปแล้ว',
+        );
+      }
+    } catch (e) {
+      if (mounted) handleLoadError(e.toString());
+    } finally {
+      if (mounted) {
+        setState(() {
+          feed.isLoading = false;
+        });
+      }
+    }
+  }
+
   // เลือกหมวดที่จะกรองฟีดชุมชน → ล้างฟีดแล้วโหลดใหม่
   Future<void> changeFilter(String? category) async {
     if (category == filterCategory) return;
@@ -244,7 +302,9 @@ class _FeedPageState extends State<FeedPage> {
 
   // เลื่อนใกล้ท้ายฟีดชุมชน → โหลดหน้าถัดไป
   void onScroll() {
-    if (scope != FeedScope.community || !scrollController.hasClients) {
+    if (isSinglePost ||
+        scope != FeedScope.community ||
+        !scrollController.hasClients) {
       return;
     }
 
@@ -2387,6 +2447,16 @@ class _FeedPageState extends State<FeedPage> {
   // =====================================================
 
   Widget buildEmptyState() {
+    // โหมดโพสต์เดียว: โพสต์ถูกลบ/รายงานไปแล้วระหว่างเปิดดู
+    if (isSinglePost) {
+      return buildStateCard(
+        icon: Icons.inbox_outlined,
+        color: AppColors.muted,
+        title: 'ไม่มีโพสต์นี้แล้ว',
+        message: 'โพสต์อาจถูกลบหรือซ่อนไปแล้ว',
+      );
+    }
+
     final PostCategory? filter = findPostCategory(filterCategory);
 
     if (scope == FeedScope.community && filter != null) {
@@ -2496,7 +2566,7 @@ class _FeedPageState extends State<FeedPage> {
 
     return [
       ...feed.posts.map(buildPostCard),
-      if (scope == FeedScope.community) buildFeedFooter(),
+      if (scope == FeedScope.community && !isSinglePost) buildFeedFooter(),
     ];
   }
 
@@ -2542,15 +2612,19 @@ class _FeedPageState extends State<FeedPage> {
             physics: const AlwaysScrollableScrollPhysics(),
 
             // เว้นด้านล่างไว้ไม่ให้ปุ่ม + บังโพสต์สุดท้าย
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
+            padding: EdgeInsets.fromLTRB(16, 12, 16, isSinglePost ? 32 : 96),
             children: [
-              buildSectionHeader(),
-              const SizedBox(height: 12),
+              // โหมดโพสต์เดียว: ไม่มีหัวข้อฟีด ตัวกรอง และปุ่มเขียนโพสต์
+              if (!isSinglePost) ...[
+                buildSectionHeader(),
+                const SizedBox(height: 12),
+              ],
               ...buildFeedItems(),
             ],
           ),
         ),
-        Positioned(right: 16, bottom: 16, child: buildComposeButton()),
+        if (!isSinglePost)
+          Positioned(right: 16, bottom: 16, child: buildComposeButton()),
       ],
     );
   }

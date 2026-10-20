@@ -132,10 +132,29 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   Future<void> openNotifications() async {
-    await Navigator.of(context)
-        .push(MaterialPageRoute(builder: (_) => const NotificationPage()));
+    final NotificationTarget? target = await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const NotificationPage()),
+    );
 
     if (!mounted) return;
+
+    // กดการแจ้งเตือนกิจกรรม / สมาชิกใหม่ → เปิดแท็บนั้น
+    switch (target) {
+      case NotificationTarget.activities:
+        setState(() {
+          selectedIndex = 3;
+          bottomBarVisible = true;
+        });
+      case NotificationTarget.familyMembers:
+        setState(() {
+          selectedIndex = 1;
+          familySection = FamilySection.members;
+          bottomBarVisible = true;
+        });
+        loadFamily(showLoading: false);
+      case null:
+        break;
+    }
 
     await loadUnreadNotificationCount();
   }

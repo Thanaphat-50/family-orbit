@@ -1,1619 +1,658 @@
 import 'package:flutter/material.dart';
 
+import '../data/market_data.dart';
 import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
+import 'my_shop_page.dart';
+import 'post_detail_page.dart';
 
-class NotificationPage
-    extends StatefulWidget {
-  const NotificationPage({
-    super.key,
-  });
+// แท็บในหน้าหลักที่ต้องเปิดหลังกดการแจ้งเตือน
+// (หน้าแจ้งเตือนปิดตัวเองแล้วส่งค่านี้กลับไป)
+enum NotificationTarget { activities, familyMembers }
+
+// =======================================================
+// การแจ้งเตือน
+// - กดแล้วไปที่เรื่องนั้นเลย (โพสต์ กิจกรรม ร้าน สมาชิก)
+// - ปัดซ้าย/ขวาเพื่อลบ · เมนู: อ่านทั้งหมด / ลบที่อ่านแล้ว
+// - เลื่อนลงเพื่อโหลดเพิ่ม
+// =======================================================
+
+class NotificationPage extends StatefulWidget {
+  const NotificationPage({super.key});
 
   @override
-  State<NotificationPage> createState() =>
-      _NotificationPageState();
+  State<NotificationPage> createState() => _NotificationPageState();
 }
 
-class _NotificationPageState
-    extends State<NotificationPage> {
-  bool isLoading = true;
-  bool isReadingAll = false;
+class _NotificationPageState extends State<NotificationPage> {
+  final ScrollController scrollController = ScrollController();
 
-  List<Map<String, dynamic>>
-      notifications = [];
+  List<Map<String, dynamic>> items = [];
+
+  bool isLoading = true;
+  bool isLoadingMore = false;
+  bool hasMore = false;
+  String? loadError;
+
+  bool get hasUnread => items.any((item) => !isRead(item));
+
+  bool get hasRead => items.any(isRead);
 
   @override
   void initState() {
     super.initState();
-
+    scrollController.addListener(onScroll);
     loadNotifications();
   }
 
   // =====================================================
-  // LOAD
+  // โหลดข้อมูล
   // =====================================================
 
-  Future<void>
-      loadNotifications() async {
+  Future<void> loadNotifications({bool loadMore = false}) async {
+    if (loadMore && (isLoading || isLoadingMore || !hasMore)) return;
+
+    // โหลดเพิ่ม = รายการที่เก่ากว่ารายการเก่าสุดที่มีอยู่
+    // (ไม่ใช้เลขหน้า เพราะการลบระหว่างเลื่อนจะทำให้ข้ามบางรายการ)
+    final Iterable<int> loadedIds = items.map(idOf).whereType<int>();
+
+    final int? beforeId = loadMore && loadedIds.isNotEmpty
+        ? loadedIds.reduce((a, b) => a < b ? a : b)
+        : null;
+
+    setState(() {
+      if (loadMore) {
+        isLoadingMore = true;
+      } else {
+        loadError = null;
+      }
+    });
+
     try {
-      final result =
-          await NotificationService
-              .getNotifications();
+      final result = await NotificationService.getNotifications(
+        beforeId: beforeId,
+      );
 
       if (!mounted) return;
 
-      final List<Map<String, dynamic>>
-          items =
-          extractNotifications(
-        result,
-      );
+      if (result['status'] == true) {
+        final dynamic raw = result['notifications'];
 
-      setState(() {
-        notifications =
-            items;
+        final List<Map<String, dynamic>> loaded = raw is List
+            ? raw
+                  .whereType<Map>()
+                  .map((item) => Map<String, dynamic>.from(item))
+                  .toList()
+            : [];
 
-        isLoading = false;
-      });
+        setState(() {
+          if (loadMore) {
+            final ids = items.map((item) => item['id']).toSet();
+
+            items.addAll(loaded.where((item) => !ids.contains(item['id'])));
+          } else {
+            items = loaded;
+          }
+
+          hasMore = result['has_more'] == true;
+        });
+      } else {
+        setLoadError(
+          result['message']?.toString() ?? 'โหลดการแจ้งเตือนไม่สำเร็จ',
+        );
+      }
+    } catch (e) {
+      if (mounted) setLoadError(e.toString());
+    } finally {
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+          isLoadingMore = false;
+        });
+      }
+    }
+  }
+
+  void setLoadError(String message) {
+    if (items.isEmpty) {
+      setState(() => loadError = message);
+    } else {
+      showMessage(message);
+    }
+  }
+
+  void onScroll() {
+    if (!scrollController.hasClients) return;
+
+    final position = scrollController.position;
+
+    if (position.pixels >= position.maxScrollExtent - 300) {
+      loadNotifications(loadMore: true);
+    }
+  }
+
+  // =====================================================
+  // อ่าน / ลบ
+  // =====================================================
+
+  // ทำเครื่องหมายว่าอ่านแล้วบนจอทันที แล้วค่อยส่งไป Server
+  void markRead(Map<String, dynamic> item) {
+    final int? id = idOf(item);
+
+    if (id == null || isRead(item)) return;
+
+    setState(() {
+      item['is_read'] = true;
+    });
+
+    NotificationService.markAsRead(id).catchError((_) {
+      return <String, dynamic>{};
+    });
+  }
+
+  Future<void> markAllRead() async {
+    try {
+      final result = await NotificationService.markAllAsRead();
+
+      if (!mounted) return;
+
+      if (result['status'] == true) {
+        setState(() {
+          for (final item in items) {
+            item['is_read'] = true;
+          }
+        });
+      }
+
+      showMessage(result['message']?.toString() ?? 'อ่านทั้งหมดแล้ว');
+    } catch (e) {
+      if (mounted) showMessage(e.toString());
+    }
+  }
+
+  Future<void> clearRead() async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('ลบการแจ้งเตือนที่อ่านแล้ว?'),
+          content: const Text('การแจ้งเตือนที่ยังไม่ได้อ่านจะไม่ถูกลบ'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('ยกเลิก'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('ลบ'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    try {
+      final result = await NotificationService.clearRead();
+
+      if (!mounted) return;
+
+      if (result['status'] == true) {
+        setState(() {
+          items.removeWhere(isRead);
+        });
+
+        // ลบจนหมดหน้าแล้ว แต่ Server ยังมีอีก → โหลดใหม่
+        if (items.isEmpty && hasMore) {
+          setState(() => isLoading = true);
+          await loadNotifications();
+        }
+      }
+
+      showMessage(result['message']?.toString() ?? 'ลบแล้ว');
+    } catch (e) {
+      if (mounted) showMessage(e.toString());
+    }
+  }
+
+  // ปัดเพื่อลบ: เอาออกจากจอทันที ถ้าลบไม่สำเร็จค่อยใส่คืน
+  Future<void> deleteItem(Map<String, dynamic> item) async {
+    final int? id = idOf(item);
+
+    if (id == null) return;
+
+    final int index = items.indexOf(item);
+
+    setState(() {
+      items.remove(item);
+    });
+
+    try {
+      final result = await NotificationService.deleteNotification(id);
+
+      if (!mounted) return;
+
+      if (result['status'] != true) {
+        throw Exception(result['message'] ?? 'ลบไม่สำเร็จ');
+      }
     } catch (e) {
       if (!mounted) return;
 
       setState(() {
-        isLoading = false;
+        items.insert(index.clamp(0, items.length), item);
       });
 
-      showMessage(
-        'โหลดการแจ้งเตือนไม่สำเร็จ',
-      );
+      showMessage('ลบการแจ้งเตือนไม่สำเร็จ');
     }
   }
 
   // =====================================================
-  // รองรับ response หลายรูปแบบ
+  // กดการแจ้งเตือน → ไปที่เรื่องนั้น
   // =====================================================
 
-  List<Map<String, dynamic>>
-      extractNotifications(
-    Map<String, dynamic> result,
-  ) {
-    dynamic raw =
-        result['notifications'] ??
-            result['data'];
+  Future<void> openItem(Map<String, dynamic> item) async {
+    markRead(item);
 
-    // Laravel Pagination
-    if (raw is Map) {
-      raw = raw['data'] ??
-          raw['notifications'];
+    final String type = item['type']?.toString() ?? '';
+
+    final dynamic data = item['data'];
+
+    int? dataId(String key) {
+      if (data is! Map) return null;
+
+      final dynamic value = data[key];
+
+      return value is num ? value.toInt() : int.tryParse('${value ?? ''}');
     }
 
-    if (raw is! List) {
-      return [];
+    switch (type) {
+      case 'new_post':
+      case 'new_comment':
+        final int? postId = dataId('post_id');
+
+        if (postId != null) {
+          await Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => PostDetailPage(postId: postId),
+            ),
+          );
+          return;
+        }
+
+      case 'shop_status':
+        await Navigator.of(context)
+            .push(MaterialPageRoute(builder: (context) => const MyShopPage()));
+        return;
+
+      case 'new_activity':
+        Navigator.of(context).pop(NotificationTarget.activities);
+        return;
+
+      case 'member_joined':
+        Navigator.of(context).pop(NotificationTarget.familyMembers);
+        return;
     }
-
-    final List<Map<String, dynamic>>
-        items = [];
-
-    for (final item in raw) {
-      if (item is Map) {
-        items.add(
-          Map<String, dynamic>.from(
-            item,
-          ),
-        );
-      }
-    }
-
-    return items;
-  }
-
-  // =====================================================
-  // READ STATE
-  // =====================================================
-
-  bool isRead(
-    Map<String, dynamic> item,
-  ) {
-    final value =
-        item['is_read'];
-
-    return value == true ||
-        value == 1 ||
-        value == '1';
-  }
-
-  int get unreadCount {
-    return notifications
-        .where(
-          (item) => !isRead(item),
-        )
-        .length;
-  }
-
-  // =====================================================
-  // MARK ONE
-  // =====================================================
-
-  Future<void> markRead(
-    Map<String, dynamic> item,
-  ) async {
-    if (isRead(item)) {
-      return;
-    }
-
-    final idValue =
-        item['id'];
-
-    if (idValue is! num) {
-      return;
-    }
-
-    try {
-      final result =
-          await NotificationService
-              .markAsRead(
-        idValue.toInt(),
-      );
-
-      if (!mounted) return;
-
-      if (result['status'] == true) {
-        setState(() {
-          item['is_read'] =
-              true;
-        });
-      }
-    } catch (_) {
-      // ถ้าอ่านสถานะไม่สำเร็จ
-      // ยังเปิดรายละเอียดให้ผู้ใช้ดูได้
-    }
-  }
-
-  // =====================================================
-  // READ ALL
-  // =====================================================
-
-  Future<void>
-      markAllRead() async {
-    if (unreadCount == 0 ||
-        isReadingAll) {
-      return;
-    }
-
-    setState(() {
-      isReadingAll = true;
-    });
-
-    try {
-      final result =
-          await NotificationService
-              .markAllAsRead();
-
-      if (!mounted) return;
-
-      if (result['status'] == true) {
-        setState(() {
-          for (final item
-              in notifications) {
-            item['is_read'] =
-                true;
-          }
-        });
-
-        showMessage(
-          'อ่านการแจ้งเตือนทั้งหมดแล้ว',
-        );
-      } else {
-        showMessage(
-          result['message'] ??
-              'ดำเนินการไม่สำเร็จ',
-        );
-      }
-    } catch (_) {
-      if (!mounted) return;
-
-      showMessage(
-        'ไม่สามารถอัปเดตการแจ้งเตือนได้',
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          isReadingAll =
-              false;
-        });
-      }
-    }
-  }
-
-  // =====================================================
-  // OPEN DETAIL
-  // =====================================================
-
-  Future<void> openNotification(
-    Map<String, dynamic> item,
-  ) async {
-    await markRead(
-      item,
-    );
 
     if (!mounted) return;
 
-    final type =
-        item['type']
-                ?.toString() ??
-            '';
-
-    final style =
-        getNotificationStyle(
-      type,
-    );
-
-    await showModalBottomSheet<void>(
+    // ประเภทอื่น / ไม่มีข้อมูลปลายทาง → แสดงข้อความเต็ม
+    await showDialog<void>(
       context: context,
-
-      backgroundColor:
-          Colors.transparent,
-
-      isScrollControlled: true,
-
-      builder: (
-        sheetContext,
-      ) {
-        return Container(
-          margin:
-              const EdgeInsets.only(
-            top: 120,
-          ),
-
-          decoration:
-              const BoxDecoration(
-            color:
-                Colors.white,
-
-            borderRadius:
-                BorderRadius.vertical(
-              top:
-                  Radius.circular(
-                30,
-              ),
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text(item['title']?.toString() ?? 'การแจ้งเตือน'),
+          content: Text(item['message']?.toString() ?? ''),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('ปิด'),
             ),
-          ),
-
-          child: SafeArea(
-            top: false,
-
-            child: Padding(
-              padding:
-                  const EdgeInsets
-                      .fromLTRB(
-                22,
-                12,
-                22,
-                27,
-              ),
-
-              child: Column(
-                mainAxisSize:
-                    MainAxisSize.min,
-
-                crossAxisAlignment:
-                    CrossAxisAlignment
-                        .stretch,
-
-                children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-
-                      decoration:
-                          BoxDecoration(
-                        color:
-                            const Color(
-                          0xFFD8DBE5,
-                        ),
-
-                        borderRadius:
-                            BorderRadius.circular(
-                          99,
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(
-                    height: 25,
-                  ),
-
-                  Row(
-                    children: [
-                      Container(
-                        width: 54,
-                        height: 54,
-
-                        decoration:
-                            BoxDecoration(
-                          color:
-                              style.color
-                                  .withValues(
-                            alpha:
-                                0.10,
-                          ),
-
-                          borderRadius:
-                              BorderRadius.circular(
-                            17,
-                          ),
-                        ),
-
-                        child: Icon(
-                          style.icon,
-
-                          color:
-                              style.color,
-
-                          size: 27,
-                        ),
-                      ),
-
-                      const SizedBox(
-                        width: 14,
-                      ),
-
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment:
-                              CrossAxisAlignment
-                                  .start,
-                          children: [
-                            Text(
-                              style.label,
-
-                              style:
-                                  TextStyle(
-                                color:
-                                    style.color,
-                                fontSize: 10,
-                                fontWeight:
-                                    FontWeight.w800,
-                                letterSpacing:
-                                    0.8,
-                              ),
-                            ),
-
-                            const SizedBox(
-                              height: 4,
-                            ),
-
-                            Text(
-                              item['title']
-                                      ?.toString() ??
-                                  'การแจ้งเตือน',
-
-                              style:
-                                  const TextStyle(
-                                color:
-                                    AppColors.navy,
-                                fontSize: 19,
-                                fontWeight:
-                                    FontWeight.w800,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      IconButton(
-                        onPressed: () {
-                          Navigator.of(
-                            sheetContext,
-                          ).pop();
-                        },
-
-                        icon:
-                            const Icon(
-                          Icons
-                              .close_rounded,
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(
-                    height: 22,
-                  ),
-
-                  Container(
-                    padding:
-                        const EdgeInsets
-                            .all(
-                      17,
-                    ),
-
-                    decoration:
-                        BoxDecoration(
-                      color:
-                          const Color(
-                        0xFFF7F8FC,
-                      ),
-
-                      borderRadius:
-                          BorderRadius.circular(
-                        20,
-                      ),
-
-                      border:
-                          Border.all(
-                        color:
-                            AppColors.border,
-                      ),
-                    ),
-
-                    child: Text(
-                      item['message']
-                              ?.toString() ??
-                          '',
-
-                      style:
-                          const TextStyle(
-                        color:
-                            Color(
-                          0xFF344054,
-                        ),
-                        fontSize: 14,
-                        height: 1.6,
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(
-                    height: 15,
-                  ),
-
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons
-                            .schedule_rounded,
-                        color:
-                            AppColors.muted,
-                        size: 16,
-                      ),
-
-                      const SizedBox(
-                        width: 6,
-                      ),
-
-                      Text(
-                        formatDateTime(
-                          item[
-                              'created_at'],
-                        ),
-
-                        style:
-                            const TextStyle(
-                          color:
-                              AppColors.muted,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(
-                    height: 25,
-                  ),
-
-                  ElevatedButton(
-                    onPressed: () {
-                      Navigator.of(
-                        sheetContext,
-                      ).pop();
-                    },
-
-                    child:
-                        const Text(
-                      'เรียบร้อย',
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+          ],
         );
       },
     );
   }
 
   // =====================================================
-  // DATE
+  // HELPERS
   // =====================================================
 
-  String formatTimeAgo(
-    dynamic value,
-  ) {
-    if (value == null) {
-      return '';
-    }
+  int? idOf(Map<String, dynamic> item) {
+    final dynamic id = item['id'];
 
-    try {
-      final date =
-          DateTime.parse(
-        value.toString(),
-      ).toLocal();
-
-      final difference =
-          DateTime.now()
-              .difference(
-        date,
-      );
-
-      if (difference.isNegative ||
-          difference.inMinutes < 1) {
-        return 'เมื่อสักครู่';
-      }
-
-      if (difference.inMinutes < 60) {
-        return '${difference.inMinutes} นาทีที่แล้ว';
-      }
-
-      if (difference.inHours < 24) {
-        return '${difference.inHours} ชั่วโมงที่แล้ว';
-      }
-
-      if (difference.inDays == 1) {
-        return 'เมื่อวาน';
-      }
-
-      if (difference.inDays < 7) {
-        return '${difference.inDays} วันที่แล้ว';
-      }
-
-      return '${date.day}/'
-          '${date.month}/'
-          '${date.year}';
-    } catch (_) {
-      return '';
-    }
+    return id is num ? id.toInt() : null;
   }
 
-  String formatDateTime(
-    dynamic value,
-  ) {
-    if (value == null) {
-      return '-';
-    }
+  bool isRead(Map<String, dynamic> item) {
+    final dynamic value = item['is_read'];
 
-    try {
-      final date =
-          DateTime.parse(
-        value.toString(),
-      ).toLocal();
-
-      final hour =
-          date.hour
-              .toString()
-              .padLeft(
-                2,
-                '0',
-              );
-
-      final minute =
-          date.minute
-              .toString()
-              .padLeft(
-                2,
-                '0',
-              );
-
-      return '${date.day}/'
-          '${date.month}/'
-          '${date.year} • '
-          '$hour:$minute น.';
-    } catch (_) {
-      return '-';
-    }
+    return value == true || value == 1;
   }
 
-  // =====================================================
-  // STYLE ตาม TYPE
-  // =====================================================
-
-  _NotificationStyle
-      getNotificationStyle(
-    String type,
-  ) {
-    switch (type) {
-      case 'member_joined':
-        return const _NotificationStyle(
-          icon:
-              Icons
-                  .person_add_alt_1_rounded,
-
-          color:
-              AppColors.sky,
-
-          label:
-              'NEW MEMBER',
-        );
-
-      case 'new_post':
-        return const _NotificationStyle(
-          icon:
-              Icons
-                  .dynamic_feed_rounded,
-
-          color:
-              AppColors.primary,
-
-          label:
-              'NEW POST',
-        );
-
-      case 'new_comment':
-        return const _NotificationStyle(
-          icon:
-              Icons
-                  .chat_bubble_rounded,
-
-          color:
-              AppColors.warm,
-
-          label:
-              'NEW COMMENT',
-        );
-
-      case 'new_activity':
-        return const _NotificationStyle(
-          icon: Icons.event_available_rounded,
-
-          color: AppColors.success,
-
-          label: 'NEW ACTIVITY',
-        );
-
-      // ผลตรวจร้านค้าในตลาด (อนุมัติ / ไม่ผ่าน / ระงับ)
-      case 'shop_status':
-        return const _NotificationStyle(
-          icon: Icons.storefront_rounded,
-
-          color: Color(0xFFD9701F),
-
-          label: 'MARKET',
-        );
-
-      default:
-        return const _NotificationStyle(
-          icon:
-              Icons
-                  .notifications_rounded,
-
-          color:
-              AppColors.primary,
-
-          label:
-              'NOTICE',
-        );
-    }
-  }
-
-  // =====================================================
-  // HEADER
-  // =====================================================
-
-  Widget buildHero() {
-    return Container(
-      padding:
-          const EdgeInsets.all(
-        22,
-      ),
-
-      decoration:
-          BoxDecoration(
-        gradient:
-            const LinearGradient(
-          begin:
-              Alignment.topLeft,
-          end:
-              Alignment.bottomRight,
-          colors: [
-            Color(
-              0xFF172554,
-            ),
-            Color(
-              0xFF4650D8,
-            ),
-            Color(
-              0xFF656BFF,
-            ),
-          ],
-        ),
-
-        borderRadius:
-            BorderRadius.circular(
-          28,
-        ),
-
-        boxShadow: [
-          BoxShadow(
-            color:
-                AppColors.primary
-                    .withValues(
-              alpha: 0.20,
-            ),
-
-            blurRadius: 30,
-
-            offset:
-                const Offset(
-              0,
-              12,
-            ),
-          ),
-        ],
-      ),
-
-      child: Stack(
-        children: [
-          Positioned(
-            right: -45,
-            top: -65,
-
-            child: Container(
-              width: 175,
-              height: 175,
-
-              decoration:
-                  BoxDecoration(
-                shape:
-                    BoxShape.circle,
-
-                border:
-                    Border.all(
-                  color:
-                      Colors.white
-                          .withValues(
-                    alpha: 0.11,
-                  ),
-                ),
-              ),
-            ),
-          ),
-
-          Positioned(
-            right: 10,
-            bottom: -65,
-
-            child: Container(
-              width: 125,
-              height: 125,
-
-              decoration:
-                  BoxDecoration(
-                shape:
-                    BoxShape.circle,
-
-                border:
-                    Border.all(
-                  color:
-                      AppColors.sky
-                          .withValues(
-                    alpha: 0.25,
-                  ),
-                ),
-              ),
-            ),
-          ),
-
-          Column(
-            crossAxisAlignment:
-                CrossAxisAlignment
-                    .start,
-
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding:
-                        const EdgeInsets
-                            .symmetric(
-                      horizontal: 10,
-                      vertical: 6,
-                    ),
-
-                    decoration:
-                        BoxDecoration(
-                      color:
-                          Colors.white
-                              .withValues(
-                        alpha: 0.13,
-                      ),
-
-                      borderRadius:
-                          BorderRadius.circular(
-                        99,
-                      ),
-                    ),
-
-                    child:
-                        const Row(
-                      children: [
-                        Icon(
-                          Icons
-                              .notifications_active_rounded,
-                          color:
-                              AppColors.warm,
-                          size: 15,
-                        ),
-
-                        SizedBox(
-                          width: 6,
-                        ),
-
-                        Text(
-                          'ORBIT SIGNAL',
-                          style:
-                              TextStyle(
-                            color:
-                                Colors.white,
-                            fontSize: 10,
-                            fontWeight:
-                                FontWeight.w800,
-                            letterSpacing:
-                                1.4,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const Spacer(),
-
-                  if (unreadCount > 0)
-                    Container(
-                      padding:
-                          const EdgeInsets
-                              .symmetric(
-                        horizontal: 11,
-                        vertical: 6,
-                      ),
-
-                      decoration:
-                          BoxDecoration(
-                        color:
-                            AppColors.warm
-                                .withValues(
-                          alpha:
-                              0.18,
-                        ),
-
-                        borderRadius:
-                            BorderRadius.circular(
-                          99,
-                        ),
-                      ),
-
-                      child: Text(
-                        '$unreadCount NEW',
-
-                        style:
-                            const TextStyle(
-                          color:
-                              AppColors.warm,
-                          fontSize: 10,
-                          fontWeight:
-                              FontWeight.w800,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-
-              const SizedBox(
-                height: 21,
-              ),
-
-              const Text(
-                'ไม่พลาดทุกเรื่อง\nของคนในวงโคจร',
-                style:
-                    TextStyle(
-                  color:
-                      Colors.white,
-                  fontSize: 25,
-                  height: 1.18,
-                  fontWeight:
-                      FontWeight.w800,
-                ),
-              ),
-
-              const SizedBox(
-                height: 9,
-              ),
-
-              Text(
-                unreadCount == 0
-                    ? 'คุณอ่านการแจ้งเตือนครบทั้งหมดแล้ว'
-                    : 'มี $unreadCount เรื่องใหม่ที่รอคุณอยู่',
-
-                style:
-                    TextStyle(
-                  color:
-                      Colors.white
-                          .withValues(
-                    alpha: 0.75,
-                  ),
-
-                  fontSize: 12,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  // =====================================================
-  // NOTIFICATION CARD
-  // =====================================================
-
-  Widget buildNotificationCard(
-    Map<String, dynamic> item,
-  ) {
-    final bool read =
-        isRead(
-      item,
-    );
-
-    final style =
-        getNotificationStyle(
-      item['type']
-              ?.toString() ??
-          '',
-    );
-
-    return Container(
-      margin:
-          const EdgeInsets.only(
-        bottom: 10,
-      ),
-
-      decoration:
-          BoxDecoration(
-        color: read
-            ? Colors.white
-            : AppColors.primary
-                .withValues(
-                  alpha: 0.045,
-                ),
-
-        borderRadius:
-            BorderRadius.circular(
-          21,
-        ),
-
-        border:
-            Border.all(
-          color: read
-              ? AppColors.border
-              : AppColors.primary
-                  .withValues(
-                    alpha: 0.18,
-                  ),
-        ),
-      ),
-
-      child: Material(
-        color:
-            Colors.transparent,
-
-        child: InkWell(
-          borderRadius:
-              BorderRadius.circular(
-            21,
-          ),
-
-          onTap: () {
-            openNotification(
-              item,
-            );
-          },
-
-          child: Padding(
-            padding:
-                const EdgeInsets
-                    .fromLTRB(
-              14,
-              14,
-              10,
-              14,
-            ),
-
-            child: Row(
-              crossAxisAlignment:
-                  CrossAxisAlignment
-                      .start,
-
-              children: [
-                // =======================================
-                // ICON
-                // =======================================
-
-                Stack(
-                  clipBehavior:
-                      Clip.none,
-
-                  children: [
-                    Container(
-                      width: 48,
-                      height: 48,
-
-                      decoration:
-                          BoxDecoration(
-                        color:
-                            style.color
-                                .withValues(
-                          alpha:
-                              0.10,
-                        ),
-
-                        borderRadius:
-                            BorderRadius.circular(
-                          15,
-                        ),
-                      ),
-
-                      child: Icon(
-                        style.icon,
-
-                        color:
-                            style.color,
-
-                        size: 23,
-                      ),
-                    ),
-
-                    if (!read)
-                      Positioned(
-                        right: -2,
-                        top: -2,
-
-                        child: Container(
-                          width: 11,
-                          height: 11,
-
-                          decoration:
-                              BoxDecoration(
-                            color:
-                                AppColors.danger,
-
-                            shape:
-                                BoxShape.circle,
-
-                            border:
-                                Border.all(
-                              color:
-                                  Colors.white,
-                              width: 2,
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-
-                const SizedBox(
-                  width: 12,
-                ),
-
-                // =======================================
-                // CONTENT
-                // =======================================
-
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment
-                            .start,
-
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              item['title']
-                                      ?.toString() ??
-                                  'การแจ้งเตือน',
-
-                              maxLines: 1,
-
-                              overflow:
-                                  TextOverflow
-                                      .ellipsis,
-
-                              style:
-                                  TextStyle(
-                                color:
-                                    AppColors.navy,
-
-                                fontSize: 14,
-
-                                fontWeight:
-                                    read
-                                        ? FontWeight.w700
-                                        : FontWeight.w800,
-                              ),
-                            ),
-                          ),
-
-                          if (!read)
-                            Container(
-                              margin:
-                                  const EdgeInsets.only(
-                                left: 7,
-                              ),
-
-                              padding:
-                                  const EdgeInsets
-                                      .symmetric(
-                                horizontal: 7,
-                                vertical: 3,
-                              ),
-
-                              decoration:
-                                  BoxDecoration(
-                                color:
-                                    AppColors.primary,
-
-                                borderRadius:
-                                    BorderRadius.circular(
-                                  99,
-                                ),
-                              ),
-
-                              child:
-                                  const Text(
-                                'ใหม่',
-                                style:
-                                    TextStyle(
-                                  color:
-                                      Colors.white,
-                                  fontSize: 8,
-                                  fontWeight:
-                                      FontWeight.w800,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-
-                      const SizedBox(
-                        height: 5,
-                      ),
-
-                      Text(
-                        item['message']
-                                ?.toString() ??
-                            '',
-
-                        maxLines: 2,
-
-                        overflow:
-                            TextOverflow
-                                .ellipsis,
-
-                        style:
-                            const TextStyle(
-                          color:
-                              AppColors.muted,
-
-                          fontSize: 12,
-
-                          height: 1.45,
-                        ),
-                      ),
-
-                      const SizedBox(
-                        height: 8,
-                      ),
-
-                      Row(
-                        children: [
-                          Icon(
-                            style.icon,
-
-                            color:
-                                style.color,
-
-                            size: 12,
-                          ),
-
-                          const SizedBox(
-                            width: 5,
-                          ),
-
-                          Text(
-                            style.label,
-
-                            style:
-                                TextStyle(
-                              color:
-                                  style.color,
-
-                              fontSize: 8,
-
-                              fontWeight:
-                                  FontWeight.w800,
-
-                              letterSpacing:
-                                  0.5,
-                            ),
-                          ),
-
-                          const SizedBox(
-                            width: 8,
-                          ),
-
-                          Container(
-                            width: 3,
-                            height: 3,
-
-                            decoration:
-                                const BoxDecoration(
-                              color:
-                                  AppColors.muted,
-                              shape:
-                                  BoxShape.circle,
-                            ),
-                          ),
-
-                          const SizedBox(
-                            width: 8,
-                          ),
-
-                          Text(
-                            formatTimeAgo(
-                              item[
-                                  'created_at'],
-                            ),
-
-                            style:
-                                const TextStyle(
-                              color:
-                                  AppColors.muted,
-                              fontSize: 10,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(
-                  width: 4,
-                ),
-
-                const Padding(
-                  padding:
-                      EdgeInsets.only(
-                    top: 12,
-                  ),
-
-                  child: Icon(
-                    Icons
-                        .chevron_right_rounded,
-                    color:
-                        AppColors.muted,
-                    size: 20,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // =====================================================
-  // EMPTY
-  // =====================================================
-
-  Widget buildEmptyState() {
-    return Container(
-      width:
-          double.infinity,
-
-      padding:
-          const EdgeInsets.symmetric(
-        horizontal: 30,
-        vertical: 48,
-      ),
-
-      decoration:
-          BoxDecoration(
-        color:
-            Colors.white,
-
-        borderRadius:
-            BorderRadius.circular(
-          25,
-        ),
-
-        border:
-            Border.all(
-          color:
-              AppColors.border,
-        ),
-      ),
-
-      child: Column(
-        children: [
-          Container(
-            width: 86,
-            height: 86,
-
-            decoration:
-                BoxDecoration(
-              color:
-                  AppColors.primary
-                      .withValues(
-                alpha: 0.08,
-              ),
-
-              shape:
-                  BoxShape.circle,
-            ),
-
-            child:
-                const Icon(
-              Icons
-                  .notifications_none_rounded,
-
-              size: 39,
-
-              color:
-                  AppColors.primary,
-            ),
-          ),
-
-          const SizedBox(
-            height: 20,
-          ),
-
-          const Text(
-            'วงโคจรยังเงียบอยู่',
-            style:
-                TextStyle(
-              color:
-                  AppColors.navy,
-              fontSize: 19,
-              fontWeight:
-                  FontWeight.w800,
-            ),
-          ),
-
-          const SizedBox(
-            height: 7,
-          ),
-
-          const Text(
-            'เมื่อมีสมาชิกใหม่ โพสต์ หรือความคิดเห็น\n'
-            'การแจ้งเตือนจะปรากฏที่นี่',
-
-            textAlign:
-                TextAlign.center,
-
-            style:
-                TextStyle(
-              color:
-                  AppColors.muted,
-              fontSize: 12,
-              height: 1.5,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // =====================================================
-  // MESSAGE
-  // =====================================================
-
-  void showMessage(
-    String message,
-  ) {
+  void showMessage(String message) {
     if (!mounted) return;
 
     ScaffoldMessenger.of(context)
-        .showSnackBar(
-      SnackBar(
-        content:
-            Text(message),
-      ),
-    );
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  String formatTimeAgo(dynamic value) {
+    final DateTime? date = DateTime.tryParse('${value ?? ''}')?.toLocal();
+
+    if (date == null) return '';
+
+    final Duration difference = DateTime.now().difference(date);
+
+    if (difference.isNegative || difference.inMinutes < 1) {
+      return 'เมื่อสักครู่';
+    }
+
+    if (difference.inMinutes < 60) {
+      return '${difference.inMinutes} นาทีที่แล้ว';
+    }
+
+    if (difference.inHours < 24) {
+      return '${difference.inHours} ชั่วโมงที่แล้ว';
+    }
+
+    if (difference.inDays == 1) return 'เมื่อวาน';
+
+    if (difference.inDays < 7) return '${difference.inDays} วันที่แล้ว';
+
+    return '${date.day}/${date.month}/${date.year}';
+  }
+
+  _NotificationStyle styleOf(String type) {
+    switch (type) {
+      case 'member_joined':
+        return const _NotificationStyle(
+          icon: Icons.person_add_alt_1_rounded,
+          color: AppColors.sky,
+        );
+      case 'new_post':
+        return const _NotificationStyle(
+          icon: Icons.dynamic_feed_rounded,
+          color: AppColors.primary,
+        );
+      case 'new_comment':
+        return const _NotificationStyle(
+          icon: Icons.chat_bubble_rounded,
+          color: AppColors.warm,
+        );
+      case 'new_activity':
+        return const _NotificationStyle(
+          icon: Icons.event_available_rounded,
+          color: AppColors.success,
+        );
+      case 'shop_status':
+        return const _NotificationStyle(
+          icon: Icons.storefront_rounded,
+          color: marketColor,
+        );
+      default:
+        return const _NotificationStyle(
+          icon: Icons.notifications_rounded,
+          color: AppColors.primary,
+        );
+    }
   }
 
   // =====================================================
   // UI
   // =====================================================
 
-  @override
-  Widget build(
-    BuildContext context,
-  ) {
-    return Scaffold(
-      backgroundColor:
-          AppColors.background,
+  Widget buildItem(Map<String, dynamic> item) {
+    final bool read = isRead(item);
 
-      appBar: AppBar(
-        title:
-            const Text(
-          'การแจ้งเตือน',
-        ),
+    final _NotificationStyle style = styleOf(item['type']?.toString() ?? '');
 
-        leading:
-            IconButton(
-          onPressed: () {
-            Navigator.of(
-              context,
-            ).pop();
-          },
-
-          icon:
-              const Icon(
-            Icons
-                .arrow_back_rounded,
-          ),
-        ),
-
-        actions: [
-          if (unreadCount > 0)
-            TextButton(
-              onPressed:
-                  isReadingAll
-                      ? null
-                      : markAllRead,
-
-              child:
-                  isReadingAll
-                      ? const SizedBox(
-                          width: 17,
-                          height: 17,
-
-                          child:
-                              CircularProgressIndicator(
-                            strokeWidth:
-                                2,
-                          ),
-                        )
-                      : const Text(
-                          'อ่านทั้งหมด',
-                        ),
-            ),
-
-          const SizedBox(
-            width: 6,
+    final Widget deleteBackground = Container(
+      color: AppColors.danger,
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      alignment: Alignment.centerRight,
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.delete_outline_rounded, color: Colors.white),
+          SizedBox(width: 6),
+          Text(
+            'ลบ',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
           ),
         ],
       ),
+    );
 
-      body:
-          RefreshIndicator(
-        color:
-            AppColors.primary,
-
-        onRefresh:
-            loadNotifications,
-
-        child: ListView(
-          physics:
-              const AlwaysScrollableScrollPhysics(),
-
-          padding:
-              const EdgeInsets.fromLTRB(
-            17,
-            10,
-            17,
-            35,
-          ),
-
-          children: [
-            buildHero(),
-
-            const SizedBox(
-              height: 26,
-            ),
-
-            Row(
+    return Dismissible(
+      key: ValueKey('notification-${item['id']}'),
+      direction: DismissDirection.endToStart,
+      background: deleteBackground,
+      onDismissed: (_) => deleteItem(item),
+      child: Material(
+        color: read ? Colors.white : AppColors.primary.withValues(alpha: 0.05),
+        child: InkWell(
+          onTap: () => openItem(item),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'ล่าสุด',
-                  style:
-                      TextStyle(
-                    color:
-                        AppColors.navy,
-                    fontSize: 20,
-                    fontWeight:
-                        FontWeight.w800,
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: style.color.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(style.icon, color: style.color, size: 22),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item['title']?.toString() ?? 'การแจ้งเตือน',
+                        style: TextStyle(
+                          color: AppColors.navy,
+                          fontSize: 14.5,
+                          fontWeight: read ? FontWeight.w600 : FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        item['message']?.toString() ?? '',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFF344054),
+                          fontSize: 13.5,
+                          height: 1.4,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        formatTimeAgo(item['created_at']),
+                        style: TextStyle(
+                          color: read ? AppColors.muted : AppColors.primary,
+                          fontSize: 12,
+                          fontWeight: read ? FontWeight.w400 : FontWeight.w700,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-
-                const Spacer(),
-
-                if (!isLoading &&
-                    notifications
-                        .isNotEmpty)
-                  Text(
-                    '${notifications.length} รายการ',
-
-                    style:
-                        const TextStyle(
-                      color:
-                          AppColors.muted,
-                      fontSize: 11,
+                if (!read)
+                  Container(
+                    width: 10,
+                    height: 10,
+                    margin: const EdgeInsets.only(top: 6, left: 8),
+                    decoration: const BoxDecoration(
+                      color: AppColors.primary,
+                      shape: BoxShape.circle,
                     ),
                   ),
               ],
             ),
-
-            const SizedBox(
-              height: 5,
-            ),
-
-            const Text(
-              'ข่าวสารและความเคลื่อนไหวภายในครอบครัว',
-
-              style:
-                  TextStyle(
-                color:
-                    AppColors.muted,
-                fontSize: 12,
-              ),
-            ),
-
-            const SizedBox(
-              height: 15,
-            ),
-
-            if (isLoading)
-              const Padding(
-                padding:
-                    EdgeInsets.symmetric(
-                  vertical: 65,
-                ),
-
-                child: Center(
-                  child:
-                      CircularProgressIndicator(),
-                ),
-              )
-            else if (notifications
-                .isEmpty)
-              buildEmptyState()
-            else
-              ...notifications.map(
-                buildNotificationCard,
-              ),
-          ],
+          ),
         ),
       ),
     );
   }
-}
 
-// =======================================================
-// NOTIFICATION STYLE
-// =======================================================
+  Widget buildState({
+    required IconData icon,
+    required String title,
+    required String message,
+    Widget? action,
+  }) {
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(32, 120, 32, 32),
+      children: [
+        Icon(icon, size: 52, color: AppColors.muted),
+        const SizedBox(height: 14),
+        Text(
+          title,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: AppColors.navy,
+            fontSize: 17,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          message,
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: AppColors.muted, fontSize: 13.5),
+        ),
+        if (action != null) ...[
+          const SizedBox(height: 16),
+          Center(child: action),
+        ],
+      ],
+    );
+  }
+
+  Widget buildBody() {
+    if (isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (loadError != null && items.isEmpty) {
+      return buildState(
+        icon: Icons.cloud_off_rounded,
+        title: 'โหลดการแจ้งเตือนไม่สำเร็จ',
+        message: loadError!,
+        action: OutlinedButton(
+          onPressed: () {
+            setState(() => isLoading = true);
+            loadNotifications();
+          },
+          child: const Text('ลองอีกครั้ง'),
+        ),
+      );
+    }
+
+    if (items.isEmpty) {
+      return buildState(
+        icon: Icons.notifications_none_rounded,
+        title: 'ยังไม่มีการแจ้งเตือน',
+        message: 'เมื่อมีโพสต์ ความคิดเห็น หรือกิจกรรมใหม่ จะแจ้งที่นี่',
+      );
+    }
+
+    return ListView.separated(
+      controller: scrollController,
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.only(bottom: 24),
+      itemCount: items.length + 1,
+      separatorBuilder: (context, index) =>
+          const Divider(height: 1, color: AppColors.border),
+      itemBuilder: (context, index) {
+        if (index < items.length) return buildItem(items[index]);
+
+        // ท้ายรายการ
+        if (isLoadingMore) {
+          return const Padding(
+            padding: EdgeInsets.all(18),
+            child: Center(
+              child: SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          );
+        }
+
+        return Padding(
+          padding: const EdgeInsets.all(18),
+          child: Text(
+            hasMore ? '' : 'ปัดซ้ายเพื่อลบการแจ้งเตือน',
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: AppColors.muted, fontSize: 12),
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('การแจ้งเตือน'),
+        actions: [
+          if (hasUnread)
+            IconButton(
+              tooltip: 'อ่านทั้งหมด',
+              onPressed: markAllRead,
+              icon: const Icon(Icons.done_all_rounded),
+            ),
+          PopupMenuButton<String>(
+            tooltip: 'ตัวเลือก',
+            enabled: hasRead,
+            onSelected: (value) {
+              if (value == 'clear') clearRead();
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: 'clear',
+                child: Row(
+                  children: [
+                    Icon(Icons.delete_sweep_outlined, color: AppColors.danger),
+                    SizedBox(width: 10),
+                    Text('ลบที่อ่านแล้ว'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+      body: RefreshIndicator(
+        onRefresh: () => loadNotifications(),
+        child: buildBody(),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    scrollController.dispose();
+
+    super.dispose();
+  }
+}
 
 class _NotificationStyle {
   final IconData icon;
   final Color color;
-  final String label;
 
-  const _NotificationStyle({
-    required this.icon,
-    required this.color,
-    required this.label,
-  });
+  const _NotificationStyle({required this.icon, required this.color});
 }

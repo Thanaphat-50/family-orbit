@@ -52,6 +52,21 @@ class PostService {
   }
 
   // =====================================================
+  // GET ONE POST (เปิดจากการแจ้งเตือน)
+  // ไม่พบ / ไม่มีสิทธิ์เห็น → status false + message
+  // =====================================================
+
+  static Future<Map<String, dynamic>> getPost(int postId) async {
+    final headers = await _headers();
+
+    final response = await ApiHelper.request(
+      () => http.get(Uri.parse('$baseUrl/posts/$postId'), headers: headers),
+    );
+
+    return ApiHelper.decode(response);
+  }
+
+  // =====================================================
   // CREATE POST
   // visibility: 'family' (ค่าเริ่มต้น) หรือ 'community'
   // category: หมวดของโพสต์ชุมชน (general, qa, news, help, event)

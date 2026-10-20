@@ -78,6 +78,11 @@ Route::middleware('auth:sanctum')->group(function () {
         'store'
     ])->middleware('throttle:ugc');
 
+    Route::get('/posts/{post}', [
+        PostController::class,
+        'show'
+    ]);
+
     Route::delete('/posts/{post}', [
         PostController::class,
         'destroy'
@@ -297,6 +302,18 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('/notifications/{notification}/read', [
         NotificationController::class,
         'markAsRead'
+    ]);
+
+    // ต้องอยู่ก่อน /notifications/{notification}
+    // ไม่งั้นคำว่า "read" จะถูกมองเป็นเลข ID
+    Route::delete('/notifications/read', [
+        NotificationController::class,
+        'clearRead'
+    ]);
+
+    Route::delete('/notifications/{notification}', [
+        NotificationController::class,
+        'destroy'
     ]);
 
     Route::patch(

@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\AppNotification;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -11,3 +12,6 @@ Artisan::command('inspire', function () {
 // ลบ Token ที่หมดอายุแล้วเกิน 24 ชั่วโมงออกจากฐานข้อมูลทุกวัน
 // (ทำงานเมื่อเปิด Scheduler บน Laravel Cloud)
 Schedule::command('sanctum:prune-expired --hours=24')->daily();
+
+// ลบการแจ้งเตือนที่อ่านแล้วและเก่ากว่า 90 วัน (AppNotification::prunable)
+Schedule::command('model:prune', ['--model' => [AppNotification::class]])->daily();

@@ -11,41 +11,33 @@ class NotificationService {
   // HEADERS
   // =====================================================
 
-  static Future<Map<String, String>>
-      _headers() async {
-    final token =
-        await AuthService.getToken();
+  static Future<Map<String, String>> _headers() async {
+    final token = await AuthService.getToken();
 
     return {
       'Accept': 'application/json',
-      'Content-Type':
-          'application/json',
-
-      if (token != null)
-        'Authorization':
-            'Bearer $token',
+      'Content-Type': 'application/json',
+      if (token != null) 'Authorization': 'Bearer $token',
     };
   }
 
   // =====================================================
-  // GET NOTIFICATIONS
-  // GET /api/notifications
+  // GET NOTIFICATIONS (ใหม่ล่าสุดก่อน ครั้งละ 20)
+  // beforeId = id ของรายการสุดท้ายที่มีแล้ว → โหลดชุดที่เก่ากว่า
   // =====================================================
 
-  static Future<Map<String, dynamic>>
-      getNotifications() async {
-    final response =
-        await http.get(
-      Uri.parse(
-        '$baseUrl/notifications',
-      ),
-      headers:
-          await _headers(),
+  static Future<Map<String, dynamic>> getNotifications({int? beforeId}) async {
+    final headers = await _headers();
+
+    final Uri uri = Uri.parse('$baseUrl/notifications').replace(
+      queryParameters: {if (beforeId != null) 'before_id': '$beforeId'},
     );
 
-    return ApiHelper.decode(
-      response,
+    final response = await ApiHelper.request(
+      () => http.get(uri, headers: headers),
     );
+
+    return ApiHelper.decode(response);
   }
 
   // =====================================================
@@ -53,52 +45,21 @@ class NotificationService {
   // GET /api/notifications/unread-count
   // =====================================================
 
-  static Future<int>
-      getUnreadCount() async {
-    final response =
-        await http.get(
-      Uri.parse(
-        '$baseUrl/notifications/unread-count',
+  static Future<int> getUnreadCount() async {
+    final headers = await _headers();
+
+    final response = await ApiHelper.request(
+      () => http.get(
+        Uri.parse('$baseUrl/notifications/unread-count'),
+        headers: headers,
       ),
-      headers:
-          await _headers(),
     );
 
-    final result =
-        ApiHelper.decode(
-      response,
-    );
+    final dynamic count = ApiHelper.decode(response)['count'];
 
-    final dynamic count =
-        result['unread_count'] ??
-            result['count'] ??
-            result['data'];
+    if (count is num) return count.toInt();
 
-    if (count is num) {
-      return count.toInt();
-    }
-
-    if (count is String) {
-      return int.tryParse(count) ??
-          0;
-    }
-
-    if (count is Map) {
-      final value =
-          count['unread_count'] ??
-              count['count'];
-
-      if (value is num) {
-        return value.toInt();
-      }
-
-      return int.tryParse(
-            value?.toString() ?? '',
-          ) ??
-          0;
-    }
-
-    return 0;
+    return int.tryParse('${count ?? ''}') ?? 0;
   }
 
   // =====================================================
@@ -106,23 +67,17 @@ class NotificationService {
   // PATCH /api/notifications/{id}/read
   // =====================================================
 
-  static Future<Map<String, dynamic>>
-      markAsRead(
-    int notificationId,
-  ) async {
-    final response =
-        await http.patch(
-      Uri.parse(
-        '$baseUrl/notifications/'
-        '$notificationId/read',
+  static Future<Map<String, dynamic>> markAsRead(int notificationId) async {
+    final headers = await _headers();
+
+    final response = await ApiHelper.request(
+      () => http.patch(
+        Uri.parse('$baseUrl/notifications/$notificationId/read'),
+        headers: headers,
       ),
-      headers:
-          await _headers(),
     );
 
-    return ApiHelper.decode(
-      response,
-    );
+    return ApiHelper.decode(response);
   }
 
   // =====================================================
@@ -130,19 +85,59 @@ class NotificationService {
   // PATCH /api/notifications/read-all
   // =====================================================
 
-  static Future<Map<String, dynamic>>
-      markAllAsRead() async {
-    final response =
-        await http.patch(
-      Uri.parse(
-        '$baseUrl/notifications/read-all',
+  static Future<Map<String, dynamic>> markAllAsRead() async {
+    final headers = await _headers();
+
+    final response = await ApiHelper.request(
+      () => http.patch(
+        Uri.parse('$baseUrl/notifications/read-all'),
+        headers: headers,
       ),
-      headers:
-          await _headers(),
     );
 
-    return ApiHelper.decode(
-      response,
+    return ApiHelper.decode(response);
+  }
+
+  // =====================================================
+  // DELETE ONE
+  // DELETE /api/notifications/{id}
+  // =====================================================
+
+  static Future<Map<String, dynamic>> deleteNotification(
+    int notificationId,
+  ) async {
+    final headers = await _headers();
+
+    final response = await ApiHelper.request(
+      () => http.delete(
+        Uri.parse('$baseUrl/notifications/$notificationId'),
+        headers: headers,
+      ),
     );
+
+    // ถูกลบไปแล้ว (เช่น ลบซ้ำจากอีกเครื่อง)
+    if (response.statusCode == 404) {
+      return {'status': true};
+    }
+
+    return ApiHelper.decode(response);
+  }
+
+  // =====================================================
+  // DELETE ALL READ
+  // DELETE /api/notifications/read
+  // =====================================================
+
+  static Future<Map<String, dynamic>> clearRead() async {
+    final headers = await _headers();
+
+    final response = await ApiHelper.request(
+      () => http.delete(
+        Uri.parse('$baseUrl/notifications/read'),
+        headers: headers,
+      ),
+    );
+
+    return ApiHelper.decode(response);
   }
 }
