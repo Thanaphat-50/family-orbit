@@ -69,6 +69,12 @@ class User extends Authenticatable implements FilamentUser
         )->withTimestamps();
     }
 
+    // มือถือที่ล็อกอินอยู่ (ส่งแจ้งเตือนเด้ง)
+    public function deviceTokens()
+    {
+        return $this->hasMany(DeviceToken::class);
+    }
+
     // รายงานที่ผู้ใช้คนนี้ถูกรายงาน (Admin ดูในหน้าผู้ใช้)
     public function reportsReceived()
     {

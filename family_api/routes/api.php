@@ -8,6 +8,7 @@ use App\Http\Controllers\LocationController;
 use App\Http\Controllers\PostController;
 use App\Http\Controllers\CommentController;
 use App\Http\Controllers\CommunityController;
+use App\Http\Controllers\DeviceTokenController;
 use App\Http\Controllers\MarketController;
 use App\Http\Controllers\MyProductController;
 use App\Http\Controllers\MyShopController;
@@ -128,6 +129,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/users/{user}/block', [
         CommunityController::class,
         'unblock'
+    ]);
+
+    // มือถือสำหรับแจ้งเตือนเด้ง (ออกจากระบบแล้วถูกลบเอง)
+    Route::post('/device-tokens', [
+        DeviceTokenController::class,
+        'store'
     ]);
 
     Route::get('/users/{user}/profile', [

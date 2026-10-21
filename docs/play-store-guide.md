@@ -79,9 +79,13 @@
 | Messages → Other in-app messages | โพสต์และความคิดเห็น | ไม่บังคับ | — |
 | App activity → Other user-generated content | กิจกรรม ร้านค้า สินค้า การถูกใจ รายงาน | ไม่บังคับ | Fraud prevention, security (สำหรับรายงาน) |
 | App activity → In-app search history | คำค้นในตลาด (ใช้ค้นแล้วไม่เก็บ = processed ephemerally) | ไม่บังคับ | — |
+| App info and performance → Crash logs | รายงานเมื่อแอปเด้ง (Firebase Crashlytics) | บังคับ | Analytics |
+| App info and performance → Diagnostics | รุ่นเครื่อง เวอร์ชันระบบ/แอป ที่ส่งมากับรายงาน | บังคับ | Analytics |
+| Device or other IDs | รหัสเครื่องสำหรับแจ้งเตือน (Firebase Installation ID) | บังคับ | — |
 
 > เหตุผลที่ตอบ "ไม่แชร์": ข้อมูลที่แสดงให้ผู้ใช้อื่นในแอปเห็นตามที่ผู้ใช้เลือกเอง (เช่น แชร์ตำแหน่งกับครอบครัว หรือโพสต์ในชุมชน)
 > Google ไม่นับเป็นการแชร์ให้บุคคลที่สาม และเราไม่ได้ส่งข้อมูลให้บริษัทอื่น
+> (Firebase ประมวลผลแทนเราในฐานะผู้ให้บริการ จึงไม่นับเป็นการแชร์เช่นกัน)
 
 ## STEP 5 — หน้าร้านบน Play Store (Store listing)
 

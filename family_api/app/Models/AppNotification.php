@@ -2,9 +2,13 @@
 
 namespace App\Models;
 
+use App\Services\PushNotifications;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Prunable;
+use Illuminate\Support\Facades\DB;
+
+use function Illuminate\Support\defer;
 
 class AppNotification extends Model
 {
@@ -63,6 +67,13 @@ class AppNotification extends Model
             $recipient = User::find($notification->user_id, ['id', 'notification_settings']);
 
             return $recipient === null || $recipient->wantsNotification($notification->type);
+        });
+
+        // แจ้งเตือนเด้งบนมือถือ: หลังบันทึกสำเร็จ และหลังตอบแอปไปแล้ว (ไม่ทำให้ช้า)
+        static::created(function (AppNotification $notification) {
+            DB::afterCommit(function () use ($notification) {
+                defer(fn () => app(PushNotifications::class)->sendNotification($notification));
+            });
         });
     }
 

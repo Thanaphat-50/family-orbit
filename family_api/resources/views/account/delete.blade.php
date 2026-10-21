@@ -23,7 +23,7 @@
 
     <div class="card">
         <p class="muted" style="margin-top: 0">
-            ลบในแอปได้ที่ <strong>โปรไฟล์ → ลบบัญชี</strong>
+            ลบในแอปได้ที่ <strong>ตั้งค่า → ลบบัญชี</strong>
             หรือยืนยันด้วยอีเมลและรหัสผ่านด้านล่าง
         </p>
 

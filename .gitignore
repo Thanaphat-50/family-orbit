@@ -24,3 +24,5 @@
 **/*.jks
 **/*.keystore
 family_app/android/app/src/main/res/values/google_maps_key.xml
+# Firebase (ดาวน์โหลดจาก Firebase Console แล้ววางไว้เองในเครื่อง)
+family_app/android/app/google-services.json

@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:firebase_messaging/firebase_messaging.dart' show RemoteMessage;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -7,6 +10,7 @@ import '../services/auth_service.dart';
 import '../services/family_service.dart';
 import '../services/location_tracker.dart';
 import '../services/notification_service.dart';
+import '../services/push_service.dart';
 import '../services/settings_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/section_switch.dart';
@@ -16,6 +20,7 @@ import 'feed_page.dart';
 import 'map_page.dart';
 import 'my_shop_page.dart';
 import 'notification_page.dart';
+import 'post_detail_page.dart';
 import 'profile_page.dart';
 import 'settings_page.dart';
 import 'shop_page.dart';
@@ -68,6 +73,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
     loadFamily();
     loadUnreadNotificationCount();
+
+    setUpPush();
   }
 
   // =====================================================
@@ -164,6 +171,115 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       // Notification ล้มเหลว
       // ไม่ให้กระทบหน้าหลัก
     }
+  }
+
+  // =====================================================
+  // แจ้งเตือนเด้ง (Push)
+  // =====================================================
+
+  StreamSubscription<RemoteMessage>? pushOpenedSubscription;
+  StreamSubscription<RemoteMessage>? pushForegroundSubscription;
+
+  // แถบข้อความแจ้งเตือนที่แสดงอยู่ (ปิดตอนออกจากหน้านี้)
+  ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? pushSnackBar;
+
+  void setUpPush() {
+    PushService.register();
+
+    pushOpenedSubscription = PushService.onOpened.listen(
+      (message) => openFromPush(message.data),
+    );
+
+    pushForegroundSubscription = PushService.onForeground.listen(
+      showForegroundPush,
+    );
+
+    // เปิดแอปจากการกดแจ้งเตือน (ตอนแอปปิดอยู่)
+    PushService.takeInitialMessage().then((data) {
+      if (data != null && mounted) openFromPush(data);
+    });
+  }
+
+  // แจ้งเตือนเข้าตอนเปิดแอปอยู่ → แถบข้อความ + ปุ่มดู
+  void showForegroundPush(RemoteMessage message) {
+    loadUnreadNotificationCount();
+
+    final String text =
+        message.notification?.body ?? message.notification?.title ?? '';
+
+    if (text.isEmpty || !mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context)..hideCurrentSnackBar();
+
+    pushSnackBar = messenger.showSnackBar(
+      SnackBar(
+        content: Text(text),
+        action: SnackBarAction(
+          label: 'ดู',
+          onPressed: () => openFromPush(message.data),
+        ),
+      ),
+    );
+  }
+
+  // กดแจ้งเตือน → ไปที่เรื่องนั้นเลย (เหมือนกดในหน้าแจ้งเตือน)
+  Future<void> openFromPush(Map<String, dynamic> data) async {
+    if (!mounted) return;
+
+    final int? notificationId = int.tryParse('${data['notification_id'] ?? ''}');
+
+    if (notificationId != null) {
+      NotificationService.markAsRead(notificationId)
+          .then((_) => loadUnreadNotificationCount())
+          .catchError((_) {});
+    }
+
+    final String type = data['type']?.toString() ?? '';
+
+    final int? postId = int.tryParse('${data['post_id'] ?? ''}');
+
+    final NavigatorState navigator = Navigator.of(context);
+
+    switch (type) {
+      case 'new_post':
+      case 'new_comment':
+        if (postId != null) {
+          await navigator.push(
+            MaterialPageRoute(builder: (_) => PostDetailPage(postId: postId)),
+          );
+          return;
+        }
+
+      case 'shop_status':
+        await navigator.push(
+          MaterialPageRoute(builder: (_) => const MyShopPage()),
+        );
+        return;
+
+      // เปลี่ยนแท็บ → ปิดหน้าที่เปิดซ้อนอยู่ก่อน ให้เห็นแท็บนั้น
+      case 'new_activity':
+        navigator.popUntil((route) => route.isFirst);
+
+        setState(() {
+          selectedIndex = 3;
+          bottomBarVisible = true;
+        });
+        return;
+
+      case 'member_joined':
+        navigator.popUntil((route) => route.isFirst);
+
+        setState(() {
+          selectedIndex = 1;
+          familySection = FamilySection.members;
+          bottomBarVisible = true;
+        });
+
+        loadFamily(showLoading: false);
+        return;
+    }
+
+    await openNotifications();
   }
 
   Future<void> openNotifications() async {
@@ -2511,6 +2627,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // ออกจากระบบ / ลบบัญชี → หยุดส่งตำแหน่ง และล้างค่าตั้งค่าของบัญชีนี้
     LocationTracker.stop();
     SettingsService.locationSharing.value = null;
+
+    pushOpenedSubscription?.cancel();
+    pushForegroundSubscription?.cancel();
+    pushSnackBar?.close();
 
     familyNameController.dispose();
     inviteCodeController.dispose();
