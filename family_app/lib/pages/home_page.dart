@@ -10,20 +10,25 @@ import '../services/auth_service.dart';
 import '../services/family_service.dart';
 import '../services/location_tracker.dart';
 import '../services/notification_service.dart';
+import '../services/profile_service.dart';
 import '../services/push_service.dart';
 import '../services/settings_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/account_drawer.dart';
 import '../widgets/section_switch.dart';
+import '../widgets/user_avatar.dart';
 
 import 'activity_page.dart';
 import 'feed_page.dart';
 import 'map_page.dart';
+import 'my_posts_page.dart';
 import 'my_shop_page.dart';
 import 'notification_page.dart';
 import 'post_detail_page.dart';
 import 'profile_page.dart';
 import 'settings_page.dart';
 import 'shop_page.dart';
+import 'user_profile_page.dart';
 
 // หน้าย่อยของแท็บ "หน้าหลัก"
 enum HomeSection { community, shop }
@@ -47,6 +52,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   int selectedIndex = 0;
   int unreadNotificationCount = 0;
+
+  // เมนูบัญชีด้านซ้าย (เปิดจากรูปโปรไฟล์มุมซ้ายบน)
+  final GlobalKey<ScaffoldState> scaffoldKey = GlobalKey<ScaffoldState>();
+
+  // ข้อมูลจาก /api/profile ใช้กับรูปมุมซ้ายบนและหัวเมนูบัญชี
+  Map<String, dynamic>? myProfile;
 
   // หน้าหลัก: ชุมชน | ตลาด
   HomeSection homeSection = HomeSection.community;
@@ -73,6 +84,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
     loadFamily();
     loadUnreadNotificationCount();
+    loadMyProfile();
 
     setUpPush();
   }
@@ -926,6 +938,151 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     ).push(MaterialPageRoute(builder: (_) => const SettingsPage()));
   }
 
+  // =====================================================
+  // บัญชีของฉัน (รูปมุมซ้ายบน + เมนูด้านซ้าย)
+  // =====================================================
+
+  Future<void> loadMyProfile() async {
+    try {
+      final result = await ProfileService.getProfile();
+
+      if (!mounted || result['status'] != true) return;
+
+      setState(() {
+        myProfile = Map<String, dynamic>.from(result);
+      });
+    } catch (_) {
+      // โหลดไม่ได้ → ใช้ชื่อที่รู้อยู่แล้วไปก่อน
+    }
+  }
+
+  Map<String, dynamic> get myUser {
+    final dynamic value = myProfile?['user'];
+
+    return value is Map
+        ? Map<String, dynamic>.from(value)
+        : {'name': widget.userName};
+  }
+
+  void openAccountMenu() {
+    // โหลดตัวเลข/รูปล่าสุดระหว่างเปิดเมนู
+    loadMyProfile();
+    loadUnreadNotificationCount();
+
+    scaffoldKey.currentState?.openDrawer();
+  }
+
+  Widget buildAccountButton() {
+    return Center(
+      child: Tooltip(
+        message: 'บัญชีของฉัน',
+        child: Material(
+          color: Colors.transparent,
+          shape: const CircleBorder(),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: openAccountMenu,
+            child: Container(
+              padding: const EdgeInsets.all(2),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: AppColors.primary.withValues(alpha: 0.35),
+                  width: 2,
+                ),
+              ),
+              child: UserAvatar(user: myUser, radius: 18),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> handleAccountMenu(AccountMenuItem item) async {
+    final NavigatorState navigator = Navigator.of(context);
+
+    switch (item) {
+      case AccountMenuItem.profile:
+        await navigator.push(
+          MaterialPageRoute(
+            builder: (_) => Scaffold(
+              appBar: AppBar(title: const Text('โปรไฟล์')),
+              body: const ProfilePage(),
+            ),
+          ),
+        );
+
+      case AccountMenuItem.myPosts:
+        await navigator.push(
+          MaterialPageRoute(builder: (_) => const MyPostsPage()),
+        );
+
+      case AccountMenuItem.communityProfile:
+        final dynamic id = myUser['id'];
+
+        if (id is! num) return;
+
+        await navigator.push(
+          MaterialPageRoute(
+            builder: (_) => UserProfilePage(
+              userId: id.toInt(),
+              name: myUser['name']?.toString(),
+            ),
+          ),
+        );
+
+      case AccountMenuItem.family:
+        setState(() {
+          selectedIndex = 1;
+          familySection = FamilySection.members;
+          bottomBarVisible = true;
+        });
+
+        loadFamily(showLoading: false);
+        return;
+
+      case AccountMenuItem.notifications:
+        await openNotifications();
+
+      case AccountMenuItem.shop:
+        await openSellerAccount();
+
+      case AccountMenuItem.settings:
+        await openSettings();
+
+      case AccountMenuItem.logout:
+        await confirmLogout();
+        return;
+    }
+
+    // อาจเปลี่ยนรูป/ชื่อ หรือลบโพสต์ไปแล้ว → โหลดใหม่
+    if (mounted) loadMyProfile();
+  }
+
+  Future<void> confirmLogout() async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('ออกจากระบบ?'),
+        content: const Text('เครื่องนี้จะไม่ได้รับแจ้งเตือนของบัญชีนี้จนกว่าจะเข้าสู่ระบบอีกครั้ง'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('ยกเลิก'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('ออกจากระบบ'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) await logout();
+  }
+
   Future<void> logout() async {
     await AuthService.logout();
 
@@ -953,9 +1110,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
       case 3:
         return 'กิจกรรม';
-
-      case 4:
-        return 'โปรไฟล์';
 
       default:
         return AppInfo.name;
@@ -1106,9 +1260,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       case 3:
         return const ActivityPage();
 
-      case 4:
-        return const ProfilePage();
-
       default:
         return buildNoFamily();
     }
@@ -1180,34 +1331,22 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     });
   }
 
-  Widget buildAppLogo() {
-    return Container(
-      width: 38,
-      height: 38,
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [AppColors.primary, Color(0xFF787CFF)],
+  // แท็บ ชุมชน | ตลาด ใต้ชื่อแอป (เฉพาะหน้าหลัก)
+  PreferredSizeWidget buildHomeTabs() {
+    return PreferredSize(
+      preferredSize: const Size.fromHeight(48),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Padding(
+          padding: const EdgeInsets.only(left: 8, bottom: 2),
+          child: Row(
+            children: [
+              buildHomeTabButton(HomeSection.community, 'ชุมชน'),
+              buildHomeTabButton(HomeSection.shop, 'ตลาด'),
+            ],
+          ),
         ),
-        borderRadius: BorderRadius.circular(13),
       ),
-      child: const Icon(
-        Icons.family_restroom_rounded,
-        color: Colors.white,
-        size: 21,
-      ),
-    );
-  }
-
-  Widget buildHomeTabs() {
-    return Row(
-      children: [
-        buildAppLogo(),
-        const SizedBox(width: 8),
-        buildHomeTabButton(HomeSection.community, 'ชุมชน'),
-        buildHomeTabButton(HomeSection.shop, 'ตลาด'),
-      ],
     );
   }
 
@@ -1297,46 +1436,66 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final bool showBottomBar = bottomBarVisible || selectedIndex != 0;
 
     return Scaffold(
+      key: scaffoldKey,
+
+      // เปิดจากรูปโปรไฟล์เท่านั้น (ปัดขอบจอจะไปชนกับการเลื่อนแผนที่)
+      drawerEnableOpenDragGesture: false,
+
+      drawer: AccountDrawer(
+        profile: myProfile,
+        fallbackName: widget.userName,
+        unreadNotifications: unreadNotificationCount,
+        onSelected: handleAccountMenu,
+      ),
+
       appBar: AppBar(
-        toolbarHeight: 68,
+        toolbarHeight: 64,
 
-        titleSpacing: 16,
+        // มุมซ้ายบน: รูปโปรไฟล์ → เมนูบัญชี
+        leadingWidth: 64,
+        leading: Padding(
+          padding: const EdgeInsets.only(left: 12),
+          child: buildAccountButton(),
+        ),
 
-        // หน้าหลัก: แท็บ ชุมชน | ตลาด / หน้าอื่น: ชื่อหน้า
+        titleSpacing: 8,
+
+        // หน้าหลัก: ชื่อแอป (แท็บอยู่ด้านล่าง) / หน้าอื่น: ชื่อแอป + ชื่อหน้า
         title: showHomeTabs
-            ? buildHomeTabs()
-            : Row(
+            ? const Text(
+                AppInfo.name,
+                style: TextStyle(
+                  color: AppColors.primary,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                ),
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  buildAppLogo(),
+                  const Text(
+                    AppInfo.name,
+                    style: TextStyle(
+                      color: AppColors.primary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
 
-                  const SizedBox(width: 11),
+                  const SizedBox(height: 1),
 
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        AppInfo.name,
-                        style: TextStyle(
-                          color: AppColors.primary,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-
-                      const SizedBox(height: 1),
-
-                      Text(
-                        getPageTitle(),
-                        style: const TextStyle(
-                          color: AppColors.navy,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ],
+                  Text(
+                    getPageTitle(),
+                    style: const TextStyle(
+                      color: AppColors.navy,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ],
               ),
+
+        bottom: showHomeTabs ? buildHomeTabs() : null,
 
         actions: [
           if (showHomeTabs && homeSection == HomeSection.shop)
@@ -1348,44 +1507,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
           buildNotificationButton(),
 
-          PopupMenuButton<String>(
-            tooltip: 'เมนู',
-
-            icon: const Icon(Icons.more_horiz_rounded),
-
-            onSelected: (value) {
-              if (value == 'settings') {
-                openSettings();
-              } else if (value == 'logout') {
-                logout();
-              }
-            },
-
-            itemBuilder: (_) => const [
-              PopupMenuItem(
-                value: 'settings',
-                child: Row(
-                  children: [
-                    Icon(Icons.settings_outlined, color: AppColors.navy),
-                    SizedBox(width: 10),
-                    Text('ตั้งค่า'),
-                  ],
-                ),
-              ),
-              PopupMenuItem(
-                value: 'logout',
-                child: Row(
-                  children: [
-                    Icon(Icons.logout_rounded, color: AppColors.danger),
-                    SizedBox(width: 10),
-                    Text('ออกจากระบบ'),
-                  ],
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(width: 5),
+          const SizedBox(width: 8),
         ],
       ),
 
@@ -1462,12 +1584,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     icon: Icon(Icons.event_note_outlined),
                     selectedIcon: Icon(Icons.event_note_rounded),
                     label: 'กิจกรรม',
-                  ),
-
-                  NavigationDestination(
-                    icon: Icon(Icons.person_outline_rounded),
-                    selectedIcon: Icon(Icons.person_rounded),
-                    label: 'โปรไฟล์',
                   ),
                 ],
               ),
