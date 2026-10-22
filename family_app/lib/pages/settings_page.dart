@@ -50,6 +50,11 @@ class _SettingsPageState extends State<SettingsPage> {
       title: 'มีสมาชิกใหม่เข้าครอบครัว',
       icon: Icons.person_add_alt_1_rounded,
     ),
+    _NotificationOption(
+      type: 'new_message',
+      title: 'ข้อความแชท',
+      icon: Icons.forum_outlined,
+    ),
   ];
 
   bool isLoading = true;

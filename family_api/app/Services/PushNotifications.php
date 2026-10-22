@@ -44,11 +44,23 @@ class PushNotifications
     // ส่งการแจ้งเตือนนี้ไปทุกเครื่องที่ผู้รับยังล็อกอินอยู่
     public function sendNotification(AppNotification $notification): void
     {
+        $this->sendToUser(
+            (int) $notification->user_id,
+            (string) $notification->title,
+            (string) $notification->message,
+            $this->dataPayload($notification)
+        );
+    }
+
+    // ส่งแจ้งเตือนเด้งตรง ๆ (เช่น ข้อความแชท ที่ไม่บันทึกในหน้าแจ้งเตือน)
+    // tag: แจ้งเตือนที่ tag เดียวกันจะแทนที่อันเก่าบนเครื่อง (ไม่กองซ้อนกัน)
+    public function sendToUser(int $userId, string $title, string $body, array $data = [], ?string $tag = null): void
+    {
         if (!$this->enabled()) {
             return;
         }
 
-        $tokens = DeviceToken::where('user_id', $notification->user_id)
+        $tokens = DeviceToken::where('user_id', $userId)
             ->loggedIn()
             ->pluck('token');
 
@@ -56,19 +68,18 @@ class PushNotifications
             return;
         }
 
-        $data = $this->dataPayload($notification);
+        // FCM รับ data เป็นข้อความเท่านั้น
+        $data = collect($data)
+            ->filter(fn ($value) => is_scalar($value))
+            ->map(fn ($value) => (string) $value)
+            ->all();
 
         foreach ($tokens as $token) {
-            $this->sendToToken(
-                $token,
-                (string) $notification->title,
-                (string) $notification->message,
-                $data
-            );
+            $this->sendToToken($token, $title, $body, $data, $tag);
         }
     }
 
-    private function sendToToken(string $token, string $title, string $body, array $data): void
+    private function sendToToken(string $token, string $title, string $body, array $data, ?string $tag = null): void
     {
         try {
             $response = Http::withToken($this->accessToken())
@@ -84,11 +95,12 @@ class PushNotifications
                         'data' => $data,
                         'android' => [
                             'priority' => 'high',
-                            'notification' => [
+                            'notification' => array_filter([
                                 'channel_id' => self::ANDROID_CHANNEL,
                                 'icon' => self::ANDROID_ICON,
                                 'color' => '#5B5FEF',
-                            ],
+                                'tag' => $tag,
+                            ]),
                         ],
                     ],
                 ]);

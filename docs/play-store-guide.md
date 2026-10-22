@@ -76,7 +76,7 @@
 | Personal info → Phone number | เบอร์โทรร้านค้า (เฉพาะผู้ขาย) | ไม่บังคับ | — |
 | Personal info → Other info | LINE ID และพื้นที่ขายของร้าน | ไม่บังคับ | — |
 | Photos and videos → Photos | รูปโปรไฟล์ รูปโพสต์ รูปสินค้า | ไม่บังคับ | — |
-| Messages → Other in-app messages | โพสต์และความคิดเห็น | ไม่บังคับ | — |
+| Messages → Other in-app messages | โพสต์ ความคิดเห็น และแชทส่วนตัวในครอบครัว | ไม่บังคับ | — |
 | App activity → Other user-generated content | กิจกรรม ร้านค้า สินค้า การถูกใจ รายงาน | ไม่บังคับ | Fraud prevention, security (สำหรับรายงาน) |
 | App activity → In-app search history | คำค้นในตลาด (ใช้ค้นแล้วไม่เก็บ = processed ephemerally) | ไม่บังคับ | — |
 | App info and performance → Crash logs | รายงานเมื่อแอปเด้ง (Firebase Crashlytics) | บังคับ | Analytics |

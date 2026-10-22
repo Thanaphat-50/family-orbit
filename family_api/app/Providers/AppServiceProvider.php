@@ -74,6 +74,13 @@ class AppServiceProvider extends ServiceProvider
                 ->by('ugc:' . ($request->user()?->id ?? $request->ip()))
                 ->response($this->tooManyAttempts(...));
         });
+
+        // แชท: คุยกันถี่กว่าโพสต์ได้
+        RateLimiter::for('chat', function (Request $request) {
+            return Limit::perMinute(60)
+                ->by('chat:' . ($request->user()?->id ?? $request->ip()))
+                ->response($this->tooManyAttempts(...));
+        });
     }
 
     // =====================================================

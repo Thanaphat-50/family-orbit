@@ -17,6 +17,9 @@ class AppNotification extends Model
     // ลบการแจ้งเตือนที่อ่านแล้วเมื่อเก่ากว่านี้ (วัน)
     public const PRUNE_READ_AFTER_DAYS = 90;
 
+    // ข้อความแชทใหม่: แจ้งเตือนเด้งอย่างเดียว ไม่บันทึกในหน้าแจ้งเตือน
+    public const TYPE_NEW_MESSAGE = 'new_message';
+
     // ประเภทที่ผู้ใช้เปิด/ปิดเองได้ในหน้าตั้งค่า
     // (ประเภทอื่น เช่น shop_status ส่งเสมอ)
     public const OPTIONAL_TYPES = [
@@ -24,6 +27,7 @@ class AppNotification extends Model
         'new_comment',
         'new_activity',
         'member_joined',
+        self::TYPE_NEW_MESSAGE,
     ];
 
     protected $fillable = [

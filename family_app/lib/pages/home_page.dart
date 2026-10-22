@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 
 import '../config/app_info.dart';
 import '../services/auth_service.dart';
+import '../services/chat_service.dart';
 import '../services/family_service.dart';
 import '../services/location_tracker.dart';
 import '../services/notification_service.dart';
@@ -19,6 +20,8 @@ import '../widgets/section_switch.dart';
 import '../widgets/user_avatar.dart';
 
 import 'activity_page.dart';
+import 'chat_list_page.dart';
+import 'chat_room_page.dart';
 import 'feed_page.dart';
 import 'map_page.dart';
 import 'my_posts_page.dart';
@@ -171,6 +174,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   // =====================================================
 
   Future<void> loadUnreadNotificationCount() async {
+    // ตัวเลขบนไอคอนแชทโหลดไปพร้อมกัน
+    ChatService.refreshUnreadCount();
+
     try {
       final count = await NotificationService.getUnreadCount();
 
@@ -216,6 +222,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void showForegroundPush(RemoteMessage message) {
     loadUnreadNotificationCount();
 
+    // กำลังเปิดห้องแชทนั้นอยู่ → ข้อความขึ้นในห้องเองแล้ว
+    if (message.data['type'] == 'new_message' &&
+        message.data['conversation_id']?.toString() ==
+            ChatService.activeConversationId?.toString()) {
+      return;
+    }
+
     final String text =
         message.notification?.body ?? message.notification?.title ?? '';
 
@@ -253,6 +266,20 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final NavigatorState navigator = Navigator.of(context);
 
     switch (type) {
+      case 'new_message':
+        final int? conversationId = int.tryParse(
+          '${data['conversation_id'] ?? ''}',
+        );
+
+        if (conversationId != null) {
+          await navigator.push(
+            MaterialPageRoute(
+              builder: (_) => ChatRoomPage(conversationId: conversationId),
+            ),
+          );
+          return;
+        }
+
       case 'new_post':
       case 'new_comment':
         if (postId != null) {
@@ -1278,6 +1305,58 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   // NOTIFICATION BUTTON
   // =====================================================
 
+  // ไอคอนแชท + จำนวนข้อความที่ยังไม่อ่าน
+  Widget buildChatButton() {
+    return ValueListenableBuilder<int>(
+      valueListenable: ChatService.unreadCount,
+      builder: (context, unread, child) {
+        return IconButton(
+          tooltip: 'แชท',
+          onPressed: openChats,
+          icon: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              const Icon(Icons.chat_bubble_outline_rounded, size: 24),
+              if (unread > 0)
+                Positioned(
+                  right: -6,
+                  top: -5,
+                  child: Container(
+                    constraints: const BoxConstraints(
+                      minWidth: 18,
+                      minHeight: 18,
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    alignment: Alignment.center,
+                    decoration: const BoxDecoration(
+                      color: AppColors.danger,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Text(
+                      unread > 99 ? '99+' : unread.toString(),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> openChats() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const ChatListPage()),
+    );
+
+    ChatService.refreshUnreadCount();
+  }
+
   Widget buildNotificationButton() {
     return IconButton(
       onPressed: openNotifications,
@@ -1513,6 +1592,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               onPressed: openSellerAccount,
               icon: const Icon(Icons.storefront_outlined, size: 26),
             ),
+
+          // แชทใช้ได้เมื่อมีครอบครัวแล้ว
+          if (hasFamily) buildChatButton(),
 
           buildNotificationButton(),
 

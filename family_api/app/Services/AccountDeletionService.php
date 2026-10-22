@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Family;
 use App\Models\FamilyMember;
+use App\Models\Conversation;
 use App\Models\PostImage;
 use App\Models\Shop;
 use App\Models\User;
@@ -75,6 +76,9 @@ class AccountDeletionService
         // โลโก้ร้านและรูปสินค้าของผู้ใช้ (ร้านถูกลบตาม cascade)
         $shopMediaPaths = Shop::mediaPathsOfOwner($user->id);
 
+        // รูปในห้องแชทของผู้ใช้ (ห้องถูกลบตาม cascade)
+        $chatMediaPaths = Conversation::mediaPathsOf($user->id);
+
         DB::transaction(function () use ($user) {
             // Owner คนเดียวของครอบครัว → ลบครอบครัวด้วย
             Family::where('owner_id', $user->id)->delete();
@@ -86,7 +90,7 @@ class AccountDeletionService
         });
 
         // ลบไฟล์รูปในโพสต์และไฟล์ของร้านหลังลบข้อมูลสำเร็จแล้ว
-        MediaStorage::delete([...$imagePaths, ...$shopMediaPaths]);
+        MediaStorage::delete([...$imagePaths, ...$shopMediaPaths, ...$chatMediaPaths]);
 
         // ลบรูปโปรไฟล์หลังลบข้อมูลสำเร็จแล้ว
         if ($photoPath) {

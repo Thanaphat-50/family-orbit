@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../services/chat_service.dart';
 import '../services/post_service.dart';
 import '../services/profile_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/community_sheets.dart';
 import '../widgets/user_avatar.dart';
+import 'chat_room_page.dart';
 import 'feed_page.dart';
 
 // =======================================================
@@ -256,6 +258,41 @@ class _UserProfilePageState extends State<UserProfilePage> {
     widget.onBlockChanged?.call(true);
   }
 
+  // แชทส่วนตัว (เฉพาะคนในครอบครัวเดียวกัน)
+  bool get canChat =>
+      profile?['is_family'] == true && !isMe && !isBlocked;
+
+  Future<void> openChat() async {
+    setState(() => isBusy = true);
+
+    try {
+      final result = await ChatService.openChat(widget.userId);
+
+      if (!mounted) return;
+
+      final dynamic room = result['conversation'];
+
+      if (result['status'] == true && room is Map && room['id'] is num) {
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => ChatRoomPage(
+              conversationId: (room['id'] as num).toInt(),
+              user: room['user'] is Map
+                  ? Map<String, dynamic>.from(room['user'])
+                  : null,
+            ),
+          ),
+        );
+      } else {
+        showMessage(result['message']?.toString() ?? 'เปิดแชทไม่สำเร็จ');
+      }
+    } catch (e) {
+      if (mounted) showMessage(e.toString());
+    } finally {
+      if (mounted) setState(() => isBusy = false);
+    }
+  }
+
   void showMessage(String message) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -449,6 +486,14 @@ class _UserProfilePageState extends State<UserProfilePage> {
                     ),
                 ],
               ),
+              if (canChat) ...[
+                const SizedBox(height: 14),
+                FilledButton.icon(
+                  onPressed: isBusy ? null : openChat,
+                  icon: const Icon(Icons.chat_bubble_outline_rounded, size: 18),
+                  label: const Text('ส่งข้อความ'),
+                ),
+              ],
               if (!isBlocked) ...[
                 const SizedBox(height: 16),
                 const Divider(height: 1, color: AppColors.border),

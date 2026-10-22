@@ -6,6 +6,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\FamilyController;
 use App\Http\Controllers\LocationController;
 use App\Http\Controllers\PostController;
+use App\Http\Controllers\ChatController;
 use App\Http\Controllers\CommentController;
 use App\Http\Controllers\CommunityController;
 use App\Http\Controllers\DeviceTokenController;
@@ -129,6 +130,37 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/users/{user}/block', [
         CommunityController::class,
         'unblock'
+    ]);
+
+    // แชทส่วนตัว (คนในครอบครัวเดียวกัน)
+    Route::get('/chats', [
+        ChatController::class,
+        'index'
+    ]);
+
+    Route::get('/chats/unread-count', [
+        ChatController::class,
+        'unreadCount'
+    ]);
+
+    Route::post('/chats', [
+        ChatController::class,
+        'open'
+    ]);
+
+    Route::get('/chats/{conversation}/messages', [
+        ChatController::class,
+        'messages'
+    ]);
+
+    Route::post('/chats/{conversation}/messages', [
+        ChatController::class,
+        'send'
+    ])->middleware('throttle:chat');
+
+    Route::delete('/chats/{conversation}/messages/{message}', [
+        ChatController::class,
+        'destroy'
     ]);
 
     // มือถือสำหรับแจ้งเตือนเด้ง (ออกจากระบบแล้วถูกลบเอง)

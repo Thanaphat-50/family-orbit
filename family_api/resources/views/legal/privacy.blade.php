@@ -53,6 +53,11 @@
             <td>ผู้ใช้ทุกคนในแอป</td>
         </tr>
         <tr>
+            <td>แชทส่วนตัว</td>
+            <td>ข้อความและรูปที่ส่งในแชท และเวลาที่อ่านแล้ว (แชทได้เฉพาะคนในครอบครัวเดียวกัน)</td>
+            <td>คุณและคู่สนทนาเท่านั้น</td>
+        </tr>
+        <tr>
             <td>กิจกรรม</td>
             <td>ชื่อกิจกรรม รายละเอียด วันเวลา และสถานะ</td>
             <td>คุณคนเดียว หรือครอบครัว (ตามที่คุณเลือก)</td>
@@ -118,6 +123,7 @@
         <li>เราเก็บข้อมูลจนกว่าคุณจะลบเนื้อหานั้น หรือลบบัญชี</li>
         <li>เมื่อลบบัญชี บัญชี โปรไฟล์ ตำแหน่ง โพสต์ ความคิดเห็น กิจกรรม ร้านค้า สินค้า และรูปทั้งหมดของคุณจะถูกลบ
             (ถ้าคุณเป็นเจ้าของครอบครัวคนเดียว ครอบครัวจะถูกลบด้วย)</li>
+        <li>ข้อความแชทถูกลบเมื่อคุณกดยกเลิกการส่ง หรือเมื่อคุณหรือคู่สนทนาลบบัญชี</li>
         <li>รหัสเครื่องสำหรับแจ้งเตือนถูกลบเมื่อคุณออกจากระบบ / การแจ้งเตือนที่อ่านแล้วถูกลบเมื่อเก่ากว่า 90 วัน</li>
         <li>รายงานเมื่อแอปเด้งเก็บไว้ที่ Firebase ประมาณ 90 วัน</li>
         <li>สำเนาสำรองของระบบอาจยังมีข้อมูลอยู่ระยะหนึ่งตามรอบการสำรองข้อมูล ก่อนถูกลบออกโดยอัตโนมัติ</li>
@@ -156,7 +162,7 @@
     <p>
         {{ $app }} collects your name, email, profile photo, family membership, your latest location
         (shared only with your family, updated only while the app is open, no location history),
-        posts, comments, photos, activities, and, for sellers, shop contact details and products.
+        posts, comments, photos, private chats with family members, activities, and, for sellers, shop contact details and products.
         Google Firebase delivers push notifications (using a device ID) and crash reports on our behalf.
         We do not sell personal data or show ads. Data is deleted when you delete your account
         in the app or at {{ route('account.delete') }}.
