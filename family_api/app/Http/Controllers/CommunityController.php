@@ -148,9 +148,16 @@ class CommunityController extends Controller
 
         $blockedIds = $me->blockedUsers()->pluck('users.id');
 
-        // นับเฉพาะโพสต์ที่เราเห็นได้ในชุมชน
+        // นับเฉพาะโพสต์ที่เราเห็นได้ (ครอบครัวเดียวกัน + ชุมชน)
         $visiblePosts = fn () => Post::where('user_id', $user->id)
-            ->visibleInCommunityTo($me, $blockedIds);
+            ->visibleOnProfileTo($me, $membership->family_id, $blockedIds);
+
+        // บทบาทในครอบครัว (แสดงเฉพาะครอบครัวเดียวกัน)
+        $familyRole = $isMe || $isFamily
+            ? FamilyMember::where('family_id', $membership->family_id)
+                ->where('user_id', $user->id)
+                ->value('role')
+            : null;
 
         return response()->json([
             'status' => true,
@@ -159,10 +166,15 @@ class CommunityController extends Controller
                 'name' => $user->name,
                 'profile_image_url' => $user->profile_image_url,
                 'joined_at' => $user->created_at?->toIso8601String(),
-                'community_posts' => $visiblePosts()->count(),
+                'posts' => $visiblePosts()->count(),
+                // แอปเวอร์ชันเก่าใช้ชื่อนี้
+                'community_posts' => Post::where('user_id', $user->id)
+                    ->visibleInCommunityTo($me, $blockedIds)
+                    ->count(),
                 'likes_received' => PostLike::whereIn('post_id', $visiblePosts()->select('id'))->count(),
                 'is_me' => $isMe,
                 'is_family' => $isFamily,
+                'family_role' => $familyRole,
                 'blocked' => $blockedIds->contains($user->id),
             ],
         ]);

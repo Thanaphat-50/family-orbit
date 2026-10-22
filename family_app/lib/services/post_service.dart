@@ -30,7 +30,7 @@ class PostService {
   // scope: 'family' (ครอบครัว) หรือ 'community' (ชุมชน แบ่งหน้า)
   // category: กรองฟีดชุมชนตามหมวด (null = ทุกหมวด)
   // scope: family / community / mine (โพสต์ของฉัน)
-  // userId: เฉพาะโพสต์ชุมชนของผู้ใช้คนนี้ (หน้าโปรไฟล์)
+  //        user (หน้าโปรไฟล์: โพสต์ของ userId ที่เราเห็นได้)
   static Future<Map<String, dynamic>> getPosts({
     String scope = 'family',
     int page = 1,
@@ -39,14 +39,15 @@ class PostService {
   }) async {
     final headers = await _headers();
 
-    final bool paged = scope == 'community' || scope == 'mine';
+    final bool paged =
+        scope == 'community' || scope == 'mine' || scope == 'user';
 
     final uri = Uri.parse('$baseUrl/posts').replace(
       queryParameters: {
         'scope': scope,
         if (paged) 'page': '$page',
         if (scope == 'community' && category != null) 'category': category,
-        if (scope == 'community' && userId != null) 'user_id': '$userId',
+        if (userId != null) 'user_id': '$userId',
       },
     );
 

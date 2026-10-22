@@ -37,8 +37,6 @@ class UserProfilePage extends StatefulWidget {
 }
 
 class _UserProfilePageState extends State<UserProfilePage> {
-  static const Color communityColor = Color(0xFF0B7FA6);
-
   static const Color likeColor = Color(0xFFE5486B);
 
   Map<String, dynamic>? profile;
@@ -117,6 +115,18 @@ class _UserProfilePageState extends State<UserProfilePage> {
     final dynamic value = profile?[key];
 
     return value is num ? value.toInt() : 0;
+  }
+
+  // บทบาทในครอบครัวเดียวกัน (null = คนนอกครอบครัว)
+  String? get familyRoleText {
+    switch (profile?['family_role']) {
+      case 'owner':
+        return 'เจ้าของครอบครัว';
+      case 'member':
+        return 'สมาชิกครอบครัว';
+    }
+
+    return null;
   }
 
   String? get joinedText {
@@ -426,7 +436,9 @@ class _UserProfilePageState extends State<UserProfilePage> {
                   if (profile?['is_family'] == true)
                     buildChip(
                       Icons.family_restroom_rounded,
-                      'ครอบครัวเดียวกัน',
+                      familyRoleText == null
+                          ? 'ครอบครัวเดียวกัน'
+                          : 'ครอบครัวเดียวกัน · $familyRoleText',
                       AppColors.success,
                     ),
                   if (joined != null)
@@ -445,10 +457,12 @@ class _UserProfilePageState extends State<UserProfilePage> {
                   children: [
                     Expanded(
                       child: buildStat(
-                        icon: Icons.public_rounded,
-                        color: communityColor,
-                        value: countOf('community_posts'),
-                        label: 'โพสต์ในชุมชน',
+                        icon: Icons.article_outlined,
+                        color: AppColors.primary,
+                        value: profile?['posts'] is num
+                            ? countOf('posts')
+                            : countOf('community_posts'),
+                        label: 'โพสต์',
                       ),
                     ),
                     Container(width: 1, height: 36, color: AppColors.border),
@@ -471,7 +485,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
           const Padding(
             padding: EdgeInsets.only(left: 4),
             child: Text(
-              'โพสต์ในชุมชน',
+              'โพสต์',
               style: TextStyle(
                 color: AppColors.navy,
                 fontSize: 17,

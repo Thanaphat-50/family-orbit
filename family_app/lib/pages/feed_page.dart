@@ -35,7 +35,8 @@ class _ScopeFeed {
 // - FeedScope.community: หน้าหลัก (ทุกครอบครัวเห็น)
 // - FeedScope.family:    แท็บครอบครัว (เฉพาะครอบครัว)
 // - FeedScope.mine:      โพสต์ของฉัน (ครอบครัว + ชุมชน)
-// - community + authorId: โพสต์ชุมชนของผู้ใช้คนเดียว (หน้าโปรไฟล์)
+// - authorId:           โพสต์ของผู้ใช้คนเดียวที่เราเห็นได้ (หน้าโปรไฟล์)
+//                        ครอบครัวเดียวกัน + ชุมชน
 // - postId:              โพสต์เดียว (เปิดจากการแจ้งเตือน)
 //                        scope จะใช้ตามโพสต์ที่โหลดมา
 class FeedPage extends StatefulWidget {
@@ -43,7 +44,7 @@ class FeedPage extends StatefulWidget {
 
   final int? postId;
 
-  // แสดงเฉพาะโพสต์ชุมชนของผู้ใช้คนนี้
+  // แสดงเฉพาะโพสต์ของผู้ใช้คนนี้ (หน้าโปรไฟล์)
   final int? authorId;
 
   // แสดงแทนหัวข้อฟีด (เช่น ข้อมูลโปรไฟล์)
@@ -191,7 +192,7 @@ class _FeedPageState extends State<FeedPage> {
 
     try {
       final result = await PostService.getPosts(
-        scope: apiScope(scope),
+        scope: isAuthorFeed ? 'user' : apiScope(scope),
         page: page,
         category: isMainFeed ? filterCategory : null,
         userId: widget.authorId,
@@ -1883,7 +1884,7 @@ class _FeedPageState extends State<FeedPage> {
                 child: Row(
                   children: [
                     buildProfileLink(
-                      userId: community ? authorIdOf(post) : null,
+                      userId: authorIdOf(post),
                       name: name,
                       child: buildAvatar(
                         name: name,
@@ -1900,7 +1901,7 @@ class _FeedPageState extends State<FeedPage> {
                             children: [
                               Flexible(
                                 child: buildProfileLink(
-                                  userId: community ? authorIdOf(post) : null,
+                                  userId: authorIdOf(post),
                                   name: name,
                                   child: Text(
                                     name,
@@ -2021,69 +2022,9 @@ class _FeedPageState extends State<FeedPage> {
                       const SizedBox(width: 10),
                     ],
 
-                    // จำนวนความคิดเห็น (ย่อได้บนจอแคบ)
-                    Expanded(
-                      child: comments.isEmpty
-                          ? const SizedBox.shrink()
-                          : Row(
-                              children: [
-                                const Icon(
-                                  Icons.chat_bubble_rounded,
-                                  size: 14,
-                                  color: AppColors.muted,
-                                ),
-                                const SizedBox(width: 6),
-                                Flexible(
-                                  child: Text(
-                                    '${comments.length} ความคิดเห็น',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: AppColors.muted,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                    ),
+                    // ปุ่มความคิดเห็น: ยังไม่มี = ชวนเขียน / มีแล้ว = จำนวน
                     if (postId != null)
-                      Material(
-                        color: AppColors.softPrimary,
-                        borderRadius: BorderRadius.circular(999),
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(999),
-                          onTap: () {
-                            showCommentDialog(postId);
-                          },
-                          child: const Padding(
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 9,
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.chat_bubble_outline_rounded,
-                                  color: AppColors.primary,
-                                  size: 17,
-                                ),
-                                SizedBox(width: 7),
-                                Text(
-                                  'แสดงความคิดเห็น',
-                                  style: TextStyle(
-                                    color: AppColors.primary,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
+                      buildCommentButton(postId, comments.length),
                   ],
                 ),
               ),
@@ -2092,7 +2033,11 @@ class _FeedPageState extends State<FeedPage> {
               // Comments
               // ===========================================
               if (comments.isNotEmpty)
-                buildCommentsSection(postId: postId, comments: comments),
+                buildCommentsSection(
+                  postId: postId,
+                  comments: comments,
+                  community: community,
+                ),
             ],
           ),
         ),
@@ -2366,9 +2311,88 @@ class _FeedPageState extends State<FeedPage> {
   // แสดงล่าสุด 2 รายการ กด "ดูก่อนหน้า" เพื่อดูทั้งหมด
   // =====================================================
 
+  Widget buildCommentButton(int postId, int count) {
+    return Material(
+      color: const Color(0xFFF2F4F7),
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: () => showCommentDialog(postId),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.chat_bubble_outline_rounded,
+                color: AppColors.muted,
+                size: 18,
+              ),
+              const SizedBox(width: 7),
+              Text(
+                count > 0 ? '$count' : 'ความคิดเห็น',
+                style: const TextStyle(
+                  color: AppColors.muted,
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ช่อง "เขียนความคิดเห็น..." ใต้ความคิดเห็น (กดแล้วเปิดหน้าต่างเขียน)
+  Widget buildCommentPrompt(int postId) {
+    final dynamic me = currentUser;
+
+    final String myName = me is Map
+        ? (me['name']?.toString() ?? 'คุณ')
+        : 'คุณ';
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Row(
+        children: [
+          buildAvatar(
+            name: myName,
+            imageUrl: getProfileImage(me),
+            radius: 15,
+          ),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Material(
+              color: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(999),
+                side: const BorderSide(color: AppColors.border),
+              ),
+              child: InkWell(
+                customBorder: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                onTap: () => showCommentDialog(postId),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  child: Text(
+                    'เขียนความคิดเห็น...',
+                    style: TextStyle(color: AppColors.muted, fontSize: 13.5),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget buildCommentsSection({
     required int? postId,
     required List<dynamic> comments,
+    required bool community,
   }) {
     final bool expanded = postId != null && expandedPostIds.contains(postId);
 
@@ -2385,11 +2409,9 @@ class _FeedPageState extends State<FeedPage> {
     return Container(
       width: double.infinity,
       decoration: const BoxDecoration(
-        color: Color(0xFFF8F9FD),
         border: Border(top: BorderSide(color: AppColors.border)),
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
       ),
-      padding: const EdgeInsets.fromLTRB(14, 6, 14, 14),
+      padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2419,13 +2441,17 @@ class _FeedPageState extends State<FeedPage> {
                     : 'ซ่อนความคิดเห็นเก่า',
               ),
             ),
-          ...visibleComments.map(buildComment),
+          ...visibleComments.map(
+            (comment) => buildComment(comment, community: community),
+          ),
+          if (postId != null) buildCommentPrompt(postId),
         ],
       ),
     );
   }
 
-  Widget buildComment(dynamic comment) {
+  // ความคิดเห็นแบบฟองข้อความ: ชื่อ + ข้อความในฟอง / เวลาใต้ฟอง
+  Widget buildComment(dynamic comment, {required bool community}) {
     final dynamic commentUser = comment is Map ? comment['user'] : null;
 
     final String commentName = commentUser is Map
@@ -2451,9 +2477,8 @@ class _FeedPageState extends State<FeedPage> {
     final bool mine =
         myId != null && authorId != null && myId.toString() == '$authorId';
 
-    // ความคิดเห็นของคนอื่นในฟีดชุมชน → รายงาน / บล็อกได้
-    final bool canAct =
-        scope == FeedScope.community && commentId != null && !mine;
+    // ความคิดเห็นของคนอื่นในโพสต์ชุมชน → รายงาน / บล็อกได้
+    final bool canAct = community && commentId != null && !mine;
 
     void openActions() {
       if (commentId == null) return;
@@ -2474,68 +2499,77 @@ class _FeedPageState extends State<FeedPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             buildProfileLink(
-              userId: scope == FeedScope.community ? authorId : null,
+              userId: authorId,
               name: commentName,
               child: buildAvatar(
                 name: commentName,
                 imageUrl: getProfileImage(commentUser),
-                radius: 15,
+                radius: 16,
               ),
             ),
             const SizedBox(width: 9),
             Expanded(
-              child: Container(
-                padding: const EdgeInsets.fromLTRB(12, 9, 12, 10),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(4),
-                    topRight: Radius.circular(16),
-                    bottomLeft: Radius.circular(16),
-                    bottomRight: Radius.circular(16),
-                  ),
-                  border: Border.all(color: AppColors.border),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // ฟองข้อความสีเทาอ่อน (กว้างตามข้อความ)
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(13, 8, 13, 9),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0F2F5),
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // ชื่อ + เวลา ใช้พื้นที่ที่เหลือ → ปุ่ม ⋯ ชิดขวา
-                        Expanded(
-                          child: Row(
-                            children: [
-                              Flexible(
-                                child: Text(
-                                  commentName,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    color: AppColors.navy,
-                                    fontSize: 12.5,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                              ),
-                              if (createdAt != null) ...[
-                                const SizedBox(width: 6),
-                                Text(
-                                  formatDate(createdAt),
-                                  style: const TextStyle(
-                                    color: AppColors.muted,
-                                    fontSize: 10.5,
-                                  ),
-                                ),
-                              ],
-                            ],
+                        buildProfileLink(
+                          userId: authorId,
+                          name: commentName,
+                          child: Text(
+                            commentName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: AppColors.navy,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                            ),
                           ),
                         ),
+                        const SizedBox(height: 2),
+                        Text(
+                          content,
+                          style: const TextStyle(
+                            color: Color(0xFF1F2937),
+                            fontSize: 14.5,
+                            height: 1.4,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // เวลา + ⋯ ใต้ฟอง
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 3, 0, 0),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (createdAt != null)
+                          Text(
+                            formatDate(createdAt),
+                            style: const TextStyle(
+                              color: AppColors.muted,
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                         if (canAct) ...[
+                          const SizedBox(width: 10),
                           InkWell(
                             borderRadius: BorderRadius.circular(999),
                             onTap: openActions,
                             child: const Padding(
-                              padding: EdgeInsets.all(2),
+                              padding: EdgeInsets.symmetric(horizontal: 4),
                               child: Icon(
                                 Icons.more_horiz_rounded,
                                 size: 18,
@@ -2546,17 +2580,8 @@ class _FeedPageState extends State<FeedPage> {
                         ],
                       ],
                     ),
-                    const SizedBox(height: 3),
-                    Text(
-                      content,
-                      style: const TextStyle(
-                        color: Color(0xFF344054),
-                        fontSize: 14,
-                        height: 1.4,
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -2582,10 +2607,10 @@ class _FeedPageState extends State<FeedPage> {
 
     if (isAuthorFeed) {
       return buildStateCard(
-        icon: Icons.public_rounded,
-        color: communityColor,
-        title: 'ยังไม่มีโพสต์ในชุมชน',
-        message: 'โพสต์ชุมชนของผู้ใช้นี้จะแสดงที่นี่',
+        icon: Icons.article_outlined,
+        color: AppColors.primary,
+        title: 'ยังไม่มีโพสต์',
+        message: 'โพสต์ของผู้ใช้นี้ที่คุณเห็นได้จะแสดงที่นี่',
       );
     }
 

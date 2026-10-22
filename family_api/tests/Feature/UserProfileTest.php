@@ -171,6 +171,70 @@ class UserProfileTest extends TestCase
     }
 
     // =====================================================
+    // หน้าโปรไฟล์: โพสต์ที่เราเห็นได้ (ครอบครัวเดียวกัน + ชุมชน)
+    // =====================================================
+
+    public function test_family_member_profile_shows_family_and_community_posts(): void
+    {
+        $owner = User::factory()->create();
+        $member = User::factory()->create();
+        $family = $this->createFamily($owner, [$member]);
+
+        $this->makePost($member, $family, 'family', 'Member family post');
+        $this->makePost($member, $family, 'community', 'Member community post');
+        $this->makePost($owner, $family, 'family', 'Owner post');
+
+        Sanctum::actingAs($owner);
+
+        $this->getJson('/api/users/' . $member->id . '/profile')
+            ->assertOk()
+            ->assertJsonPath('profile.posts', 2)
+            ->assertJsonPath('profile.community_posts', 1)
+            ->assertJsonPath('profile.family_role', 'member');
+
+        $contents = collect(
+            $this->getJson('/api/posts?scope=user&user_id=' . $member->id)
+                ->assertOk()
+                ->assertJsonPath('scope', 'user')
+                ->json('posts')
+        )->pluck('content')->all();
+
+        $this->assertEqualsCanonicalizing(
+            ['Member family post', 'Member community post'],
+            $contents
+        );
+    }
+
+    public function test_outsider_sees_only_community_posts_on_profile(): void
+    {
+        $author = User::factory()->create();
+        $family = $this->createFamily($author);
+
+        $this->makePost($author, $family, 'family', 'Private family post');
+        $this->makePost($author, $family, 'community', 'Public post');
+
+        $outsider = User::factory()->create();
+        $this->createFamily($outsider);
+
+        Sanctum::actingAs($outsider);
+
+        $this->getJson('/api/users/' . $author->id . '/profile')
+            ->assertOk()
+            ->assertJsonPath('profile.posts', 1)
+            ->assertJsonPath('profile.family_role', null);
+
+        $contents = collect(
+            $this->getJson('/api/posts?scope=user&user_id=' . $author->id)
+                ->assertOk()
+                ->json('posts')
+        )->pluck('content')->all();
+
+        $this->assertSame(['Public post'], $contents);
+
+        $this->getJson('/api/posts?scope=user')->assertStatus(422);
+    }
+
+    // =====================================================
     // ฟีดชุมชนของผู้ใช้คนเดียว
     // =====================================================
 

@@ -34,7 +34,9 @@ class PostController extends Controller
     // ?scope=family    (ค่าเริ่มต้น) โพสต์ในครอบครัว
     // ?scope=community &page=N      โพสต์ชุมชนของทุกคน
     //                  &category=qa กรองตามหมวด (ไม่ส่ง = ทุกหมวด)
-    //                  &user_id=5   เฉพาะโพสต์ของผู้ใช้คนนี้ (หน้าโปรไฟล์)
+    //                  &user_id=5   เฉพาะโพสต์ชุมชนของผู้ใช้คนนี้ (แอปเวอร์ชันเก่า)
+    // ?scope=user      &user_id=5   หน้าโปรไฟล์: โพสต์ของคนนี้ที่เราเห็นได้
+    //                  &page=N      (ครอบครัวเดียวกัน + ชุมชน)
     // ?scope=mine      &page=N      โพสต์ของเราเอง (ครอบครัว + ชุมชน)
     // =====================================================
 
@@ -70,6 +72,14 @@ class PostController extends Controller
 
         if ($request->query('scope') === 'mine') {
             return $this->myPosts($user, $membership);
+        }
+
+        if ($request->query('scope') === 'user') {
+            $data = $request->validate([
+                'user_id' => 'required|integer',
+            ]);
+
+            return $this->userPosts($user, $membership, (int) $data['user_id']);
         }
 
         $posts = Post::where(
@@ -136,6 +146,38 @@ class PostController extends Controller
     // - โพสต์ครอบครัวในครอบครัวปัจจุบัน + โพสต์ชุมชนทั้งหมด
     // - โพสต์ชุมชนที่ถูกซ่อนก็แสดง (is_hidden) ให้เจ้าของรู้
     // =====================================================
+
+    // =====================================================
+    // โพสต์ของผู้ใช้คนหนึ่ง (หน้าโปรไฟล์)
+    // - คนในครอบครัวเดียวกัน: โพสต์ครอบครัว + โพสต์ชุมชน
+    // - คนอื่น: เฉพาะโพสต์ชุมชนที่เราเห็นได้
+    // =====================================================
+
+    private function userPosts(User $user, FamilyMember $membership, int $authorId)
+    {
+        $blockedIds = $user->blockedUsers()->pluck('users.id');
+
+        $paginator = Post::where('user_id', $authorId)
+            ->visibleOnProfileTo($user, $membership->family_id, $blockedIds)
+            ->with($this->communityRelations($user, $blockedIds))
+            ->tap(fn ($query) => $this->withLikeInfo($query, $user))
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->simplePaginate(self::COMMUNITY_PAGE_SIZE);
+
+        $posts = collect($paginator->items())
+            ->map(fn ($post) => $this->withOwnership($post, $user))
+            ->values();
+
+        return response()->json([
+            'status' => true,
+            'scope' => 'user',
+            'current_user' => $this->currentUserPayload($user),
+            'posts' => $posts,
+            'page' => $paginator->currentPage(),
+            'has_more' => $paginator->hasMorePages(),
+        ]);
+    }
 
     private function myPosts(User $user, FamilyMember $membership)
     {

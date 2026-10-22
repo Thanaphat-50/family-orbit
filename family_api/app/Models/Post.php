@@ -96,4 +96,22 @@ class Post extends Model
             })
             ->whereNotIn('user_id', $blockedIds);
     }
+
+    // โพสต์ที่ $viewer เห็นได้ในหน้าโปรไฟล์ของคนอื่น
+    // โพสต์ชุมชนที่ $viewer เห็นได้ + โพสต์ครอบครัวในครอบครัวของ $viewer
+    public function scopeVisibleOnProfileTo($query, User $viewer, ?int $viewerFamilyId, $blockedIds = null)
+    {
+        return $query->where(function ($posts) use ($viewer, $viewerFamilyId, $blockedIds) {
+            $posts->where(function ($community) use ($viewer, $blockedIds) {
+                $community->visibleInCommunityTo($viewer, $blockedIds);
+            });
+
+            if ($viewerFamilyId) {
+                $posts->orWhere(function ($family) use ($viewerFamilyId) {
+                    $family->where('visibility', 'family')
+                        ->where('family_id', $viewerFamilyId);
+                });
+            }
+        });
+    }
 }

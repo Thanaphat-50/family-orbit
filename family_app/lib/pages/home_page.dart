@@ -964,6 +964,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         : {'name': widget.userName};
   }
 
+  // หน้าโปรไฟล์ของคนอื่น (เช่น กดการ์ดสมาชิกครอบครัว)
+  Future<void> openUserProfile(int userId, String name) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => UserProfilePage(userId: userId, name: name),
+      ),
+    );
+  }
+
   void openAccountMenu() {
     // โหลดตัวเลข/รูปล่าสุดระหว่างเปิดเมนู
     loadMyProfile();
@@ -2463,14 +2472,24 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
             final String email = member['email']?.toString() ?? '';
 
-            return Container(
-              margin: const EdgeInsets.only(bottom: 10),
+            // กดการ์ด → หน้าโปรไฟล์ของสมาชิก
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 10),
 
+              child: Material(
+                color: Colors.white,
+
+                borderRadius: BorderRadius.circular(20),
+
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(20),
+
+                  onTap: () => openUserProfile(memberId, memberName),
+
+                  child: Container(
               padding: const EdgeInsets.fromLTRB(15, 13, 10, 13),
 
               decoration: BoxDecoration(
-                color: Colors.white,
-
                 borderRadius: BorderRadius.circular(20),
 
                 border: Border.all(color: AppColors.border),
@@ -2594,8 +2613,19 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                           ),
                         ),
                       ],
+                    )
+                  else
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 6),
+                      child: Icon(
+                        Icons.chevron_right_rounded,
+                        color: AppColors.muted,
+                      ),
                     ),
                 ],
+              ),
+                  ),
+                ),
               ),
             );
           }),
