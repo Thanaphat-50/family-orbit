@@ -19,7 +19,7 @@ class OrbitBackground
         // Gradient Background
         // =============================================
 
-        const Positioned.fill(
+        Positioned.fill(
           child: DecoratedBox(
             decoration:
                 BoxDecoration(
@@ -30,9 +30,9 @@ class OrbitBackground
                 end:
                     Alignment.bottomRight,
                 colors: [
-                  Color(0xFFF3F5FF),
-                  Color(0xFFF8FAFF),
-                  Color(0xFFFFFBF6),
+                  AppColors.softPrimary,
+                  AppColors.background,
+                  AppColors.softWarm,
                 ],
               ),
             ),
@@ -240,7 +240,7 @@ class FamilyOrbitLogo
             decoration:
                 BoxDecoration(
               gradient:
-                  const LinearGradient(
+                  LinearGradient(
                 begin:
                     Alignment.topLeft,
                 end:
@@ -288,7 +288,7 @@ class FamilyOrbitLogo
               width: 15,
               height: 15,
               decoration:
-                  const BoxDecoration(
+                  BoxDecoration(
                 color:
                     AppColors.sky,
                 shape:
@@ -304,7 +304,7 @@ class FamilyOrbitLogo
               width: 11,
               height: 11,
               decoration:
-                  const BoxDecoration(
+                  BoxDecoration(
                 color:
                     AppColors.warm,
                 shape:

@@ -242,7 +242,7 @@ class _RegisterPageState
                       height: 14,
                     ),
 
-                    const Text(
+                    Text(
                       'สร้างวงโคจรของคุณ',
                       textAlign:
                           TextAlign.center,
@@ -260,7 +260,7 @@ class _RegisterPageState
                       height: 7,
                     ),
 
-                    const Text(
+                    Text(
                       'เริ่มต้นเชื่อมต่อกับคนสำคัญของคุณ',
                       textAlign:
                           TextAlign.center,
@@ -283,7 +283,7 @@ class _RegisterPageState
 
                       decoration:
                           BoxDecoration(
-                        color: Colors.white
+                        color: AppColors.surface
                             .withValues(
                           alpha: 0.94,
                         ),
@@ -497,7 +497,7 @@ class _RegisterPageState
                             crossAxisAlignment:
                                 WrapCrossAlignment.center,
                             children: [
-                              const Text(
+                              Text(
                                 'การสร้างบัญชีถือว่าคุณยอมรับ',
                                 style: TextStyle(
                                   color: AppColors.muted,
@@ -508,7 +508,7 @@ class _RegisterPageState
                                 'ข้อกำหนดการใช้งาน',
                                 AppInfo.termsUrl,
                               ),
-                              const Text(
+                              Text(
                                 'และ',
                                 style: TextStyle(
                                   color: AppColors.muted,

@@ -202,10 +202,12 @@ class AccountDrawer extends StatelessWidget {
     required IconData icon,
     required String title,
     String? subtitle,
-    Color color = AppColors.primary,
+    Color? color,
     int badge = 0,
     bool danger = false,
   }) {
+    color ??= AppColors.primary;
+
     return ListTile(
       onTap: () => select(context, item),
       contentPadding: const EdgeInsets.symmetric(horizontal: 18),
@@ -230,7 +232,7 @@ class AccountDrawer extends StatelessWidget {
           ? null
           : Text(
               subtitle,
-              style: const TextStyle(color: AppColors.muted, fontSize: 12),
+              style: TextStyle(color: AppColors.muted, fontSize: 12),
             ),
       trailing: badge > 0
           ? Container(
@@ -257,7 +259,7 @@ class AccountDrawer extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
       child: Text(
         label,
-        style: const TextStyle(
+        style: TextStyle(
           color: AppColors.muted,
           fontSize: 12.5,
           fontWeight: FontWeight.w800,
@@ -269,7 +271,7 @@ class AccountDrawer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Drawer(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.horizontal(right: Radius.circular(24)),
       ),

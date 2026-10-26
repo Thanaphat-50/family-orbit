@@ -37,7 +37,7 @@ class MarketProductCard extends StatelessWidget {
         : '';
 
     return Material(
-      color: Colors.white,
+      color: AppColors.surface,
       borderRadius: BorderRadius.circular(20),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -45,7 +45,8 @@ class MarketProductCard extends StatelessWidget {
         child: Ink(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: AppColors.border),
+            border: AppDecorations.cardBorder,
+            boxShadow: AppDecorations.cardShadow,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -55,8 +56,8 @@ class MarketProductCard extends StatelessWidget {
                 child: SizedBox(
                   width: double.infinity,
                   child: imageUrl == null
-                      ? const ColoredBox(
-                          color: Color(0xFFF3EEE9),
+                      ? ColoredBox(
+                          color: AppColors.fill,
                           child: Icon(
                             Icons.shopping_bag_outlined,
                             color: marketColor,
@@ -69,11 +70,11 @@ class MarketProductCard extends StatelessWidget {
                           loadingBuilder: (context, child, progress) {
                             return progress == null
                                 ? child
-                                : const ColoredBox(color: Color(0xFFF3EEE9));
+                                : ColoredBox(color: AppColors.fill);
                           },
                           errorBuilder: (context, error, stackTrace) {
-                            return const ColoredBox(
-                              color: Color(0xFFF3EEE9),
+                            return ColoredBox(
+                              color: AppColors.fill,
                               child: Icon(
                                 Icons.broken_image_outlined,
                                 color: AppColors.muted,
@@ -92,7 +93,7 @@ class MarketProductCard extends StatelessWidget {
                       product['title']?.toString() ?? '',
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppColors.navy,
                         fontSize: 13.5,
                         height: 1.3,
@@ -114,7 +115,7 @@ class MarketProductCard extends StatelessWidget {
                         shopLine,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppColors.muted,
                           fontSize: 11.5,
                         ),
@@ -250,7 +251,7 @@ class MarketSafetyNote extends StatelessWidget {
         color: AppColors.softWarm,
         borderRadius: BorderRadius.circular(16),
       ),
-      child: const Row(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(Icons.shield_outlined, color: marketColor, size: 20),

@@ -265,8 +265,8 @@ class _ProductFormPageState extends State<ProductFormPage> {
                   fit: BoxFit.cover,
                   cacheWidth: 300,
                   errorBuilder: (context, error, stackTrace) {
-                    return const ColoredBox(
-                      color: Color(0xFFEDEFF5),
+                    return ColoredBox(
+                      color: AppColors.fill,
                       child: Icon(
                         Icons.broken_image_outlined,
                         color: AppColors.muted,
@@ -332,7 +332,7 @@ class _ProductFormPageState extends State<ProductFormPage> {
               serverErrors.entries
                   .firstWhere((entry) => entry.key.startsWith('images'))
                   .value,
-              style: const TextStyle(color: AppColors.danger, fontSize: 12),
+              style: TextStyle(color: AppColors.danger, fontSize: 12),
             ),
           ),
       ],
@@ -344,7 +344,7 @@ class _ProductFormPageState extends State<ProductFormPage> {
       padding: const EdgeInsets.only(bottom: 10),
       child: Text(
         text,
-        style: const TextStyle(
+        style: TextStyle(
           color: AppColors.navy,
           fontSize: 15,
           fontWeight: FontWeight.w800,

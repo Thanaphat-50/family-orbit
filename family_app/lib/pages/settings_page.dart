@@ -8,6 +8,7 @@ import '../services/location_tracker.dart';
 import '../services/profile_service.dart';
 import '../services/settings_service.dart';
 import '../theme/app_theme.dart';
+import '../theme/theme_controller.dart';
 import '../widgets/community_sheets.dart';
 import 'login_page.dart';
 
@@ -308,7 +309,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
 
                   children: [
-                    const Text(
+                    Text(
                       'เปลี่ยนรหัสผ่าน',
 
                       style: TextStyle(
@@ -322,7 +323,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
                     const SizedBox(height: 6),
 
-                    const Text(
+                    Text(
                       'รหัสผ่านใหม่ต้องมีอย่างน้อย 8 ตัวอักษร',
 
                       style: TextStyle(color: AppColors.muted, fontSize: 11),
@@ -516,7 +517,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
 
                   children: [
-                    const Text(
+                    Text(
                       'ลบบัญชี',
 
                       style: TextStyle(
@@ -530,7 +531,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
                     const SizedBox(height: 10),
 
-                    const Text(
+                    Text(
                       'ข้อมูลต่อไปนี้จะถูกลบถาวร และกู้คืนไม่ได้\n'
                       '• บัญชีและรูปโปรไฟล์\n'
                       '• การเป็นสมาชิกครอบครัวและตำแหน่ง\n'
@@ -587,7 +588,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
                       activeColor: AppColors.danger,
 
-                      title: const Text(
+                      title: Text(
                         'ฉันเข้าใจว่าข้อมูลทั้งหมดจะถูกลบถาวร',
 
                         style: TextStyle(
@@ -712,7 +713,7 @@ class _SettingsPageState extends State<SettingsPage> {
       padding: const EdgeInsets.fromLTRB(4, 22, 4, 8),
       child: Text(
         title,
-        style: const TextStyle(
+        style: TextStyle(
           color: AppColors.muted,
           fontSize: 13,
           fontWeight: FontWeight.w800,
@@ -725,20 +726,87 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget buildGroup(List<Widget> children) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.border),
+        border: AppDecorations.cardBorder,
+        boxShadow: AppDecorations.cardShadow,
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
           for (int i = 0; i < children.length; i++) ...[
             if (i > 0)
-              const Divider(height: 1, indent: 60, color: AppColors.border),
+              Divider(height: 1, indent: 60, color: AppColors.border),
             children[i],
           ],
         ],
       ),
+    );
+  }
+
+  // โหมดสี: ตามเครื่อง / สว่าง / มืด (เปลี่ยนทันที)
+  Widget buildThemeSelector() {
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: ThemeController.mode,
+      builder: (context, mode, child) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  buildIcon(Icons.contrast_rounded, AppColors.primary),
+                  const SizedBox(width: 14),
+                  Text(
+                    'โหมดสี',
+                    style: TextStyle(
+                      color: AppColors.navy,
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: SegmentedButton<ThemeMode>(
+                  showSelectedIcon: false,
+                  style: SegmentedButton.styleFrom(
+                    backgroundColor: AppColors.fill,
+                    selectedBackgroundColor: AppColors.primary,
+                    selectedForegroundColor: Colors.white,
+                    foregroundColor: AppColors.navy,
+                    side: BorderSide(color: AppColors.border),
+                  ),
+                  segments: const [
+                    ButtonSegment(
+                      value: ThemeMode.system,
+                      icon: Icon(Icons.brightness_auto_outlined, size: 18),
+                      label: Text('ตามเครื่อง'),
+                    ),
+                    ButtonSegment(
+                      value: ThemeMode.light,
+                      icon: Icon(Icons.light_mode_outlined, size: 18),
+                      label: Text('สว่าง'),
+                    ),
+                    ButtonSegment(
+                      value: ThemeMode.dark,
+                      icon: Icon(Icons.dark_mode_outlined, size: 18),
+                      label: Text('มืด'),
+                    ),
+                  ],
+                  selected: {mode},
+                  onSelectionChanged: (selection) {
+                    ThemeController.set(selection.first);
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -770,7 +838,7 @@ class _SettingsPageState extends State<SettingsPage> {
       contentPadding: const EdgeInsets.fromLTRB(12, 2, 8, 2),
       title: Text(
         title,
-        style: const TextStyle(
+        style: TextStyle(
           color: AppColors.navy,
           fontSize: 14.5,
           fontWeight: FontWeight.w700,
@@ -780,7 +848,7 @@ class _SettingsPageState extends State<SettingsPage> {
           ? null
           : Text(
               subtitle,
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppColors.muted,
                 fontSize: 12,
                 height: 1.4,
@@ -793,10 +861,12 @@ class _SettingsPageState extends State<SettingsPage> {
     required IconData icon,
     required String title,
     String? subtitle,
-    Color color = AppColors.primary,
+    Color? color,
     bool danger = false,
     required VoidCallback onTap,
   }) {
+    color ??= AppColors.primary;
+
     return ListTile(
       onTap: onTap,
       leading: buildIcon(icon, color),
@@ -813,9 +883,9 @@ class _SettingsPageState extends State<SettingsPage> {
           ? null
           : Text(
               subtitle,
-              style: const TextStyle(color: AppColors.muted, fontSize: 12),
+              style: TextStyle(color: AppColors.muted, fontSize: 12),
             ),
-      trailing: const Icon(Icons.chevron_right_rounded, color: AppColors.muted),
+      trailing: Icon(Icons.chevron_right_rounded, color: AppColors.muted),
     );
   }
 
@@ -838,7 +908,7 @@ class _SettingsPageState extends State<SettingsPage> {
               Text(
                 loadError!,
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: AppColors.navy),
+                style: TextStyle(color: AppColors.navy),
               ),
               const SizedBox(height: 10),
               OutlinedButton(
@@ -878,7 +948,7 @@ class _SettingsPageState extends State<SettingsPage> {
             onChanged: (value) => setNotification(option.type, value),
           ),
       ]),
-      const Padding(
+      Padding(
         padding: EdgeInsets.fromLTRB(6, 8, 6, 0),
         child: Text(
           'ผลการตรวจสอบร้านค้าจะแจ้งเสมอ',
@@ -896,6 +966,8 @@ class _SettingsPageState extends State<SettingsPage> {
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
         children: [
           ...buildPreferenceSections(),
+          buildSectionTitle('การแสดงผล'),
+          buildGroup([buildThemeSelector()]),
           buildSectionTitle('ความเป็นส่วนตัว'),
           buildGroup([
             buildActionRow(
@@ -957,7 +1029,7 @@ class _SettingsPageState extends State<SettingsPage> {
               child: Text(
                 '${AppInfo.name} เวอร์ชัน $version',
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: AppColors.muted, fontSize: 12),
+                style: TextStyle(color: AppColors.muted, fontSize: 12),
               ),
             ),
         ],

@@ -603,11 +603,11 @@ class _MapPageState extends State<MapPage> {
         padding: const EdgeInsets.fromLTRB(14, 12, 9, 12),
 
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: AppColors.surface,
 
           borderRadius: BorderRadius.circular(21),
 
-          border: Border.all(color: AppColors.border),
+          border: AppDecorations.cardBorder,
 
           boxShadow: [
             BoxShadow(
@@ -627,7 +627,7 @@ class _MapPageState extends State<MapPage> {
               height: 45,
 
               decoration: BoxDecoration(
-                gradient: const LinearGradient(
+                gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [AppColors.primary, Color(0xFF777CFF)],
@@ -651,7 +651,7 @@ class _MapPageState extends State<MapPage> {
                 children: [
                   Row(
                     children: [
-                      const Text(
+                      Text(
                         'Family Map',
                         style: TextStyle(
                           color: AppColors.navy,
@@ -681,7 +681,7 @@ class _MapPageState extends State<MapPage> {
 
                   Text(
                     '${familyLocations.length} สมาชิก • ${getSyncText()}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppColors.muted,
                       fontSize: 10,
                     ),
@@ -697,7 +697,7 @@ class _MapPageState extends State<MapPage> {
                 await loadFamilyLocations();
               },
 
-              icon: const Icon(Icons.refresh_rounded, color: AppColors.primary),
+              icon: Icon(Icons.refresh_rounded, color: AppColors.primary),
             ),
           ],
         ),
@@ -723,7 +723,7 @@ class _MapPageState extends State<MapPage> {
         padding: const EdgeInsets.all(12),
 
         decoration: BoxDecoration(
-          color: const Color(0xFFFFF8EE),
+          color: AppColors.softWarm,
 
           borderRadius: BorderRadius.circular(17),
 
@@ -732,7 +732,7 @@ class _MapPageState extends State<MapPage> {
 
         child: Row(
           children: [
-            const Icon(
+            Icon(
               Icons.location_disabled_rounded,
               color: AppColors.warm,
               size: 21,
@@ -743,7 +743,7 @@ class _MapPageState extends State<MapPage> {
             Expanded(
               child: Text(
                 locationError!,
-                style: const TextStyle(color: AppColors.navy, fontSize: 11),
+                style: TextStyle(color: AppColors.navy, fontSize: 11),
               ),
             ),
 
@@ -793,9 +793,9 @@ class _MapPageState extends State<MapPage> {
           child: Container(
             padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: AppColors.surface,
               borderRadius: BorderRadius.circular(17),
-              border: Border.all(color: AppColors.border),
+              border: AppDecorations.cardBorder,
               boxShadow: [
                 BoxShadow(
                   color: AppColors.navy.withValues(alpha: 0.08),
@@ -806,7 +806,7 @@ class _MapPageState extends State<MapPage> {
             ),
             child: Row(
               children: [
-                const Icon(
+                Icon(
                   Icons.location_off_outlined,
                   color: AppColors.muted,
                   size: 21,
@@ -815,7 +815,7 @@ class _MapPageState extends State<MapPage> {
                 Expanded(
                   child: Text(
                     message,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppColors.navy,
                       fontSize: 12,
                       height: 1.35,
@@ -884,7 +884,7 @@ class _MapPageState extends State<MapPage> {
         height: 150,
 
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: AppColors.surface,
 
           borderRadius: const BorderRadius.vertical(top: Radius.circular(27)),
 
@@ -910,7 +910,7 @@ class _MapPageState extends State<MapPage> {
                 height: 4,
 
                 decoration: BoxDecoration(
-                  color: const Color(0xFFD8DBE5),
+                  color: AppColors.border,
 
                   borderRadius: BorderRadius.circular(999),
                 ),
@@ -922,7 +922,7 @@ class _MapPageState extends State<MapPage> {
 
               child: Row(
                 children: [
-                  const Text(
+                  Text(
                     'สมาชิกในแผนที่',
                     style: TextStyle(
                       color: AppColors.navy,
@@ -948,7 +948,7 @@ class _MapPageState extends State<MapPage> {
                     child: Text(
                       '${familyLocations.length} คน',
 
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppColors.primary,
                         fontSize: 10,
                         fontWeight: FontWeight.w700,
@@ -961,7 +961,7 @@ class _MapPageState extends State<MapPage> {
 
             Expanded(
               child: familyLocations.isEmpty
-                  ? const Center(
+                  ? Center(
                       child: Text(
                         'ยังไม่มีตำแหน่งของสมาชิกในครอบครัว',
                         style: TextStyle(color: AppColors.muted, fontSize: 12),
@@ -999,7 +999,7 @@ class _MapPageState extends State<MapPage> {
                             ),
 
                             decoration: BoxDecoration(
-                              color: const Color(0xFFF7F8FC),
+                              color: AppColors.fill,
 
                               borderRadius: BorderRadius.circular(17),
 
@@ -1028,7 +1028,7 @@ class _MapPageState extends State<MapPage> {
 
                                         overflow: TextOverflow.ellipsis,
 
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           color: AppColors.navy,
                                           fontSize: 12,
                                           fontWeight: FontWeight.w800,
@@ -1043,7 +1043,7 @@ class _MapPageState extends State<MapPage> {
                                             width: 6,
                                             height: 6,
 
-                                            decoration: const BoxDecoration(
+                                            decoration: BoxDecoration(
                                               color: AppColors.success,
                                               shape: BoxShape.circle,
                                             ),
@@ -1061,7 +1061,7 @@ class _MapPageState extends State<MapPage> {
 
                                               overflow: TextOverflow.ellipsis,
 
-                                              style: const TextStyle(
+                                              style: TextStyle(
                                                 color: AppColors.muted,
                                                 fontSize: 9,
                                               ),
@@ -1101,6 +1101,9 @@ class _MapPageState extends State<MapPage> {
 
         GoogleMap(
           mapType: MapType.normal,
+
+          // โหมดมืด: แผนที่สีเข้ม
+          style: AppColors.isDark ? darkMapStyle : null,
 
           initialCameraPosition: const CameraPosition(
             target: defaultPosition,
@@ -1208,7 +1211,7 @@ class _MemberProfileAvatar extends StatelessWidget {
       width: 41,
       height: 41,
       alignment: Alignment.center,
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -1250,7 +1253,7 @@ class _FamilyMapButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: primary ? AppColors.primary : Colors.white,
+      color: primary ? AppColors.primary : AppColors.surface,
 
       elevation: 4,
 
@@ -1283,3 +1286,20 @@ class _FamilyMapButton extends StatelessWidget {
     );
   }
 }
+
+// สีแผนที่สำหรับโหมดมืด (Google Maps JSON style)
+const String darkMapStyle = '''
+[
+  {"elementType": "geometry", "stylers": [{"color": "#1d2026"}]},
+  {"elementType": "labels.text.fill", "stylers": [{"color": "#98a2b3"}]},
+  {"elementType": "labels.text.stroke", "stylers": [{"color": "#1d2026"}]},
+  {"featureType": "poi", "elementType": "geometry", "stylers": [{"color": "#23272f"}]},
+  {"featureType": "poi.park", "elementType": "geometry", "stylers": [{"color": "#1b2a22"}]},
+  {"featureType": "road", "elementType": "geometry", "stylers": [{"color": "#2b3039"}]},
+  {"featureType": "road", "elementType": "geometry.stroke", "stylers": [{"color": "#1d2026"}]},
+  {"featureType": "road.highway", "elementType": "geometry", "stylers": [{"color": "#3a404b"}]},
+  {"featureType": "transit", "elementType": "geometry", "stylers": [{"color": "#23272f"}]},
+  {"featureType": "water", "elementType": "geometry", "stylers": [{"color": "#0f1a2b"}]},
+  {"featureType": "water", "elementType": "labels.text.fill", "stylers": [{"color": "#5c6b80"}]}
+]
+''';

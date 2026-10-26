@@ -166,7 +166,7 @@ class _LoginPageState
                       height: 22,
                     ),
 
-                    const Text(
+                    Text(
                       AppInfo.name,
                       textAlign:
                           TextAlign.center,
@@ -184,7 +184,7 @@ class _LoginPageState
                       height: 14,
                     ),
 
-                    const Text(
+                    Text(
                       'อยู่ใกล้กัน\nไม่ว่าจะอยู่ที่ไหน',
                       textAlign:
                           TextAlign.center,
@@ -203,7 +203,7 @@ class _LoginPageState
                       height: 12,
                     ),
 
-                    const Text(
+                    Text(
                       'เชื่อมต่อ พูดคุย แชร์กิจกรรม\nและดูแลสมาชิกในครอบครัวได้ในที่เดียว',
                       textAlign:
                           TextAlign.center,
@@ -231,7 +231,7 @@ class _LoginPageState
 
                       decoration:
                           BoxDecoration(
-                        color: Colors.white
+                        color: AppColors.surface
                             .withValues(
                           alpha: 0.92,
                         ),
@@ -245,7 +245,7 @@ class _LoginPageState
                         border:
                             Border.all(
                           color:
-                              Colors.white,
+                              AppColors.surface,
                         ),
 
                         boxShadow: [
@@ -273,7 +273,7 @@ class _LoginPageState
                             CrossAxisAlignment
                                 .stretch,
                         children: [
-                          const Text(
+                          Text(
                             'ยินดีต้อนรับกลับมา',
                             style:
                                 TextStyle(
@@ -292,7 +292,7 @@ class _LoginPageState
                             height: 5,
                           ),
 
-                          const Text(
+                          Text(
                             'เข้าสู่บัญชี${AppInfo.name}ของคุณ',
                             style:
                                 TextStyle(
@@ -504,7 +504,7 @@ class _LoginPageState
                       height: 24,
                     ),
 
-                    const Text(
+                    Text(
                       'Your family. Your circle.',
                       textAlign:
                           TextAlign.center,

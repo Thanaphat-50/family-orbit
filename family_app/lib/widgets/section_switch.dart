@@ -51,16 +51,13 @@ class SectionSwitch<T> extends StatelessWidget {
           onChanged(selection.first);
         },
         style: SegmentedButton.styleFrom(
-          backgroundColor: Colors.white,
+          backgroundColor: AppColors.surface,
           foregroundColor: AppColors.muted,
           selectedBackgroundColor: AppColors.primary,
           selectedForegroundColor: Colors.white,
-          side: const BorderSide(color: AppColors.border),
+          side: BorderSide(color: AppColors.border),
           minimumSize: const Size(0, 46),
-          textStyle: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
-          ),
+          textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),

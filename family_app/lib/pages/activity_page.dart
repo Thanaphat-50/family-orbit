@@ -168,7 +168,7 @@ class _ActivityPageState extends State<ActivityPage> {
         color: AppColors.primary.withValues(alpha: 0.10),
         child: Text(
           ownerInitial(name),
-          style: const TextStyle(
+          style: TextStyle(
             color: AppColors.primary,
             fontSize: 9,
             fontWeight: FontWeight.w800,
@@ -287,8 +287,8 @@ class _ActivityPageState extends State<ActivityPage> {
             return Container(
               margin: const EdgeInsets.only(top: 55),
 
-              decoration: const BoxDecoration(
-                color: Colors.white,
+              decoration: BoxDecoration(
+                color: AppColors.surface,
 
                 borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
               ),
@@ -318,7 +318,7 @@ class _ActivityPageState extends State<ActivityPage> {
                           height: 4,
 
                           decoration: BoxDecoration(
-                            color: const Color(0xFFD8DBE5),
+                            color: AppColors.border,
 
                             borderRadius: BorderRadius.circular(99),
                           ),
@@ -337,7 +337,7 @@ class _ActivityPageState extends State<ActivityPage> {
                             height: 48,
 
                             decoration: BoxDecoration(
-                              gradient: const LinearGradient(
+                              gradient: LinearGradient(
                                 begin: Alignment.topLeft,
                                 end: Alignment.bottomRight,
                                 colors: [AppColors.primary, Color(0xFF777CFF)],
@@ -354,7 +354,7 @@ class _ActivityPageState extends State<ActivityPage> {
 
                           const SizedBox(width: 13),
 
-                          const Expanded(
+                          Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
 
@@ -396,7 +396,7 @@ class _ActivityPageState extends State<ActivityPage> {
                       // =================================
                       // TITLE
                       // =================================
-                      const Text(
+                      Text(
                         'ชื่อกิจกรรม',
                         style: TextStyle(
                           color: AppColors.navy,
@@ -428,7 +428,7 @@ class _ActivityPageState extends State<ActivityPage> {
                       // =================================
                       // DESCRIPTION
                       // =================================
-                      const Text(
+                      Text(
                         'รายละเอียด',
                         style: TextStyle(
                           color: AppColors.navy,
@@ -459,7 +459,7 @@ class _ActivityPageState extends State<ActivityPage> {
                       // =================================
                       // VISIBILITY
                       // =================================
-                      const Text(
+                      Text(
                         'ใครสามารถเห็นกิจกรรมนี้?',
                         style: TextStyle(
                           color: AppColors.navy,
@@ -470,7 +470,7 @@ class _ActivityPageState extends State<ActivityPage> {
 
                       const SizedBox(height: 5),
 
-                      const Text(
+                      Text(
                         'เลือกว่ากิจกรรมนี้เป็นเรื่องส่วนตัวหรือแชร์กับครอบครัว',
                         style: TextStyle(color: AppColors.muted, fontSize: 10),
                       ),
@@ -539,7 +539,7 @@ class _ActivityPageState extends State<ActivityPage> {
                             borderRadius: BorderRadius.circular(14),
                           ),
 
-                          child: const Row(
+                          child: Row(
                             children: [
                               Icon(
                                 Icons.info_outline_rounded,
@@ -568,7 +568,7 @@ class _ActivityPageState extends State<ActivityPage> {
                       // =================================
                       // DATE
                       // =================================
-                      const Text(
+                      Text(
                         'วันและเวลา',
                         style: TextStyle(
                           color: AppColors.navy,
@@ -588,7 +588,7 @@ class _ActivityPageState extends State<ActivityPage> {
                           padding: const EdgeInsets.all(15),
 
                           decoration: BoxDecoration(
-                            color: const Color(0xFFF8F9FD),
+                            color: AppColors.fill,
 
                             borderRadius: BorderRadius.circular(18),
 
@@ -609,7 +609,7 @@ class _ActivityPageState extends State<ActivityPage> {
                                   borderRadius: BorderRadius.circular(13),
                                 ),
 
-                                child: const Icon(
+                                child: Icon(
                                   Icons.calendar_month_rounded,
                                   color: AppColors.primary,
                                 ),
@@ -637,7 +637,7 @@ class _ActivityPageState extends State<ActivityPage> {
                                 ),
                               ),
 
-                              const Icon(
+                              Icon(
                                 Icons.chevron_right_rounded,
                                 color: AppColors.muted,
                               ),
@@ -897,7 +897,7 @@ class _ActivityPageState extends State<ActivityPage> {
 
       builder: (dialogContext) {
         return AlertDialog(
-          icon: const Icon(
+          icon: Icon(
             Icons.delete_outline_rounded,
 
             color: AppColors.danger,
@@ -1130,7 +1130,7 @@ class _ActivityPageState extends State<ActivityPage> {
 
               backgroundColor: Colors.white.withValues(alpha: 0.14),
 
-              valueColor: const AlwaysStoppedAnimation<Color>(AppColors.warm),
+              valueColor: AlwaysStoppedAnimation<Color>(AppColors.warm),
             ),
           ),
 
@@ -1244,11 +1244,11 @@ class _ActivityPageState extends State<ActivityPage> {
         padding: const EdgeInsets.fromLTRB(14, 14, 8, 14),
 
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: AppColors.surface,
 
           borderRadius: BorderRadius.circular(22),
 
-          border: Border.all(color: AppColors.border),
+          border: AppDecorations.cardBorder,
 
           boxShadow: [
             BoxShadow(
@@ -1363,7 +1363,7 @@ class _ActivityPageState extends State<ActivityPage> {
 
                           overflow: TextOverflow.ellipsis,
 
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: AppColors.muted,
                             fontSize: 10,
                           ),
@@ -1378,7 +1378,7 @@ class _ActivityPageState extends State<ActivityPage> {
                     Text(
                       description,
 
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppColors.muted,
 
                         fontSize: 12,
@@ -1392,7 +1392,7 @@ class _ActivityPageState extends State<ActivityPage> {
 
                   Row(
                     children: [
-                      const Icon(
+                      Icon(
                         Icons.schedule_rounded,
 
                         color: AppColors.muted,
@@ -1406,7 +1406,7 @@ class _ActivityPageState extends State<ActivityPage> {
                         child: Text(
                           activityDateText(activity['activity_date']),
 
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: AppColors.muted,
                             fontSize: 10,
                           ),
@@ -1430,7 +1430,7 @@ class _ActivityPageState extends State<ActivityPage> {
                         borderRadius: BorderRadius.circular(10),
                       ),
 
-                      child: const Row(
+                      child: Row(
                         mainAxisSize: MainAxisSize.min,
 
                         children: [
@@ -1507,7 +1507,7 @@ class _ActivityPageState extends State<ActivityPage> {
                   ),
 
                   if (shared)
-                    const PopupMenuItem(
+                    PopupMenuItem(
                       value: 'private',
 
                       child: Row(
@@ -1549,7 +1549,7 @@ class _ActivityPageState extends State<ActivityPage> {
 
                   const PopupMenuDivider(),
 
-                  const PopupMenuItem(
+                  PopupMenuItem(
                     value: 'delete',
 
                     child: Row(
@@ -1569,7 +1569,7 @@ class _ActivityPageState extends State<ActivityPage> {
                 ],
               )
             else
-              const Padding(
+              Padding(
                 padding: EdgeInsets.only(top: 12, right: 8),
 
                 child: Icon(
@@ -1595,11 +1595,12 @@ class _ActivityPageState extends State<ActivityPage> {
       padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 45),
 
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
 
         borderRadius: BorderRadius.circular(25),
 
-        border: Border.all(color: AppColors.border),
+        border: AppDecorations.cardBorder,
+        boxShadow: AppDecorations.cardShadow,
       ),
 
       child: Column(
@@ -1614,7 +1615,7 @@ class _ActivityPageState extends State<ActivityPage> {
               shape: BoxShape.circle,
             ),
 
-            child: const Icon(
+            child: Icon(
               Icons.calendar_month_outlined,
 
               color: AppColors.primary,
@@ -1625,7 +1626,7 @@ class _ActivityPageState extends State<ActivityPage> {
 
           const SizedBox(height: 18),
 
-          const Text(
+          Text(
             'ยังไม่มีกิจกรรม',
             style: TextStyle(
               color: AppColors.navy,
@@ -1636,7 +1637,7 @@ class _ActivityPageState extends State<ActivityPage> {
 
           const SizedBox(height: 7),
 
-          const Text(
+          Text(
             'สร้างกิจกรรมส่วนตัว หรือแชร์แผนให้ครอบครัวได้',
 
             textAlign: TextAlign.center,
@@ -1684,25 +1685,28 @@ class _ActivityPageState extends State<ActivityPage> {
     return Scaffold(
       backgroundColor: Colors.transparent,
 
-      floatingActionButton: FloatingActionButton.extended(
-        heroTag: 'add_activity',
+      // ยังไม่มีกิจกรรม → ใช้ปุ่มในการ์ดว่างแทน (ไม่ให้มีปุ่มซ้อนกัน 2 ปุ่ม)
+      floatingActionButton: displayed.isEmpty && !isLoading
+          ? null
+          : FloatingActionButton.extended(
+              heroTag: 'add_activity',
 
-        onPressed: isCreating ? null : showCreateActivitySheet,
+              onPressed: isCreating ? null : showCreateActivitySheet,
 
-        icon: isCreating
-            ? const SizedBox(
-                width: 18,
-                height: 18,
+              icon: isCreating
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
 
-                child: CircularProgressIndicator(
-                  color: Colors.white,
-                  strokeWidth: 2,
-                ),
-              )
-            : const Icon(Icons.add_rounded),
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : const Icon(Icons.add_rounded),
 
-        label: const Text('เพิ่มกิจกรรม'),
-      ),
+              label: const Text('เพิ่มกิจกรรม'),
+            ),
 
       body: RefreshIndicator(
         color: AppColors.primary,
@@ -1721,7 +1725,7 @@ class _ActivityPageState extends State<ActivityPage> {
 
             Row(
               children: [
-                const Expanded(
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
 
@@ -1761,7 +1765,7 @@ class _ActivityPageState extends State<ActivityPage> {
                   child: Text(
                     '${displayed.length} รายการ',
 
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppColors.primary,
 
                       fontSize: 10,
@@ -1833,10 +1837,10 @@ class _VisibilityChoice extends StatelessWidget {
 
         decoration: BoxDecoration(
           color: !enabled
-              ? const Color(0xFFF4F4F6)
+              ? AppColors.fill
               : selected
               ? AppColors.primary.withValues(alpha: 0.08)
-              : Colors.white,
+              : AppColors.surface,
 
           borderRadius: BorderRadius.circular(18),
 
@@ -1854,9 +1858,7 @@ class _VisibilityChoice extends StatelessWidget {
               height: 42,
 
               decoration: BoxDecoration(
-                color: selected && enabled
-                    ? AppColors.primary
-                    : const Color(0xFFF2F4F7),
+                color: selected && enabled ? AppColors.primary : AppColors.fill,
 
                 shape: BoxShape.circle,
               ),
@@ -1891,7 +1893,7 @@ class _VisibilityChoice extends StatelessWidget {
 
               textAlign: TextAlign.center,
 
-              style: const TextStyle(color: AppColors.muted, fontSize: 9),
+              style: TextStyle(color: AppColors.muted, fontSize: 9),
             ),
           ],
         ),
@@ -1985,7 +1987,7 @@ class _FilterChip extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
 
         decoration: BoxDecoration(
-          color: selected ? AppColors.primary : Colors.white,
+          color: selected ? AppColors.primary : AppColors.surface,
 
           borderRadius: BorderRadius.circular(99),
 

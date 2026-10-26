@@ -408,7 +408,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
             const SizedBox(width: 5),
             Text(
               '$value',
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppColors.navy,
                 fontSize: 19,
                 fontWeight: FontWeight.w800,
@@ -419,7 +419,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
         const SizedBox(height: 2),
         Text(
           label,
-          style: const TextStyle(color: AppColors.muted, fontSize: 12),
+          style: TextStyle(color: AppColors.muted, fontSize: 12),
         ),
       ],
     );
@@ -434,9 +434,10 @@ class _UserProfilePageState extends State<UserProfilePage> {
         Container(
           padding: const EdgeInsets.fromLTRB(18, 22, 18, 18),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: AppColors.surface,
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: AppColors.border),
+            border: AppDecorations.cardBorder,
+            boxShadow: AppDecorations.cardShadow,
           ),
           child: Column(
             children: [
@@ -452,7 +453,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
               Text(
                 name,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
+                style: TextStyle(
                   color: AppColors.navy,
                   fontSize: 21,
                   fontWeight: FontWeight.w800,
@@ -496,7 +497,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
               ],
               if (!isBlocked) ...[
                 const SizedBox(height: 16),
-                const Divider(height: 1, color: AppColors.border),
+                Divider(height: 1, color: AppColors.border),
                 const SizedBox(height: 14),
                 Row(
                   children: [
@@ -527,7 +528,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
         ),
         if (!isBlocked) ...[
           const SizedBox(height: 20),
-          const Padding(
+          Padding(
             padding: EdgeInsets.only(left: 4),
             child: Text(
               'โพสต์',
@@ -547,25 +548,26 @@ class _UserProfilePageState extends State<UserProfilePage> {
     return Container(
       padding: const EdgeInsets.fromLTRB(22, 26, 22, 22),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.border),
+        border: AppDecorations.cardBorder,
+        boxShadow: AppDecorations.cardShadow,
       ),
       child: Column(
         children: [
-          const Icon(Icons.block_rounded, size: 36, color: AppColors.danger),
+          Icon(Icons.block_rounded, size: 36, color: AppColors.danger),
           const SizedBox(height: 12),
           Text(
             'คุณบล็อก $name อยู่',
             textAlign: TextAlign.center,
-            style: const TextStyle(
+            style: TextStyle(
               color: AppColors.navy,
               fontSize: 17,
               fontWeight: FontWeight.w800,
             ),
           ),
           const SizedBox(height: 6),
-          const Text(
+          Text(
             'คุณจะไม่เห็นโพสต์และความคิดเห็นของผู้ใช้นี้ในชุมชน',
             textAlign: TextAlign.center,
             style: TextStyle(color: AppColors.muted, fontSize: 13, height: 1.5),
@@ -588,7 +590,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(
+            Icon(
               Icons.person_off_outlined,
               size: 44,
               color: AppColors.muted,
@@ -597,7 +599,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
             Text(
               loadError ?? 'ไม่พบผู้ใช้นี้',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: AppColors.navy, fontSize: 15),
+              style: TextStyle(color: AppColors.navy, fontSize: 15),
             ),
             const SizedBox(height: 14),
             OutlinedButton(

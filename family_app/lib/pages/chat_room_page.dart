@@ -327,17 +327,14 @@ class _ChatRoomPageState extends State<ChatRoomPage>
           children: [
             if (body.isNotEmpty)
               ListTile(
-                leading: const Icon(Icons.copy_rounded, color: AppColors.navy),
+                leading: Icon(Icons.copy_rounded, color: AppColors.navy),
                 title: const Text('คัดลอกข้อความ'),
                 onTap: () => Navigator.of(sheetContext).pop('copy'),
               ),
             if (mine)
               ListTile(
-                leading: const Icon(
-                  Icons.undo_rounded,
-                  color: AppColors.danger,
-                ),
-                title: const Text(
+                leading: Icon(Icons.undo_rounded, color: AppColors.danger),
+                title: Text(
                   'ยกเลิกการส่ง',
                   style: TextStyle(color: AppColors.danger),
                 ),
@@ -461,12 +458,12 @@ class _ChatRoomPageState extends State<ChatRoomPage>
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
           decoration: BoxDecoration(
-            color: const Color(0xFFEDEFF5),
+            color: AppColors.fill,
             borderRadius: BorderRadius.circular(99),
           ),
           child: Text(
             formatDay(time),
-            style: const TextStyle(
+            style: TextStyle(
               color: AppColors.muted,
               fontSize: 12,
               fontWeight: FontWeight.w700,
@@ -486,11 +483,27 @@ class _ChatRoomPageState extends State<ChatRoomPage>
 
     final DateTime? time = timeOf(message);
 
-    final Color bubbleColor = mine
-        ? AppColors.primary
-        : const Color(0xFFF0F2F5);
-
     final Color textColor = mine ? Colors.white : AppColors.navy;
+
+    // ข้อความเรา: ไล่สีม่วง / ของอีกฝ่าย: การ์ดสีพื้น
+    final BoxDecoration bubbleDecoration = BoxDecoration(
+      gradient: mine
+          ? LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [AppColors.primary, const Color(0xFF7A5AF8)],
+            )
+          : null,
+      color: mine ? null : AppColors.surface,
+      border: mine ? null : AppDecorations.cardBorder,
+      boxShadow: mine ? null : AppDecorations.cardShadow,
+      borderRadius: BorderRadius.only(
+        topLeft: const Radius.circular(20),
+        topRight: const Radius.circular(20),
+        bottomLeft: Radius.circular(mine ? 20 : 6),
+        bottomRight: Radius.circular(mine ? 6 : 20),
+      ),
+    );
 
     return Align(
       alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
@@ -511,18 +524,18 @@ class _ChatRoomPageState extends State<ChatRoomPage>
                   child: GestureDetector(
                     onTap: () => showPhotoViewer(context, urls: [imageUrl]),
                     child: ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(20),
                       child: Image.network(
                         imageUrl,
-                        width: 220,
-                        height: 240,
+                        width: 230,
+                        height: 250,
                         fit: BoxFit.cover,
                         errorBuilder: (context, error, stackTrace) => Container(
                           width: 220,
                           height: 120,
-                          color: const Color(0xFFEDEFF5),
+                          color: AppColors.fill,
                           alignment: Alignment.center,
-                          child: const Icon(
+                          child: Icon(
                             Icons.broken_image_outlined,
                             color: AppColors.muted,
                           ),
@@ -533,16 +546,8 @@ class _ChatRoomPageState extends State<ChatRoomPage>
                 ),
               if (body.isNotEmpty)
                 Container(
-                  padding: const EdgeInsets.fromLTRB(14, 9, 14, 10),
-                  decoration: BoxDecoration(
-                    color: bubbleColor,
-                    borderRadius: BorderRadius.only(
-                      topLeft: const Radius.circular(18),
-                      topRight: const Radius.circular(18),
-                      bottomLeft: Radius.circular(mine ? 18 : 6),
-                      bottomRight: Radius.circular(mine ? 6 : 18),
-                    ),
-                  ),
+                  padding: const EdgeInsets.fromLTRB(15, 10, 15, 11),
+                  decoration: bubbleDecoration,
                   child: Text(
                     body,
                     style: TextStyle(
@@ -559,7 +564,7 @@ class _ChatRoomPageState extends State<ChatRoomPage>
                     if (time != null) formatTime(time),
                     if (showRead) 'อ่านแล้ว',
                   ].join(' · '),
-                  style: const TextStyle(color: AppColors.muted, fontSize: 11),
+                  style: TextStyle(color: AppColors.muted, fontSize: 11),
                 ),
               ),
             ],
@@ -619,14 +624,14 @@ class _ChatRoomPageState extends State<ChatRoomPage>
             Text(
               'เริ่มคุยกับ $otherName ได้เลย 👋',
               textAlign: TextAlign.center,
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppColors.navy,
                 fontSize: 16,
                 fontWeight: FontWeight.w700,
               ),
             ),
             const SizedBox(height: 6),
-            const Text(
+            Text(
               'ข้อความนี้เห็นกันแค่สองคน',
               style: TextStyle(color: AppColors.muted, fontSize: 13),
             ),
@@ -694,8 +699,8 @@ class _ChatRoomPageState extends State<ChatRoomPage>
       return Container(
         width: double.infinity,
         padding: const EdgeInsets.fromLTRB(20, 14, 20, 14),
-        color: const Color(0xFFF2F4F7),
-        child: const SafeArea(
+        color: AppColors.fill,
+        child: SafeArea(
           top: false,
           child: Text(
             'ส่งข้อความไม่ได้ เพราะไม่ได้อยู่ครอบครัวเดียวกันแล้ว',
@@ -708,15 +713,18 @@ class _ChatRoomPageState extends State<ChatRoomPage>
 
     final XFile? image = pickedImage;
 
-    return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: AppColors.border)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(4, 6, 6, 6),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(28),
+            border: AppDecorations.cardBorder,
+            boxShadow: AppDecorations.cardShadow,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -767,10 +775,7 @@ class _ChatRoomPageState extends State<ChatRoomPage>
                   IconButton(
                     tooltip: 'ส่งรูป',
                     onPressed: isSending ? null : pickImage,
-                    icon: const Icon(
-                      Icons.photo_outlined,
-                      color: AppColors.primary,
-                    ),
+                    icon: Icon(Icons.photo_outlined, color: AppColors.primary),
                   ),
                   Expanded(
                     child: TextField(
@@ -784,7 +789,7 @@ class _ChatRoomPageState extends State<ChatRoomPage>
                         counterText: '',
                         isDense: true,
                         filled: true,
-                        fillColor: const Color(0xFFF2F4F7),
+                        fillColor: Colors.transparent,
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 16,
                           vertical: 11,
@@ -799,9 +804,7 @@ class _ChatRoomPageState extends State<ChatRoomPage>
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(22),
-                          borderSide: const BorderSide(
-                            color: AppColors.primary,
-                          ),
+                          borderSide: BorderSide.none,
                         ),
                       ),
                     ),
@@ -809,30 +812,45 @@ class _ChatRoomPageState extends State<ChatRoomPage>
                   const SizedBox(width: 6),
                   Padding(
                     padding: const EdgeInsets.only(bottom: 2),
-                    child: Material(
-                      color: hasDraft && !isSending
-                          ? AppColors.primary
-                          : const Color(0xFFD0D5DD),
-                      shape: const CircleBorder(),
-                      child: InkWell(
-                        customBorder: const CircleBorder(),
-                        onTap: hasDraft && !isSending ? send : null,
-                        child: SizedBox(
-                          width: 42,
-                          height: 42,
-                          child: isSending
-                              ? const Padding(
-                                  padding: EdgeInsets.all(12),
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: hasDraft && !isSending
+                            ? LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  AppColors.primary,
+                                  const Color(0xFF7A5AF8),
+                                ],
+                              )
+                            : null,
+                        color: hasDraft && !isSending ? null : AppColors.border,
+                      ),
+                      child: Material(
+                        color: Colors.transparent,
+                        shape: const CircleBorder(),
+                        child: InkWell(
+                          customBorder: const CircleBorder(),
+                          onTap: hasDraft && !isSending ? send : null,
+                          child: SizedBox(
+                            width: 44,
+                            height: 44,
+                            child: isSending
+                                ? const Padding(
+                                    padding: EdgeInsets.all(12),
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Icon(
+                                    Icons.send_rounded,
                                     color: Colors.white,
+                                    size: 20,
                                   ),
-                                )
-                              : const Icon(
-                                  Icons.send_rounded,
-                                  color: Colors.white,
-                                  size: 20,
-                                ),
+                          ),
                         ),
                       ),
                     ),
@@ -858,18 +876,32 @@ class _ChatRoomPageState extends State<ChatRoomPage>
             padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
             child: Row(
               children: [
-                UserAvatar(user: otherAvatar, radius: 18),
+                UserAvatar(user: otherAvatar, radius: 19),
                 const SizedBox(width: 10),
                 Flexible(
-                  child: Text(
-                    otherName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: AppColors.navy,
-                      fontSize: 17,
-                      fontWeight: FontWeight.w800,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        otherName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: AppColors.navy,
+                          fontSize: 16.5,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      Text(
+                        canSend ? 'คนในครอบครัว · แชทส่วนตัว' : 'แชทส่วนตัว',
+                        style: TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],

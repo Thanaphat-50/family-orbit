@@ -280,11 +280,11 @@ class _ShopPageState extends State<ShopPage> {
         contentPadding: const EdgeInsets.symmetric(vertical: 14),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(18),
-          borderSide: const BorderSide(color: AppColors.border),
+          borderSide: BorderSide(color: AppColors.border),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(18),
-          borderSide: const BorderSide(color: AppColors.border),
+          borderSide: BorderSide(color: AppColors.border),
         ),
       ),
     );
@@ -305,11 +305,11 @@ class _ShopPageState extends State<ShopPage> {
               color: marketColor,
             ),
             label: Text(selectedProvince ?? 'ทุกจังหวัด'),
-            labelStyle: const TextStyle(
+            labelStyle: TextStyle(
               color: AppColors.navy,
               fontWeight: FontWeight.w700,
             ),
-            backgroundColor: Colors.white,
+            backgroundColor: AppColors.surface,
             side: BorderSide(
               color: selectedProvince != null ? marketColor : AppColors.border,
             ),
@@ -356,7 +356,7 @@ class _ShopPageState extends State<ShopPage> {
   Widget buildSectionTitle(String title) {
     return Text(
       title,
-      style: const TextStyle(
+      style: TextStyle(
         color: AppColors.navy,
         fontSize: 18,
         fontWeight: FontWeight.w800,
@@ -381,7 +381,7 @@ class _ShopPageState extends State<ShopPage> {
             Text(
               loadError!,
               textAlign: TextAlign.center,
-              style: const TextStyle(color: AppColors.navy),
+              style: TextStyle(color: AppColors.navy),
             ),
             const SizedBox(height: 10),
             OutlinedButton(
@@ -404,7 +404,7 @@ class _ShopPageState extends State<ShopPage> {
               isFiltering || province != null
                   ? 'ไม่พบสินค้าที่ตรงกับที่ค้นหา'
                   : 'ยังไม่มีสินค้าในตลาด',
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppColors.navy,
                 fontSize: 15,
                 fontWeight: FontWeight.w800,
@@ -415,7 +415,7 @@ class _ShopPageState extends State<ShopPage> {
               isFiltering || province != null
                   ? 'ลองเปลี่ยนคำค้น จังหวัด หรือหมวด'
                   : 'กดไอคอนร้าน 🏪 ด้านบนเพื่อเปิดร้านแรกในตลาด',
-              style: const TextStyle(color: AppColors.muted, fontSize: 13),
+              style: TextStyle(color: AppColors.muted, fontSize: 13),
             ),
           ],
         ),
@@ -437,7 +437,7 @@ class _ShopPageState extends State<ShopPage> {
 
     if (hasMore) return const SizedBox(height: 40);
 
-    return const Padding(
+    return Padding(
       padding: EdgeInsets.symmetric(vertical: 14),
       child: Center(
         child: Text(
@@ -470,7 +470,7 @@ class _ShopPageState extends State<ShopPage> {
                 buildFilters(),
                 if (showFeatured) ...[
                   const SizedBox(height: 20),
-                  const Row(
+                  Row(
                     children: [
                       Icon(Icons.star_rounded, color: featuredColor, size: 22),
                       SizedBox(width: 4),

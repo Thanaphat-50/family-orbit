@@ -21,12 +21,12 @@ class PostCategory {
   });
 }
 
-const List<PostCategory> postCategories = [
+List<PostCategory> postCategories = [
   PostCategory(
     key: 'general',
     label: 'ทั่วไป',
     icon: Icons.forum_outlined,
-    color: Color(0xFF667085),
+    color: AppColors.muted,
   ),
   PostCategory(
     key: 'qa',
@@ -101,7 +101,7 @@ class CategoryChoiceChip extends StatelessWidget {
             duration: const Duration(milliseconds: 180),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
             decoration: BoxDecoration(
-              color: selected ? color : Colors.white,
+              color: selected ? color : AppColors.surface,
               borderRadius: BorderRadius.circular(999),
               border: Border.all(color: selected ? color : AppColors.border),
             ),

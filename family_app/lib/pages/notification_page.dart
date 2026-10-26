@@ -368,22 +368,22 @@ class _NotificationPageState extends State<NotificationPage> {
   _NotificationStyle styleOf(String type) {
     switch (type) {
       case 'member_joined':
-        return const _NotificationStyle(
+        return _NotificationStyle(
           icon: Icons.person_add_alt_1_rounded,
           color: AppColors.sky,
         );
       case 'new_post':
-        return const _NotificationStyle(
+        return _NotificationStyle(
           icon: Icons.dynamic_feed_rounded,
           color: AppColors.primary,
         );
       case 'new_comment':
-        return const _NotificationStyle(
+        return _NotificationStyle(
           icon: Icons.chat_bubble_rounded,
           color: AppColors.warm,
         );
       case 'new_activity':
-        return const _NotificationStyle(
+        return _NotificationStyle(
           icon: Icons.event_available_rounded,
           color: AppColors.success,
         );
@@ -393,7 +393,7 @@ class _NotificationPageState extends State<NotificationPage> {
           color: marketColor,
         );
       default:
-        return const _NotificationStyle(
+        return _NotificationStyle(
           icon: Icons.notifications_rounded,
           color: AppColors.primary,
         );
@@ -432,7 +432,9 @@ class _NotificationPageState extends State<NotificationPage> {
       background: deleteBackground,
       onDismissed: (_) => deleteItem(item),
       child: Material(
-        color: read ? Colors.white : AppColors.primary.withValues(alpha: 0.05),
+        color: read
+            ? AppColors.surface
+            : AppColors.primary.withValues(alpha: AppColors.isDark ? 0.12 : 0.05),
         child: InkWell(
           onTap: () => openItem(item),
           child: Padding(
@@ -467,8 +469,8 @@ class _NotificationPageState extends State<NotificationPage> {
                         item['message']?.toString() ?? '',
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Color(0xFF344054),
+                        style: TextStyle(
+                          color: AppColors.subtle,
                           fontSize: 13.5,
                           height: 1.4,
                         ),
@@ -490,7 +492,7 @@ class _NotificationPageState extends State<NotificationPage> {
                     width: 10,
                     height: 10,
                     margin: const EdgeInsets.only(top: 6, left: 8),
-                    decoration: const BoxDecoration(
+                    decoration: BoxDecoration(
                       color: AppColors.primary,
                       shape: BoxShape.circle,
                     ),
@@ -518,7 +520,7 @@ class _NotificationPageState extends State<NotificationPage> {
         Text(
           title,
           textAlign: TextAlign.center,
-          style: const TextStyle(
+          style: TextStyle(
             color: AppColors.navy,
             fontSize: 17,
             fontWeight: FontWeight.w800,
@@ -528,7 +530,7 @@ class _NotificationPageState extends State<NotificationPage> {
         Text(
           message,
           textAlign: TextAlign.center,
-          style: const TextStyle(color: AppColors.muted, fontSize: 13.5),
+          style: TextStyle(color: AppColors.muted, fontSize: 13.5),
         ),
         if (action != null) ...[
           const SizedBox(height: 16),
@@ -572,7 +574,7 @@ class _NotificationPageState extends State<NotificationPage> {
       padding: const EdgeInsets.only(bottom: 24),
       itemCount: items.length + 1,
       separatorBuilder: (context, index) =>
-          const Divider(height: 1, color: AppColors.border),
+          Divider(height: 1, color: AppColors.border),
       itemBuilder: (context, index) {
         if (index < items.length) return buildItem(items[index]);
 
@@ -595,7 +597,7 @@ class _NotificationPageState extends State<NotificationPage> {
           child: Text(
             hasMore ? '' : 'ปัดซ้ายเพื่อลบการแจ้งเตือน',
             textAlign: TextAlign.center,
-            style: const TextStyle(color: AppColors.muted, fontSize: 12),
+            style: TextStyle(color: AppColors.muted, fontSize: 12),
           ),
         );
       },
@@ -620,7 +622,7 @@ class _NotificationPageState extends State<NotificationPage> {
             onSelected: (value) {
               if (value == 'clear') clearRead();
             },
-            itemBuilder: (context) => const [
+            itemBuilder: (context) => [
               PopupMenuItem(
                 value: 'clear',
                 child: Row(

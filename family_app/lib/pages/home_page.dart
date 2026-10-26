@@ -34,7 +34,6 @@ import 'shop_page.dart';
 import 'user_profile_page.dart';
 
 // หน้าย่อยของแท็บ "หน้าหลัก"
-enum HomeSection { community, shop }
 
 // หน้าย่อยของแท็บ "ครอบครัว"
 enum FamilySection { posts, members }
@@ -53,7 +52,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   final TextEditingController inviteCodeController = TextEditingController();
 
-  int selectedIndex = 0;
+  // ลำดับแท็บบนแถบล่าง
+  static const int tabHome = 0;
+  static const int tabMarket = 1;
+  static const int tabFamily = 2;
+  static const int tabMap = 3;
+  static const int tabActivity = 4;
+
+  int selectedIndex = tabHome;
   int unreadNotificationCount = 0;
 
   // เมนูบัญชีด้านซ้าย (เปิดจากรูปโปรไฟล์มุมซ้ายบน)
@@ -63,7 +69,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   Map<String, dynamic>? myProfile;
 
   // หน้าหลัก: ชุมชน | ตลาด
-  HomeSection homeSection = HomeSection.community;
 
   // ครอบครัว: โพสต์ | สมาชิก
   FamilySection familySection = FamilySection.posts;
@@ -300,7 +305,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         navigator.popUntil((route) => route.isFirst);
 
         setState(() {
-          selectedIndex = 3;
+          selectedIndex = tabActivity;
           bottomBarVisible = true;
         });
         return;
@@ -309,7 +314,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         navigator.popUntil((route) => route.isFirst);
 
         setState(() {
-          selectedIndex = 1;
+          selectedIndex = tabFamily;
           familySection = FamilySection.members;
           bottomBarVisible = true;
         });
@@ -331,12 +336,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     switch (target) {
       case NotificationTarget.activities:
         setState(() {
-          selectedIndex = 3;
+          selectedIndex = tabActivity;
           bottomBarVisible = true;
         });
       case NotificationTarget.familyMembers:
         setState(() {
-          selectedIndex = 1;
+          selectedIndex = tabFamily;
           familySection = FamilySection.members;
           bottomBarVisible = true;
         });
@@ -478,7 +483,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          backgroundColor: Colors.white,
+          backgroundColor: AppColors.surface,
 
           surfaceTintColor: Colors.transparent,
 
@@ -486,7 +491,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             borderRadius: BorderRadius.circular(26),
           ),
 
-          title: const Text(
+          title: Text(
             'เปลี่ยนชื่อครอบครัว',
             style: TextStyle(
               color: AppColors.navy,
@@ -575,7 +580,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          backgroundColor: Colors.white,
+          backgroundColor: AppColors.surface,
 
           surfaceTintColor: Colors.transparent,
 
@@ -647,7 +652,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          backgroundColor: Colors.white,
+          backgroundColor: AppColors.surface,
 
           surfaceTintColor: Colors.transparent,
 
@@ -720,7 +725,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          backgroundColor: Colors.white,
+          backgroundColor: AppColors.surface,
 
           surfaceTintColor: Colors.transparent,
 
@@ -774,7 +779,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         if (!mounted) return;
 
         setState(() {
-          selectedIndex = 0;
+          selectedIndex = tabHome;
         });
 
         showMessage('ออกจากครอบครัวแล้ว');
@@ -797,7 +802,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          backgroundColor: Colors.white,
+          backgroundColor: AppColors.surface,
 
           surfaceTintColor: Colors.transparent,
 
@@ -873,7 +878,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          backgroundColor: Colors.white,
+          backgroundColor: AppColors.surface,
 
           surfaceTintColor: Colors.transparent,
 
@@ -881,7 +886,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             borderRadius: BorderRadius.circular(26),
           ),
 
-          icon: const Icon(
+          icon: Icon(
             Icons.warning_amber_rounded,
             color: AppColors.danger,
             size: 42,
@@ -941,7 +946,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         if (!mounted) return;
 
         setState(() {
-          selectedIndex = 0;
+          selectedIndex = tabHome;
         });
 
         showMessage('ลบครอบครัวสำเร็จ');
@@ -1070,7 +1075,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
       case AccountMenuItem.family:
         setState(() {
-          selectedIndex = 1;
+          selectedIndex = tabFamily;
           familySection = FamilySection.members;
           bottomBarVisible = true;
         });
@@ -1135,16 +1140,19 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   String getPageTitle() {
     switch (selectedIndex) {
-      case 0:
-        return homeSection == HomeSection.shop ? 'ตลาด' : 'ชุมชน';
+      case tabHome:
+        return 'ชุมชน';
 
-      case 1:
+      case tabMarket:
+        return 'ตลาด';
+
+      case tabFamily:
         return 'ครอบครัว';
 
-      case 2:
+      case tabMap:
         return 'Family Map';
 
-      case 3:
+      case tabActivity:
         return 'กิจกรรม';
 
       default:
@@ -1204,8 +1212,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: isOwner
-                ? const [AppColors.warm, Color(0xFFFF8A5B)]
-                : const [AppColors.primary, Color(0xFF767BFF)],
+                ? [AppColors.warm, Color(0xFFFF8A5B)]
+                : [AppColors.primary, Color(0xFF767BFF)],
           ),
           shape: BoxShape.circle,
         ),
@@ -1246,13 +1254,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               height: 21,
 
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: AppColors.surface,
                 shape: BoxShape.circle,
 
                 border: Border.all(color: AppColors.border),
               ),
 
-              child: const Icon(
+              child: Icon(
                 Icons.workspace_premium_rounded,
                 size: 14,
                 color: AppColors.warm,
@@ -1267,24 +1275,36 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   // PAGE SELECTOR
   // =====================================================
 
+  // แท็บที่ต้องใช้ข้อมูลครอบครัว (รอโหลดก่อนแสดง)
+  bool get tabNeedsFamily =>
+      selectedIndex == tabHome ||
+      selectedIndex == tabMarket ||
+      selectedIndex == tabFamily ||
+      selectedIndex == tabMap;
+
   Widget getCurrentPage() {
-    if (isLoading &&
-        (selectedIndex == 0 || selectedIndex == 1 || selectedIndex == 2)) {
+    if (isLoading && tabNeedsFamily) {
       return const Center(child: CircularProgressIndicator());
     }
 
     switch (selectedIndex) {
-      case 0:
-        if (!hasFamily) {
-          return buildNoFamily();
-        }
+      case tabHome:
+        if (!hasFamily) return buildNoFamily();
 
-        return buildHomeTab();
+        return const FeedPage(
+          key: ValueKey('feed-community'),
+          scope: FeedScope.community,
+        );
 
-      case 1:
+      case tabMarket:
+        if (!hasFamily) return buildNoFamily();
+
+        return ShopPage(refreshToken: marketRefreshToken);
+
+      case tabFamily:
         return buildFamilyContent();
 
-      case 2:
+      case tabMap:
         if (!hasFamily) {
           return buildFamilyRequiredPage(
             message: 'เข้าร่วมครอบครัวก่อนเพื่อดูตำแหน่งของสมาชิก',
@@ -1293,7 +1313,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
         return const MapPage();
 
-      case 3:
+      case tabActivity:
         return const ActivityPage();
 
       default:
@@ -1328,7 +1348,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     ),
                     padding: const EdgeInsets.symmetric(horizontal: 4),
                     alignment: Alignment.center,
-                    decoration: const BoxDecoration(
+                    decoration: BoxDecoration(
                       color: AppColors.danger,
                       shape: BoxShape.circle,
                     ),
@@ -1381,7 +1401,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
                 alignment: Alignment.center,
 
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   color: AppColors.danger,
                   shape: BoxShape.circle,
                 ),
@@ -1408,75 +1428,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   // แท็บ ชุมชน | ตลาด บนแถบด้านบน
   // =====================================================
 
-  bool get showHomeTabs => selectedIndex == 0 && hasFamily && !isLoading;
+  // หน้าหลัก: ชื่อแอปตัวใหญ่ / แท็บอื่น: ชื่อแอป + ชื่อหน้า
+  bool get showAppTitle => selectedIndex == tabHome && hasFamily && !isLoading;
 
-  void switchHomeSection(HomeSection section) {
-    if (section == homeSection) return;
-
-    setState(() {
-      homeSection = section;
-      bottomBarVisible = true;
-    });
-  }
-
-  // แท็บ ชุมชน | ตลาด ใต้ชื่อแอป (เฉพาะหน้าหลัก)
-  PreferredSizeWidget buildHomeTabs() {
-    return PreferredSize(
-      preferredSize: const Size.fromHeight(48),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Padding(
-          padding: const EdgeInsets.only(left: 8, bottom: 2),
-          child: Row(
-            children: [
-              buildHomeTabButton(HomeSection.community, 'ชุมชน'),
-              buildHomeTabButton(HomeSection.shop, 'ตลาด'),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // แท็บที่เลือกอยู่: ตัวหนา + ขีดใต้ / แท็บอื่น: สีจาง
-  Widget buildHomeTabButton(HomeSection section, String label) {
-    final bool selected = homeSection == section;
-
-    return Semantics(
-      button: true,
-      selected: selected,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: () => switchHomeSection(section),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(10, 10, 10, 6),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  color: selected ? AppColors.navy : AppColors.muted,
-                  fontSize: selected ? 20 : 17,
-                  fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 4),
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                width: selected ? 22 : 0,
-                height: 3,
-                decoration: BoxDecoration(
-                  color: AppColors.primary,
-                  borderRadius: BorderRadius.circular(999),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  // แท็บที่เลื่อนลงแล้วซ่อนแถบล่าง
+  bool get hidesBarOnScroll =>
+      selectedIndex == tabHome || selectedIndex == tabMarket;
 
   // ปุ่ม 🏪 บัญชีผู้ขาย (แสดงเมื่ออยู่หน้าตลาด)
   Future<void> openSellerAccount() async {
@@ -1490,9 +1447,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
-  // เลื่อนลง → ซ่อนแถบล่าง / เลื่อนขึ้น → แสดง (เฉพาะแท็บหน้าหลัก)
+  // เลื่อนลง → ซ่อนแถบล่าง / เลื่อนขึ้น → แสดง (หน้าหลัก / ตลาด)
   bool handleUserScroll(UserScrollNotification notification) {
-    if (selectedIndex != 0 || notification.metrics.axis != Axis.vertical) {
+    if (!hidesBarOnScroll || notification.metrics.axis != Axis.vertical) {
       return false;
     }
 
@@ -1521,7 +1478,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    final bool showBottomBar = bottomBarVisible || selectedIndex != 0;
+    final bool showBottomBar = bottomBarVisible || !hidesBarOnScroll;
 
     return Scaffold(
       key: scaffoldKey,
@@ -1549,8 +1506,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         titleSpacing: 8,
 
         // หน้าหลัก: ชื่อแอป (แท็บอยู่ด้านล่าง) / หน้าอื่น: ชื่อแอป + ชื่อหน้า
-        title: showHomeTabs
-            ? const Text(
+        title: showAppTitle
+            ? Text(
                 AppInfo.name,
                 style: TextStyle(
                   color: AppColors.primary,
@@ -1561,7 +1518,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             : Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     AppInfo.name,
                     style: TextStyle(
                       color: AppColors.primary,
@@ -1574,7 +1531,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
                   Text(
                     getPageTitle(),
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppColors.navy,
                       fontSize: 18,
                       fontWeight: FontWeight.w800,
@@ -1583,10 +1540,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 ],
               ),
 
-        bottom: showHomeTabs ? buildHomeTabs() : null,
 
         actions: [
-          if (showHomeTabs && homeSection == HomeSection.shop)
+          if (selectedIndex == tabMarket && hasFamily)
             IconButton(
               tooltip: 'บัญชีผู้ขาย',
               onPressed: openSellerAccount,
@@ -1607,79 +1563,127 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         child: getCurrentPage(),
       ),
 
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
+      bottomNavigationBar: buildBottomBar(showBottomBar),
+    );
+  }
 
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.navy.withValues(alpha: 0.06),
-              blurRadius: 25,
-              offset: const Offset(0, -8),
-            ),
-          ],
-        ),
+  // =====================================================
+  // แถบล่างแบบลอย โค้งมน
+  // =====================================================
 
-        child: SafeArea(
-          top: false,
+  static const List<_NavItem> navItems = [
+    _NavItem(Icons.home_outlined, Icons.home_rounded, 'หน้าหลัก'),
+    _NavItem(
+      Icons.shopping_basket_outlined,
+      Icons.shopping_basket_rounded,
+      'ตลาด',
+    ),
+    _NavItem(Icons.favorite_border_rounded, Icons.favorite_rounded, 'ครอบครัว'),
+    _NavItem(Icons.location_on_outlined, Icons.location_on_rounded, 'ตำแหน่ง'),
+    _NavItem(Icons.event_note_outlined, Icons.event_note_rounded, 'กิจกรรม'),
+  ];
 
-          // ซ่อนแถบด้วยการย่อความสูงลงจนเหลือ 0 (เนื้อหาด้านบนขยายลงมาแทน)
-          child: ClipRect(
-            child: TweenAnimationBuilder<double>(
-              tween: Tween<double>(end: showBottomBar ? 1 : 0),
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeOutCubic,
-              builder: (context, factor, child) {
-                return Align(
-                  alignment: Alignment.topCenter,
-                  heightFactor: factor,
-                  child: child,
-                );
-              },
-              child: NavigationBar(
-                selectedIndex: selectedIndex,
+  void selectTab(int index) {
+    setState(() {
+      selectedIndex = index;
+      bottomBarVisible = true;
+    });
 
-                onDestinationSelected: (index) {
-                  setState(() {
-                    selectedIndex = index;
-                    bottomBarVisible = true;
-                  });
+    loadUnreadNotificationCount();
 
-                  loadUnreadNotificationCount();
+    if (index != tabActivity) {
+      loadFamily(showLoading: false);
+    }
+  }
 
-                  if (index == 0 || index == 1 || index == 2) {
-                    loadFamily(showLoading: false);
-                  }
-                },
-
-                destinations: const [
-                  NavigationDestination(
-                    icon: Icon(Icons.home_outlined),
-                    selectedIcon: Icon(Icons.home_rounded),
-                    label: 'หน้าหลัก',
+  // ซ่อนแถบด้วยการย่อความสูงลงจนเหลือ 0 (เนื้อหาด้านบนขยายลงมาแทน)
+  Widget buildBottomBar(bool visible) {
+    return SafeArea(
+      top: false,
+      child: ClipRect(
+        child: TweenAnimationBuilder<double>(
+          tween: Tween<double>(end: visible ? 1 : 0),
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          builder: (context, factor, child) {
+            return Align(
+              alignment: Alignment.topCenter,
+              heightFactor: factor,
+              child: child,
+            );
+          },
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 6, 14, 12),
+            child: Container(
+              height: 66,
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(28),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.navy.withValues(alpha: 0.10),
+                    blurRadius: 26,
+                    offset: const Offset(0, 10),
                   ),
-
-                  NavigationDestination(
-                    icon: Icon(Icons.favorite_border_rounded),
-                    selectedIcon: Icon(Icons.favorite_rounded),
-                    label: 'ครอบครัว',
-                  ),
-
-                  NavigationDestination(
-                    icon: Icon(Icons.location_on_outlined),
-                    selectedIcon: Icon(Icons.location_on_rounded),
-                    label: 'ตำแหน่ง',
-                  ),
-
-                  NavigationDestination(
-                    icon: Icon(Icons.event_note_outlined),
-                    selectedIcon: Icon(Icons.event_note_rounded),
-                    label: 'กิจกรรม',
-                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  for (int i = 0; i < navItems.length; i++)
+                    Expanded(child: buildNavItem(i)),
                 ],
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget buildNavItem(int index) {
+    final _NavItem item = navItems[index];
+
+    final bool selected = selectedIndex == index;
+
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: item.label,
+      excludeSemantics: true,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(22),
+        onTap: () => selectTab(index),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+              decoration: BoxDecoration(
+                color: selected
+                    ? AppColors.primary.withValues(alpha: 0.13)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(99),
+              ),
+              child: Icon(
+                selected ? item.selectedIcon : item.icon,
+                size: 23,
+                color: selected ? AppColors.primary : AppColors.muted,
+              ),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              item.label,
+              maxLines: 1,
+              style: TextStyle(
+                color: selected ? AppColors.navy : AppColors.muted,
+                fontSize: 10.5,
+                fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -1708,7 +1712,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 shape: BoxShape.circle,
               ),
 
-              child: const Icon(
+              child: Icon(
                 Icons.family_restroom_rounded,
                 size: 46,
                 color: AppColors.primary,
@@ -1717,7 +1721,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
             const SizedBox(height: 24),
 
-            const Text(
+            Text(
               'เข้าร่วมวงโคจรก่อน',
               style: TextStyle(
                 color: AppColors.navy,
@@ -1731,7 +1735,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             Text(
               message,
               textAlign: TextAlign.center,
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppColors.muted,
                 fontSize: 15,
                 height: 1.5,
@@ -1746,7 +1750,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               child: ElevatedButton.icon(
                 onPressed: () {
                   setState(() {
-                    selectedIndex = 1;
+                    selectedIndex = tabFamily;
                   });
 
                   loadFamily();
@@ -1773,20 +1777,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
 
     return buildFamilyTab();
-  }
-
-  // =====================================================
-  // หน้าหลัก: ชุมชน | ตลาด
-  // =====================================================
-
-  // สลับหน้าด้วยแท็บบนแถบด้านบน (buildHomeTabs)
-  Widget buildHomeTab() {
-    return homeSection == HomeSection.shop
-        ? ShopPage(refreshToken: marketRefreshToken)
-        : const FeedPage(
-            key: ValueKey('feed-community'),
-            scope: FeedScope.community,
-          );
   }
 
   // =====================================================
@@ -1934,7 +1924,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
         const SizedBox(height: 26),
 
-        const Text(
+        Text(
           'เริ่มต้นครอบครัวของคุณ',
           style: TextStyle(
             color: AppColors.navy,
@@ -1945,7 +1935,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
         const SizedBox(height: 6),
 
-        const Text(
+        Text(
           'เลือกวิธีที่เหมาะกับคุณ',
           style: TextStyle(color: AppColors.muted),
         ),
@@ -1959,11 +1949,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           padding: const EdgeInsets.all(20),
 
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: AppColors.surface,
 
             borderRadius: BorderRadius.circular(24),
 
-            border: Border.all(color: AppColors.border),
+            border: AppDecorations.cardBorder,
+            boxShadow: AppDecorations.cardShadow,
           ),
 
           child: Column(
@@ -1981,7 +1972,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                       borderRadius: BorderRadius.circular(15),
                     ),
 
-                    child: const Icon(
+                    child: Icon(
                       Icons.add_home_rounded,
                       color: AppColors.primary,
                     ),
@@ -1989,7 +1980,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
                   const SizedBox(width: 13),
 
-                  const Expanded(
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -2051,11 +2042,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           padding: const EdgeInsets.all(20),
 
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: AppColors.surface,
 
             borderRadius: BorderRadius.circular(24),
 
-            border: Border.all(color: AppColors.border),
+            border: AppDecorations.cardBorder,
+            boxShadow: AppDecorations.cardShadow,
           ),
 
           child: Column(
@@ -2073,7 +2065,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                       borderRadius: BorderRadius.circular(15),
                     ),
 
-                    child: const Icon(
+                    child: Icon(
                       Icons.group_add_rounded,
                       color: AppColors.sky,
                     ),
@@ -2081,7 +2073,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
                   const SizedBox(width: 13),
 
-                  const Expanded(
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -2249,7 +2241,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     width: 10,
                     height: 10,
 
-                    decoration: const BoxDecoration(
+                    decoration: BoxDecoration(
                       color: AppColors.sky,
                       shape: BoxShape.circle,
                     ),
@@ -2396,7 +2388,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
                       child: Row(
                         children: [
-                          const Icon(
+                          Icon(
                             Icons.key_rounded,
                             color: AppColors.warm,
                             size: 20,
@@ -2498,7 +2490,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           // ===============================================
           Row(
             children: [
-              const Text(
+              Text(
                 'สมาชิกในครอบครัว',
                 style: TextStyle(
                   color: AppColors.navy,
@@ -2523,7 +2515,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
                 child: Text(
                   '${members.length} คน',
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppColors.primary,
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
@@ -2535,7 +2527,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
           const SizedBox(height: 6),
 
-          const Text(
+          Text(
             'คนสำคัญที่อยู่ในวงโคจรเดียวกับคุณ',
             style: TextStyle(color: AppColors.muted, fontSize: 13),
           ),
@@ -2559,7 +2551,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               padding: const EdgeInsets.only(bottom: 10),
 
               child: Material(
-                color: Colors.white,
+                color: AppColors.surface,
 
                 borderRadius: BorderRadius.circular(20),
 
@@ -2574,7 +2566,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(20),
 
-                border: Border.all(color: AppColors.border),
+                border: AppDecorations.cardBorder,
+                boxShadow: AppDecorations.cardShadow,
               ),
 
               child: Row(
@@ -2597,7 +2590,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                               child: Text(
                                 memberName,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   color: AppColors.navy,
                                   fontSize: 15,
                                   fontWeight: FontWeight.w800,
@@ -2639,7 +2632,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                         Text(
                           email,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: AppColors.muted,
                             fontSize: 12,
                           ),
@@ -2662,7 +2655,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                         }
                       },
 
-                      itemBuilder: (_) => const [
+                      itemBuilder: (_) => [
                         PopupMenuItem(
                           value: 'owner',
                           child: Row(
@@ -2697,7 +2690,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                       ],
                     )
                   else
-                    const Padding(
+                    Padding(
                       padding: EdgeInsets.symmetric(horizontal: 6),
                       child: Icon(
                         Icons.chevron_right_rounded,
@@ -2722,17 +2715,18 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               padding: const EdgeInsets.all(18),
 
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: AppColors.surface,
 
                 borderRadius: BorderRadius.circular(22),
 
-                border: Border.all(color: AppColors.border),
+                border: AppDecorations.cardBorder,
+                boxShadow: AppDecorations.cardShadow,
               ),
 
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'การเป็นสมาชิก',
                     style: TextStyle(
                       color: AppColors.navy,
@@ -2743,7 +2737,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
                   const SizedBox(height: 5),
 
-                  const Text(
+                  Text(
                     'คุณสามารถออกจากครอบครัวนี้ได้ทุกเมื่อ',
                     style: TextStyle(color: AppColors.muted, fontSize: 12),
                   ),
@@ -2789,7 +2783,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Row(
+                  Row(
                     children: [
                       Icon(Icons.shield_outlined, color: AppColors.danger),
 
@@ -2808,7 +2802,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
                   const SizedBox(height: 7),
 
-                  const Text(
+                  Text(
                     'คุณเป็นผู้ดูแลครอบครัวนี้ '
                     'หากต้องการออก กรุณาโอน Owner ให้สมาชิกคนอื่นก่อน',
                     style: TextStyle(
@@ -2865,4 +2859,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
     super.dispose();
   }
+}
+
+class _NavItem {
+  final IconData icon;
+  final IconData selectedIcon;
+  final String label;
+
+  const _NavItem(this.icon, this.selectedIcon, this.label);
 }

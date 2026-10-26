@@ -137,7 +137,7 @@ class _MarketProductPageState extends State<MarketProductPage> {
       return AspectRatio(
         aspectRatio: 1,
         child: previewUrl == null
-            ? const ColoredBox(color: Color(0xFFF3EEE9))
+            ? ColoredBox(color: AppColors.fill)
             : Image.network(previewUrl, fit: BoxFit.cover),
       );
     }
@@ -165,11 +165,11 @@ class _MarketProductPageState extends State<MarketProductPage> {
                   loadingBuilder: (context, child, progress) {
                     return progress == null
                         ? child
-                        : const ColoredBox(color: Color(0xFFF3EEE9));
+                        : ColoredBox(color: AppColors.fill);
                   },
                   errorBuilder: (context, error, stackTrace) {
-                    return const ColoredBox(
-                      color: Color(0xFFF3EEE9),
+                    return ColoredBox(
+                      color: AppColors.fill,
                       child: Icon(
                         Icons.broken_image_outlined,
                         color: AppColors.muted,
@@ -219,7 +219,7 @@ class _MarketProductPageState extends State<MarketProductPage> {
     final int? shopId = (data['id'] as num?)?.toInt();
 
     return Material(
-      color: Colors.white,
+      color: AppColors.surface,
       borderRadius: BorderRadius.circular(20),
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
@@ -236,7 +236,8 @@ class _MarketProductPageState extends State<MarketProductPage> {
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: AppColors.border),
+            border: AppDecorations.cardBorder,
+            boxShadow: AppDecorations.cardShadow,
           ),
           child: Row(
             children: [
@@ -255,7 +256,7 @@ class _MarketProductPageState extends State<MarketProductPage> {
                       data['name']?.toString() ?? '',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppColors.navy,
                         fontSize: 15,
                         fontWeight: FontWeight.w800,
@@ -264,7 +265,7 @@ class _MarketProductPageState extends State<MarketProductPage> {
                     const SizedBox(height: 2),
                     Text(
                       shopArea(data),
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppColors.muted,
                         fontSize: 12.5,
                       ),
@@ -313,7 +314,7 @@ class _MarketProductPageState extends State<MarketProductPage> {
           const SizedBox(height: 6),
           Text(
             data['title']?.toString() ?? '',
-            style: const TextStyle(
+            style: TextStyle(
               color: AppColors.navy,
               fontSize: 19,
               height: 1.35,
@@ -349,8 +350,8 @@ class _MarketProductPageState extends State<MarketProductPage> {
             const SizedBox(height: 16),
             Text(
               description,
-              style: const TextStyle(
-                color: Color(0xFF344054),
+              style: TextStyle(
+                color: AppColors.subtle,
                 fontSize: 14.5,
                 height: 1.55,
               ),
@@ -367,7 +368,7 @@ class _MarketProductPageState extends State<MarketProductPage> {
                 color: AppColors.softPrimary,
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: const Text(
+              child: Text(
                 'นี่คือสินค้าของร้านคุณ (ผู้ซื้อจะเห็นหน้านี้แบบเดียวกัน)',
                 style: TextStyle(color: AppColors.navy, fontSize: 13),
               ),
@@ -400,7 +401,7 @@ class _MarketProductPageState extends State<MarketProductPage> {
               onSelected: (value) {
                 if (value == 'report') reportProduct();
               },
-              itemBuilder: (context) => const [
+              itemBuilder: (context) => [
                 PopupMenuItem(
                   value: 'report',
                   child: Row(
@@ -424,7 +425,7 @@ class _MarketProductPageState extends State<MarketProductPage> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.search_off_rounded,
                       size: 44,
                       color: AppColors.muted,
@@ -433,7 +434,7 @@ class _MarketProductPageState extends State<MarketProductPage> {
                     Text(
                       loadError ?? 'ไม่พบสินค้านี้',
                       textAlign: TextAlign.center,
-                      style: const TextStyle(color: AppColors.navy),
+                      style: TextStyle(color: AppColors.navy),
                     ),
                     const SizedBox(height: 12),
                     OutlinedButton(

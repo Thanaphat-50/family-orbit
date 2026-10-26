@@ -220,11 +220,11 @@ class _FeaturedShopCard extends StatelessWidget {
     // ยังไม่มีสินค้า → พื้นหลังสีตลาดแทนรูป
     if (urls.isEmpty) {
       return Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [Color(0xFFFFE7CC), Color(0xFFFFF6EC)],
+            colors: [AppColors.softWarm, AppColors.softWarm],
           ),
         ),
         child: const Center(
@@ -246,10 +246,10 @@ class _FeaturedShopCard extends StatelessWidget {
               loadingBuilder: (context, child, progress) {
                 return progress == null
                     ? child
-                    : const ColoredBox(color: Color(0xFFF3EEE9));
+                    : ColoredBox(color: AppColors.fill);
               },
               errorBuilder: (context, error, stackTrace) {
-                return const ColoredBox(color: Color(0xFFF3EEE9));
+                return ColoredBox(color: AppColors.fill);
               },
             ),
           ),
@@ -272,7 +272,7 @@ class _FeaturedShopCard extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 2),
       child: Material(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(22),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
@@ -310,7 +310,7 @@ class _FeaturedShopCard extends StatelessWidget {
                               shop['name']?.toString() ?? '',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: AppColors.navy,
                                 fontSize: 15,
                                 fontWeight: FontWeight.w800,
@@ -321,7 +321,7 @@ class _FeaturedShopCard extends StatelessWidget {
                               subtitle,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: AppColors.muted,
                                 fontSize: 12,
                               ),

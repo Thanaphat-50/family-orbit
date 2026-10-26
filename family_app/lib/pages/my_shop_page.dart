@@ -270,12 +270,9 @@ class _MyShopPageState extends State<MyShopPage> {
   }
 
   BoxDecoration cardDecoration() {
-    return BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(24),
-      border: Border.all(color: AppColors.border),
-    );
+    return AppDecorations.card(radius: 24);
   }
+
 
   // =====================================================
   // หัวร้าน
@@ -315,7 +312,7 @@ class _MyShopPageState extends State<MyShopPage> {
               children: [
                 Text(
                   data['name']?.toString() ?? '',
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppColors.navy,
                     fontSize: 18,
                     fontWeight: FontWeight.w800,
@@ -327,7 +324,7 @@ class _MyShopPageState extends State<MyShopPage> {
                     if (category != null) category.label,
                     if (area.isNotEmpty) area,
                   ].join(' · '),
-                  style: const TextStyle(color: AppColors.muted, fontSize: 13),
+                  style: TextStyle(color: AppColors.muted, fontSize: 13),
                 ),
                 const SizedBox(height: 8),
                 Container(
@@ -366,7 +363,7 @@ class _MyShopPageState extends State<MyShopPage> {
                       Flexible(
                         child: Text(
                           'ถึง ${formatShortDate(data['featured_until'])}',
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: AppColors.muted,
                             fontSize: 12,
                           ),
@@ -433,7 +430,7 @@ class _MyShopPageState extends State<MyShopPage> {
               Expanded(
                 child: Text(
                   message,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppColors.navy,
                     fontSize: 13.5,
                     height: 1.45,
@@ -448,7 +445,7 @@ class _MyShopPageState extends State<MyShopPage> {
               width: double.infinity,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: AppColors.surface,
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Text(
@@ -501,7 +498,7 @@ class _MyShopPageState extends State<MyShopPage> {
           Expanded(
             child: Text(
               text,
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppColors.navy,
                 fontSize: 14,
                 height: 1.4,
@@ -530,7 +527,7 @@ class _MyShopPageState extends State<MyShopPage> {
               productsLoaded
                   ? 'สินค้าของร้าน (${products.length}/$productLimit)'
                   : 'สินค้าของร้าน',
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppColors.navy,
                 fontSize: 17,
                 fontWeight: FontWeight.w800,
@@ -554,7 +551,7 @@ class _MyShopPageState extends State<MyShopPage> {
         ],
       ),
       if (data['status'] == 'pending' || data['status'] == 'rejected')
-        const Padding(
+        Padding(
           padding: EdgeInsets.only(top: 6),
           child: Text(
             'เตรียมสินค้าไว้ก่อนได้ จะแสดงในตลาดเมื่อร้านผ่านการตรวจสอบ',
@@ -571,7 +568,7 @@ class _MyShopPageState extends State<MyShopPage> {
         Container(
           padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
           decoration: cardDecoration(),
-          child: const Column(
+          child: Column(
             children: [
               Icon(Icons.inventory_2_outlined, color: marketColor, size: 34),
               SizedBox(height: 10),
@@ -628,13 +625,13 @@ class _MyShopPageState extends State<MyShopPage> {
                     width: 68,
                     height: 68,
                     child: thumbnail == null
-                        ? const ColoredBox(color: Color(0xFFEDEFF5))
+                        ? ColoredBox(color: AppColors.fill)
                         : Image.network(
                             thumbnail,
                             fit: BoxFit.cover,
                             cacheWidth: 220,
                             errorBuilder: (context, error, stackTrace) {
-                              return const ColoredBox(color: Color(0xFFEDEFF5));
+                              return ColoredBox(color: AppColors.fill);
                             },
                           ),
                   ),
@@ -648,7 +645,7 @@ class _MyShopPageState extends State<MyShopPage> {
                         product['title']?.toString() ?? '',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppColors.navy,
                           fontSize: 14.5,
                           fontWeight: FontWeight.w800,
@@ -684,7 +681,7 @@ class _MyShopPageState extends State<MyShopPage> {
                 PopupMenuButton<String>(
                   tooltip: 'ตัวเลือกสินค้า',
                   enabled: !busy,
-                  icon: const Icon(
+                  icon: Icon(
                     Icons.more_vert_rounded,
                     color: AppColors.muted,
                   ),
@@ -711,7 +708,7 @@ class _MyShopPageState extends State<MyShopPage> {
                           hiddenByOwner ? 'แสดงสินค้า' : 'ซ่อนสินค้า',
                         ),
                       ),
-                      const PopupMenuItem(
+                      PopupMenuItem(
                         value: 'delete',
                         child: Text(
                           'ลบสินค้า',
@@ -762,7 +759,7 @@ class _MyShopPageState extends State<MyShopPage> {
           ),
         ),
         const SizedBox(height: 16),
-        const Text(
+        Text(
           'เปิดร้านในแอป',
           textAlign: TextAlign.center,
           style: TextStyle(
@@ -772,7 +769,7 @@ class _MyShopPageState extends State<MyShopPage> {
           ),
         ),
         const SizedBox(height: 6),
-        const Text(
+        Text(
           'ฟรีช่วงเปิดตัว ขายของกิน ของใช้ หรือบริการให้ครอบครัวในชุมชน',
           textAlign: TextAlign.center,
           style: TextStyle(
@@ -797,7 +794,7 @@ class _MyShopPageState extends State<MyShopPage> {
                       Expanded(
                         child: Text(
                           text,
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: AppColors.navy,
                             fontSize: 13.5,
                             height: 1.4,
@@ -837,7 +834,7 @@ class _MyShopPageState extends State<MyShopPage> {
             Text(
               loadError ?? 'โหลดข้อมูลร้านไม่สำเร็จ',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: AppColors.navy),
+              style: TextStyle(color: AppColors.navy),
             ),
             const SizedBox(height: 12),
             OutlinedButton(

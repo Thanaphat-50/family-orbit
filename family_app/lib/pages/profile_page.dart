@@ -203,7 +203,7 @@ class _ProfilePageState extends State<ProfilePage> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
 
               children: [
-                const Text(
+                Text(
                   'รูปโปรไฟล์',
 
                   style: TextStyle(
@@ -217,7 +217,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
                 const SizedBox(height: 5),
 
-                const Text(
+                Text(
                   'เลือกรูปที่ต้องการใช้เป็นรูปบัญชี',
 
                   style: TextStyle(color: AppColors.muted, fontSize: 12),
@@ -243,8 +243,8 @@ class _ProfilePageState extends State<ProfilePage> {
 
                 if (hasPhoto)
                   ListTile(
-                    leading: const CircleAvatar(
-                      backgroundColor: Color(0xFFFFEEEE),
+                    leading: CircleAvatar(
+                      backgroundColor: AppColors.softDanger,
 
                       child: Icon(
                         Icons.delete_outline_rounded,
@@ -253,7 +253,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                     ),
 
-                    title: const Text(
+                    title: Text(
                       'ลบรูปโปรไฟล์',
 
                       style: TextStyle(color: AppColors.danger),
@@ -333,7 +333,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
       builder: (dialogContext) {
         return AlertDialog(
-          icon: const Icon(
+          icon: Icon(
             Icons.delete_outline_rounded,
 
             color: AppColors.danger,
@@ -506,7 +506,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
           padding: const EdgeInsets.all(4),
 
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             shape: BoxShape.circle,
 
             gradient: LinearGradient(
@@ -519,8 +519,8 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
 
           child: Container(
-            decoration: const BoxDecoration(
-              color: Colors.white,
+            decoration: BoxDecoration(
+              color: AppColors.surface,
 
               shape: BoxShape.circle,
             ),
@@ -594,14 +594,14 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Widget buildInitialAvatar() {
     return Container(
-      color: const Color(0xFFEEF0FF),
+      color: AppColors.softPrimary,
 
       alignment: Alignment.center,
 
       child: Text(
         initial,
 
-        style: const TextStyle(
+        style: TextStyle(
           color: AppColors.primary,
 
           fontSize: 38,
@@ -801,11 +801,13 @@ class _ProfilePageState extends State<ProfilePage> {
     required String title,
     required String subtitle,
     required VoidCallback onTap,
-    Color color = AppColors.primary,
+    Color? color,
     bool danger = false,
   }) {
+    color ??= AppColors.primary;
+
     return Material(
-      color: Colors.white,
+      color: AppColors.surface,
 
       borderRadius: BorderRadius.circular(18),
 
@@ -856,7 +858,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     Text(
                       subtitle,
 
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppColors.muted,
 
                         fontSize: 10,
@@ -866,7 +868,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
               ),
 
-              const Icon(Icons.chevron_right_rounded, color: AppColors.muted),
+              Icon(Icons.chevron_right_rounded, color: AppColors.muted),
             ],
           ),
         ),
@@ -908,7 +910,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
           const SizedBox(height: 25),
 
-          const Text(
+          Text(
             'บัญชี',
 
             style: TextStyle(
@@ -948,7 +950,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
           const SizedBox(height: 23),
 
-          const Text(
+          Text(
             'กิจกรรมของฉัน',
 
             style: TextStyle(
@@ -991,7 +993,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
           const SizedBox(height: 23),
 
-          const Text(
+          Text(
             'ตลาด',
 
             style: TextStyle(

@@ -27,7 +27,7 @@ Future<void> showSellerRulesDialog(BuildContext context) {
           ),
         ),
         title: const Text('กฎผู้ขาย'),
-        content: const SingleChildScrollView(
+        content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -105,7 +105,7 @@ class _SellerRule extends StatelessWidget {
           Expanded(
             child: Text(
               text,
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppColors.navy,
                 fontSize: 13.5,
                 height: 1.4,
@@ -127,7 +127,7 @@ Future<String?> showProvincePicker(BuildContext context, {String? selected}) {
   return showModalBottomSheet<String>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: Colors.white,
+    backgroundColor: AppColors.surface,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
     ),
@@ -172,7 +172,7 @@ class _ProvincePickerState extends State<_ProvincePicker> {
                 borderRadius: BorderRadius.circular(999),
               ),
             ),
-            const Padding(
+            Padding(
               padding: EdgeInsets.fromLTRB(20, 16, 20, 10),
               child: Text(
                 'เลือกจังหวัด',
@@ -195,7 +195,7 @@ class _ProvincePickerState extends State<_ProvincePicker> {
                   hintText: 'ค้นหาจังหวัด',
                   prefixIcon: const Icon(Icons.search_rounded),
                   filled: true,
-                  fillColor: const Color(0xFFF7F8FC),
+                  fillColor: AppColors.fill,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
                     borderSide: BorderSide.none,
@@ -206,7 +206,7 @@ class _ProvincePickerState extends State<_ProvincePicker> {
             const SizedBox(height: 8),
             Expanded(
               child: provinces.isEmpty
-                  ? const Center(
+                  ? Center(
                       child: Text(
                         'ไม่พบจังหวัดนี้',
                         style: TextStyle(color: AppColors.muted),

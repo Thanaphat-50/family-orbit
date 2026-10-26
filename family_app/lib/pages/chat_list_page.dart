@@ -189,7 +189,7 @@ class _ChatListPageState extends State<ChatListPage> {
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 10),
       child: Text(
         title,
-        style: const TextStyle(
+        style: TextStyle(
           color: AppColors.navy,
           fontSize: 16,
           fontWeight: FontWeight.w800,
@@ -204,11 +204,12 @@ class _ChatListPageState extends State<ChatListPage> {
         margin: const EdgeInsets.symmetric(horizontal: 16),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: AppColors.surface,
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: AppColors.border),
+          border: AppDecorations.cardBorder,
+          boxShadow: AppDecorations.cardShadow,
         ),
-        child: const Text(
+        child: Text(
           'ยังไม่มีคนอื่นในครอบครัว ชวนคนในบ้านเข้าครอบครัวด้วยรหัสเชิญ แล้วคุยกันได้ที่นี่',
           style: TextStyle(color: AppColors.muted, fontSize: 13, height: 1.5),
         ),
@@ -216,7 +217,7 @@ class _ChatListPageState extends State<ChatListPage> {
     }
 
     return SizedBox(
-      height: 96,
+      height: 102,
       child: ListView.separated(
         padding: const EdgeInsets.symmetric(horizontal: 16),
         scrollDirection: Axis.horizontal,
@@ -232,13 +233,32 @@ class _ChatListPageState extends State<ChatListPage> {
               width: 68,
               child: Column(
                 children: [
-                  UserAvatar(user: avatarOf(contact), radius: 28),
+                  // วงแหวนไล่สีรอบรูป
+                  Container(
+                    padding: const EdgeInsets.all(2.5),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [AppColors.primary, AppColors.sky],
+                      ),
+                    ),
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: AppColors.background,
+                      ),
+                      child: UserAvatar(user: avatarOf(contact), radius: 26),
+                    ),
+                  ),
                   const SizedBox(height: 6),
                   Text(
                     contact['name']?.toString() ?? '',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppColors.navy,
                       fontSize: 12.5,
                       fontWeight: FontWeight.w600,
@@ -272,7 +292,10 @@ class _ChatListPageState extends State<ChatListPage> {
 
         if (id is num) openRoom(id.toInt(), user);
       },
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      tileColor: unread > 0
+          ? AppColors.softPrimary.withValues(alpha: 0.6)
+          : null,
       leading: UserAvatar(user: avatarOf(user), radius: 26),
       title: Row(
         children: [
@@ -281,7 +304,7 @@ class _ChatListPageState extends State<ChatListPage> {
               name,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppColors.navy,
                 fontSize: 15.5,
                 fontWeight: FontWeight.w800,
@@ -377,7 +400,7 @@ class _ChatListPageState extends State<ChatListPage> {
           buildContacts(),
           buildSectionTitle('ข้อความ'),
           if (conversations.isEmpty)
-            const Padding(
+            Padding(
               padding: EdgeInsets.fromLTRB(24, 24, 24, 0),
               child: Column(
                 children: [
@@ -396,7 +419,20 @@ class _ChatListPageState extends State<ChatListPage> {
               ),
             )
           else
-            ...conversations.map(buildConversation),
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: AppDecorations.card(radius: 22),
+              clipBehavior: Clip.antiAlias,
+              child: Column(
+                children: [
+                  for (int i = 0; i < conversations.length; i++) ...[
+                    if (i > 0)
+                      Divider(height: 1, indent: 84, color: AppColors.border),
+                    buildConversation(conversations[i]),
+                  ],
+                ],
+              ),
+            ),
         ],
       ),
     );

@@ -39,7 +39,7 @@ Future<bool> showCommunityRulesDialog(BuildContext context) async {
         icon: Container(
           width: 56,
           height: 56,
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             color: AppColors.softSky,
             shape: BoxShape.circle,
           ),
@@ -50,7 +50,7 @@ Future<bool> showCommunityRulesDialog(BuildContext context) async {
           ),
         ),
         title: const Text('กฎชุมชน'),
-        content: const SingleChildScrollView(
+        content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -154,7 +154,7 @@ class _RuleRow extends StatelessWidget {
           Expanded(
             child: Text(
               text,
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppColors.navy,
                 fontSize: 13.5,
                 height: 1.4,
@@ -191,7 +191,7 @@ Future<String?> showCommentActionsSheet(
                 'ความคิดเห็นของ $authorName',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
+                style: TextStyle(
                   color: AppColors.navy,
                   fontSize: 17,
                   fontWeight: FontWeight.w800,
@@ -200,11 +200,11 @@ Future<String?> showCommentActionsSheet(
               const SizedBox(height: 8),
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: const Icon(
+                leading: Icon(
                   Icons.flag_outlined,
                   color: AppColors.navy,
                 ),
-                title: const Text(
+                title: Text(
                   'รายงานความคิดเห็น',
                   style: TextStyle(
                     color: AppColors.navy,
@@ -217,7 +217,7 @@ Future<String?> showCommentActionsSheet(
               ),
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: const Icon(
+                leading: Icon(
                   Icons.block_rounded,
                   color: AppColors.danger,
                 ),
@@ -225,7 +225,7 @@ Future<String?> showCommentActionsSheet(
                   'บล็อก $authorName',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppColors.danger,
                     fontWeight: FontWeight.w700,
                   ),
@@ -268,7 +268,7 @@ Future<String?> showReportReasonSheet(
             children: [
               Text(
                 title,
-                style: const TextStyle(
+                style: TextStyle(
                   color: AppColors.navy,
                   fontSize: 19,
                   fontWeight: FontWeight.w800,
@@ -277,7 +277,7 @@ Future<String?> showReportReasonSheet(
               const SizedBox(height: 4),
               Text(
                 note,
-                style: const TextStyle(
+                style: TextStyle(
                   color: AppColors.muted,
                   fontSize: 13,
                 ),
@@ -286,18 +286,18 @@ Future<String?> showReportReasonSheet(
               ...reasons.entries.map(
                 (entry) => ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: const Icon(
+                  leading: Icon(
                     Icons.flag_outlined,
                     color: AppColors.danger,
                   ),
                   title: Text(
                     entry.value,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppColors.navy,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  trailing: const Icon(
+                  trailing: Icon(
                     Icons.chevron_right_rounded,
                     color: AppColors.muted,
                   ),
@@ -333,7 +333,7 @@ Future<bool> showBlockUserDialog(
             color: AppColors.danger.withValues(alpha: 0.10),
             shape: BoxShape.circle,
           ),
-          child: const Icon(
+          child: Icon(
             Icons.block_rounded,
             color: AppColors.danger,
             size: 28,
@@ -527,14 +527,14 @@ class _BlockedUsersSheetState extends State<_BlockedUsersSheet> {
           child: Text(
             error!,
             textAlign: TextAlign.center,
-            style: const TextStyle(color: AppColors.muted),
+            style: TextStyle(color: AppColors.muted),
           ),
         ),
       );
     }
 
     if (users.isEmpty) {
-      return const Padding(
+      return Padding(
         padding: EdgeInsets.symmetric(vertical: 36),
         child: Center(
           child: Text(
@@ -571,7 +571,7 @@ class _BlockedUsersSheetState extends State<_BlockedUsersSheet> {
           ),
           title: Text(
             user['name']?.toString() ?? 'สมาชิก',
-            style: const TextStyle(
+            style: TextStyle(
               color: AppColors.navy,
               fontWeight: FontWeight.w700,
             ),
@@ -613,7 +613,7 @@ class _BlockedUsersSheetState extends State<_BlockedUsersSheet> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'ผู้ใช้ที่บล็อก',
                 style: TextStyle(
                   color: AppColors.navy,
@@ -622,7 +622,7 @@ class _BlockedUsersSheetState extends State<_BlockedUsersSheet> {
                 ),
               ),
               const SizedBox(height: 4),
-              const Text(
+              Text(
                 'โพสต์และความคิดเห็นของคนเหล่านี้จะไม่แสดงในชุมชน',
                 style: TextStyle(
                   color: AppColors.muted,

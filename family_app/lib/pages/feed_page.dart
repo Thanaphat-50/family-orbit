@@ -453,7 +453,7 @@ class _FeedPageState extends State<FeedPage> {
       isScrollControlled: true,
       useSafeArea: true,
       showDragHandle: true,
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       builder: (sheetContext) {
         composerContext = sheetContext;
 
@@ -600,7 +600,7 @@ class _FeedPageState extends State<FeedPage> {
               color: AppColors.danger.withValues(alpha: 0.10),
               shape: BoxShape.circle,
             ),
-            child: const Icon(
+            child: Icon(
               Icons.delete_outline_rounded,
               color: AppColors.danger,
               size: 28,
@@ -914,24 +914,6 @@ class _FeedPageState extends State<FeedPage> {
     }
   }
 
-  Future<void> openBlockedUsers() async {
-    dismissKeyboard();
-
-    bool changed = false;
-
-    await showBlockedUsersSheet(
-      context,
-      onChanged: () {
-        changed = true;
-      },
-    );
-
-    // เลิกบล็อกแล้ว → โหลดฟีดชุมชนใหม่ให้เห็นโพสต์ของเขาอีกครั้ง
-    if (changed && mounted) {
-      await loadPosts();
-    }
-  }
-
   // =====================================================
   // Comment
   // ใช้ local String แทน Controller
@@ -950,7 +932,7 @@ class _FeedPageState extends State<FeedPage> {
           titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
           contentPadding: const EdgeInsets.fromLTRB(24, 18, 24, 10),
           actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          title: const Row(
+          title: Row(
             children: [
               CircleAvatar(
                 backgroundColor: AppColors.softPrimary,
@@ -1206,19 +1188,9 @@ class _FeedPageState extends State<FeedPage> {
   }
 
   BoxDecoration cardDecoration() {
-    return BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(24),
-      border: Border.all(color: AppColors.border),
-      boxShadow: [
-        BoxShadow(
-          color: AppColors.navy.withValues(alpha: 0.04),
-          blurRadius: 20,
-          offset: const Offset(0, 8),
-        ),
-      ],
-    );
+    return AppDecorations.card(radius: 24);
   }
+
 
   // =====================================================
   // Avatar
@@ -1272,7 +1244,7 @@ class _FeedPageState extends State<FeedPage> {
         color: AppColors.danger.withValues(alpha: 0.07),
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      child: const Row(
+      child: Row(
         children: [
           Icon(
             Icons.visibility_off_outlined,
@@ -1307,7 +1279,7 @@ class _FeedPageState extends State<FeedPage> {
         width: size,
         height: size,
         alignment: Alignment.center,
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
@@ -1405,7 +1377,7 @@ class _FeedPageState extends State<FeedPage> {
       children: [
         Text(
           community ? 'โพสต์ในชุมชน' : 'โพสต์ถึงครอบครัว',
-          style: const TextStyle(
+          style: TextStyle(
             color: AppColors.navy,
             fontSize: 18,
             fontWeight: FontWeight.w800,
@@ -1444,7 +1416,7 @@ class _FeedPageState extends State<FeedPage> {
 
                       return Text(
                         '$currentLength/$maxPostLength',
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppColors.muted,
                           fontSize: 11,
                         ),
@@ -1456,7 +1428,7 @@ class _FeedPageState extends State<FeedPage> {
                       ? 'แชร์เรื่องราวให้ทุกครอบครัวในชุมชน...'
                       : 'มีอะไรอยากเล่าให้ครอบครัวฟังไหม?',
                   filled: true,
-                  fillColor: const Color(0xFFF7F8FC),
+                  fillColor: AppColors.fill,
                   contentPadding: const EdgeInsets.all(16),
                   border: inputBorder,
                   enabledBorder: inputBorder,
@@ -1538,7 +1510,7 @@ class _FeedPageState extends State<FeedPage> {
           const SizedBox(height: 10),
           Text(
             composerError!,
-            style: const TextStyle(
+            style: TextStyle(
               color: AppColors.danger,
               fontSize: 12.5,
               fontWeight: FontWeight.w600,
@@ -1566,7 +1538,7 @@ class _FeedPageState extends State<FeedPage> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(
+                Icon(
                   Icons.add_photo_alternate_outlined,
                   size: 18,
                   color: AppColors.primary,
@@ -1575,7 +1547,7 @@ class _FeedPageState extends State<FeedPage> {
                   const SizedBox(width: 4),
                   Text(
                     '$count/$maxPostImages',
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppColors.primary,
                       fontSize: 11.5,
                       fontWeight: FontWeight.w700,
@@ -1726,9 +1698,11 @@ class _FeedPageState extends State<FeedPage> {
   Widget buildChip({
     required IconData icon,
     required String label,
-    Color color = AppColors.primary,
+    Color? color,
     IconData? trailingIcon,
   }) {
+    color ??= AppColors.primary;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
@@ -1770,30 +1744,14 @@ class _FeedPageState extends State<FeedPage> {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Text(
-                'ล่าสุดในชุมชน',
-                style: TextStyle(
-                  color: AppColors.navy,
-                  fontSize: 19,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const Spacer(),
-              TextButton.icon(
-                style: TextButton.styleFrom(
-                  foregroundColor: AppColors.muted,
-                  textStyle: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                onPressed: openBlockedUsers,
-                icon: const Icon(Icons.block_rounded, size: 16),
-                label: const Text('ผู้ใช้ที่บล็อก'),
-              ),
-            ],
+          // ผู้ใช้ที่บล็อก: ตั้งค่า → ความเป็นส่วนตัว
+          Text(
+            'ล่าสุดในชุมชน',
+            style: TextStyle(
+              color: AppColors.navy,
+              fontSize: 19,
+              fontWeight: FontWeight.w800,
+            ),
           ),
           const SizedBox(height: 8),
           buildCategoryFilter(),
@@ -1803,7 +1761,7 @@ class _FeedPageState extends State<FeedPage> {
 
     return Row(
       children: [
-        const Text(
+        Text(
           'ล่าสุดในครอบครัว',
           style: TextStyle(
             color: AppColors.navy,
@@ -1821,7 +1779,7 @@ class _FeedPageState extends State<FeedPage> {
             ),
             child: Text(
               '${feed.posts.length} โพสต์',
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppColors.primary,
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
@@ -1907,7 +1865,7 @@ class _FeedPageState extends State<FeedPage> {
                                     name,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       color: AppColors.navy,
                                       fontSize: 15,
                                       fontWeight: FontWeight.w800,
@@ -1946,7 +1904,7 @@ class _FeedPageState extends State<FeedPage> {
                                             '${formatDate(post['created_at'])}',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     color: AppColors.muted,
                                     fontSize: 11.5,
                                   ),
@@ -1987,7 +1945,7 @@ class _FeedPageState extends State<FeedPage> {
                   ),
                   child: Text(
                     content,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppColors.navy,
                       fontSize: 15.5,
                       height: 1.55,
@@ -2095,7 +2053,7 @@ class _FeedPageState extends State<FeedPage> {
   }
 
   Widget buildImageTile(List<String> urls, int index, {int extra = 0}) {
-    const Color placeholder = Color(0xFFEDEFF5);
+    final Color placeholder = AppColors.fill;
 
     return Semantics(
       button: true,
@@ -2116,10 +2074,10 @@ class _FeedPageState extends State<FeedPage> {
               loadingBuilder: (context, child, progress) {
                 return progress == null
                     ? child
-                    : const ColoredBox(color: placeholder);
+                    : ColoredBox(color: placeholder);
               },
               errorBuilder: (context, error, stackTrace) {
-                return const ColoredBox(
+                return ColoredBox(
                   color: placeholder,
                   child: Icon(
                     Icons.broken_image_outlined,
@@ -2163,7 +2121,7 @@ class _FeedPageState extends State<FeedPage> {
       child: Material(
         color: liked
             ? likeColor.withValues(alpha: 0.10)
-            : const Color(0xFFF2F4F7),
+            : AppColors.fill,
         borderRadius: BorderRadius.circular(999),
         child: InkWell(
           borderRadius: BorderRadius.circular(999),
@@ -2240,7 +2198,7 @@ class _FeedPageState extends State<FeedPage> {
     return PopupMenuButton<String>(
       tooltip: 'ตัวเลือกโพสต์',
       position: PopupMenuPosition.under,
-      icon: const Icon(Icons.more_horiz_rounded, color: AppColors.muted),
+      icon: Icon(Icons.more_horiz_rounded, color: AppColors.muted),
       onSelected: (value) {
         switch (value) {
           case 'delete':
@@ -2313,7 +2271,7 @@ class _FeedPageState extends State<FeedPage> {
 
   Widget buildCommentButton(int postId, int count) {
     return Material(
-      color: const Color(0xFFF2F4F7),
+      color: AppColors.fill,
       borderRadius: BorderRadius.circular(999),
       child: InkWell(
         borderRadius: BorderRadius.circular(999),
@@ -2323,7 +2281,7 @@ class _FeedPageState extends State<FeedPage> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(
+              Icon(
                 Icons.chat_bubble_outline_rounded,
                 color: AppColors.muted,
                 size: 18,
@@ -2331,7 +2289,7 @@ class _FeedPageState extends State<FeedPage> {
               const SizedBox(width: 7),
               Text(
                 count > 0 ? '$count' : 'ความคิดเห็น',
-                style: const TextStyle(
+                style: TextStyle(
                   color: AppColors.muted,
                   fontSize: 13.5,
                   fontWeight: FontWeight.w700,
@@ -2364,17 +2322,17 @@ class _FeedPageState extends State<FeedPage> {
           const SizedBox(width: 9),
           Expanded(
             child: Material(
-              color: Colors.white,
+              color: AppColors.surface,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(999),
-                side: const BorderSide(color: AppColors.border),
+                side: BorderSide(color: AppColors.border),
               ),
               child: InkWell(
                 customBorder: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(999),
                 ),
                 onTap: () => showCommentDialog(postId),
-                child: const Padding(
+                child: Padding(
                   padding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   child: Text(
                     'เขียนความคิดเห็น...',
@@ -2408,7 +2366,7 @@ class _FeedPageState extends State<FeedPage> {
 
     return Container(
       width: double.infinity,
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         border: Border(top: BorderSide(color: AppColors.border)),
       ),
       padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
@@ -2516,7 +2474,7 @@ class _FeedPageState extends State<FeedPage> {
                   Container(
                     padding: const EdgeInsets.fromLTRB(13, 8, 13, 9),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF0F2F5),
+                      color: AppColors.fill,
                       borderRadius: BorderRadius.circular(18),
                     ),
                     child: Column(
@@ -2529,7 +2487,7 @@ class _FeedPageState extends State<FeedPage> {
                             commentName,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: AppColors.navy,
                               fontSize: 13,
                               fontWeight: FontWeight.w800,
@@ -2539,8 +2497,8 @@ class _FeedPageState extends State<FeedPage> {
                         const SizedBox(height: 2),
                         Text(
                           content,
-                          style: const TextStyle(
-                            color: Color(0xFF1F2937),
+                          style: TextStyle(
+                            color: AppColors.navy,
                             fontSize: 14.5,
                             height: 1.4,
                           ),
@@ -2557,7 +2515,7 @@ class _FeedPageState extends State<FeedPage> {
                         if (createdAt != null)
                           Text(
                             formatDate(createdAt),
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: AppColors.muted,
                               fontSize: 11.5,
                               fontWeight: FontWeight.w600,
@@ -2568,7 +2526,7 @@ class _FeedPageState extends State<FeedPage> {
                           InkWell(
                             borderRadius: BorderRadius.circular(999),
                             onTap: openActions,
-                            child: const Padding(
+                            child: Padding(
                               padding: EdgeInsets.symmetric(horizontal: 4),
                               child: Icon(
                                 Icons.more_horiz_rounded,
@@ -2691,7 +2649,7 @@ class _FeedPageState extends State<FeedPage> {
           const SizedBox(height: 18),
           Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               color: AppColors.navy,
               fontSize: 18,
               fontWeight: FontWeight.w800,
@@ -2701,7 +2659,7 @@ class _FeedPageState extends State<FeedPage> {
           Text(
             message,
             textAlign: TextAlign.center,
-            style: const TextStyle(
+            style: TextStyle(
               color: AppColors.muted,
               fontSize: 13.5,
               height: 1.5,
@@ -2752,7 +2710,7 @@ class _FeedPageState extends State<FeedPage> {
       return const SizedBox(height: 40);
     }
 
-    return const Padding(
+    return Padding(
       padding: EdgeInsets.symmetric(vertical: 14),
       child: Center(
         child: Text(
@@ -2835,7 +2793,7 @@ class _PostSkeletonState extends State<_PostSkeleton>
       width: width,
       height: height,
       decoration: BoxDecoration(
-        color: const Color(0xFFEDEFF5),
+        color: AppColors.fill,
         borderRadius: BorderRadius.circular(8),
       ),
     );
@@ -2849,9 +2807,10 @@ class _PostSkeletonState extends State<_PostSkeleton>
         margin: const EdgeInsets.only(bottom: 14),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: AppColors.surface,
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: AppColors.border),
+          border: AppDecorations.cardBorder,
+          boxShadow: AppDecorations.cardShadow,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -2861,8 +2820,8 @@ class _PostSkeletonState extends State<_PostSkeleton>
                 Container(
                   width: 42,
                   height: 42,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFEDEFF5),
+                  decoration: BoxDecoration(
+                    color: AppColors.fill,
                     shape: BoxShape.circle,
                   ),
                 ),

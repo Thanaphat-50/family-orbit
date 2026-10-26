@@ -261,14 +261,14 @@ class _ShopFormPageState extends State<ShopFormPage> {
             child: const Text('เอาโลโก้ออก'),
           )
         else
-          const Text(
+          Text(
             'โลโก้ร้าน (ไม่บังคับ)',
             style: TextStyle(color: AppColors.muted, fontSize: 12.5),
           ),
         if (serverErrors['logo'] != null)
           Text(
             serverErrors['logo']!,
-            style: const TextStyle(color: AppColors.danger, fontSize: 12),
+            style: TextStyle(color: AppColors.danger, fontSize: 12),
           ),
       ],
     );
@@ -279,7 +279,7 @@ class _ShopFormPageState extends State<ShopFormPage> {
       padding: const EdgeInsets.only(bottom: 10),
       child: Text(
         text,
-        style: const TextStyle(
+        style: TextStyle(
           color: AppColors.navy,
           fontSize: 15,
           fontWeight: FontWeight.w800,
@@ -315,7 +315,7 @@ class _ShopFormPageState extends State<ShopFormPage> {
             padding: const EdgeInsets.only(top: 6),
             child: Text(
               serverErrors['category']!,
-              style: const TextStyle(color: AppColors.danger, fontSize: 12),
+              style: TextStyle(color: AppColors.danger, fontSize: 12),
             ),
           ),
       ],
@@ -357,7 +357,7 @@ class _ShopFormPageState extends State<ShopFormPage> {
             isEmpty: province == null,
             child: Text(
               province ?? '',
-              style: const TextStyle(color: AppColors.navy, fontSize: 15),
+              style: TextStyle(color: AppColors.navy, fontSize: 15),
             ),
           ),
         );
@@ -385,7 +385,7 @@ class _ShopFormPageState extends State<ShopFormPage> {
                     });
                   },
           ),
-          const Expanded(
+          Expanded(
             child: Text(
               'ฉันยอมรับกฎผู้ขาย',
               style: TextStyle(
@@ -432,7 +432,7 @@ class _ShopFormPageState extends State<ShopFormPage> {
                     color: AppColors.softWarm,
                     borderRadius: BorderRadius.circular(18),
                   ),
-                  child: const Text(
+                  child: Text(
                     'เปิดร้านฟรีช่วงเปิดตัว ลงสินค้าได้ 30 ชิ้น '
                     'ผู้ดูแลจะตรวจสอบร้านก่อนแสดงในตลาด',
                     style: TextStyle(
@@ -509,7 +509,7 @@ class _ShopFormPageState extends State<ShopFormPage> {
                 ),
               ),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 'ผู้ซื้อจะเห็นเบอร์โทรและ LINE เมื่อร้านเปิดขาย',
                 style: TextStyle(color: AppColors.muted, fontSize: 12),
               ),

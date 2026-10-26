@@ -141,9 +141,10 @@ class _MarketShopPageState extends State<MarketShopPage> {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.border),
+        border: AppDecorations.cardBorder,
+        boxShadow: AppDecorations.cardShadow,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -167,7 +168,7 @@ class _MarketShopPageState extends State<MarketShopPage> {
                   children: [
                     Text(
                       data['name']?.toString() ?? '',
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppColors.navy,
                         fontSize: 19,
                         fontWeight: FontWeight.w800,
@@ -183,7 +184,7 @@ class _MarketShopPageState extends State<MarketShopPage> {
                         if (category != null) category.label,
                         shopArea(data),
                       ].where((part) => part.isNotEmpty).join(' · '),
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppColors.muted,
                         fontSize: 13,
                       ),
@@ -197,8 +198,8 @@ class _MarketShopPageState extends State<MarketShopPage> {
             const SizedBox(height: 14),
             Text(
               description,
-              style: const TextStyle(
-                color: Color(0xFF344054),
+              style: TextStyle(
+                color: AppColors.subtle,
                 fontSize: 14,
                 height: 1.5,
               ),
@@ -230,7 +231,7 @@ class _MarketShopPageState extends State<MarketShopPage> {
               onSelected: (value) {
                 if (value == 'report') reportShop();
               },
-              itemBuilder: (context) => const [
+              itemBuilder: (context) => [
                 PopupMenuItem(
                   value: 'report',
                   child: Row(
@@ -254,7 +255,7 @@ class _MarketShopPageState extends State<MarketShopPage> {
                 child: Text(
                   loadError ?? 'ไม่พบร้านนี้',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: AppColors.navy),
+                  style: TextStyle(color: AppColors.navy),
                 ),
               ),
             )
@@ -271,7 +272,7 @@ class _MarketShopPageState extends State<MarketShopPage> {
                         const SizedBox(height: 20),
                         Text(
                           'สินค้าทั้งหมด (${products.length})',
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: AppColors.navy,
                             fontSize: 17,
                             fontWeight: FontWeight.w800,
@@ -279,7 +280,7 @@ class _MarketShopPageState extends State<MarketShopPage> {
                         ),
                         const SizedBox(height: 12),
                         if (products.isEmpty)
-                          const Padding(
+                          Padding(
                             padding: EdgeInsets.symmetric(vertical: 30),
                             child: Center(
                               child: Text(
