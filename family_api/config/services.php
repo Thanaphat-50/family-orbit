@@ -28,6 +28,25 @@ return [
         'key' => env('RESEND_KEY'),
     ],
 
+    // เข้าสู่ระบบด้วย Google / LINE / Facebook (ดู App\Services\SocialIdentityVerifier)
+    // ไม่ได้ตั้งค่า = ซ่อนปุ่มของเจ้านั้นในแอป
+
+    // Web client ID ของ Google (คั่นด้วย , ได้หลายตัว)
+    'google' => [
+        'client_ids' => env('GOOGLE_CLIENT_IDS'),
+    ],
+
+    'line' => [
+        'channel_id' => env('LINE_CHANNEL_ID'),
+    ],
+
+    'facebook' => [
+        'app_id' => env('FACEBOOK_APP_ID'),
+        'app_secret' => env('FACEBOOK_APP_SECRET'),
+        // ว่าง = ใช้เวอร์ชัน Graph API ที่ตั้งไว้ในแอป Facebook
+        'graph_version' => env('FACEBOOK_GRAPH_VERSION'),
+    ],
+
     // แจ้งเตือนเด้ง (Firebase Cloud Messaging) ดู App\Services\PushNotifications
     'fcm' => [
         // ไฟล์ JSON ของ Service account ทั้งไฟล์ แปลงเป็น base64 (Laravel Cloud)

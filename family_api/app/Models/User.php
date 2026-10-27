@@ -69,6 +69,18 @@ class User extends Authenticatable implements FilamentUser
         )->withTimestamps();
     }
 
+    // บัญชี Google / LINE / Facebook ที่เชื่อมไว้
+    public function socialAccounts()
+    {
+        return $this->hasMany(SocialAccount::class);
+    }
+
+    // สมัครด้วย Google / LINE / Facebook → อาจยังไม่ได้ตั้งรหัสผ่าน
+    public function hasPassword(): bool
+    {
+        return filled($this->getAttributes()['password'] ?? null);
+    }
+
     // มือถือที่ล็อกอินอยู่ (ส่งแจ้งเตือนเด้ง)
     public function deviceTokens()
     {

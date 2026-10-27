@@ -7,6 +7,7 @@ import '../services/auth_service.dart';
 import '../services/location_tracker.dart';
 import '../services/profile_service.dart';
 import '../services/settings_service.dart';
+import '../services/social_auth_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
 import '../widgets/community_sheets.dart';
@@ -69,12 +70,168 @@ class _SettingsPageState extends State<SettingsPage> {
 
   String version = '';
 
+  // บัญชี Google / LINE / Facebook ที่เชื่อมไว้ + มีรหัสผ่านหรือยัง
+  List<Map<String, dynamic>> socialAccounts = [];
+
+  bool hasPassword = true;
+
+  // เจ้าที่กำลังเชื่อม / ยกเลิก
+  String? socialBusy;
+
   @override
   void initState() {
     super.initState();
     loadSettings();
     loadVersion();
+    loadSocialAccounts();
   }
+
+  // =====================================================
+  // บัญชีที่เชื่อมต่อ (Google / LINE / Facebook)
+  // =====================================================
+
+  void applySocialAccounts(Map<String, dynamic> result) {
+    final dynamic accounts = result['accounts'];
+
+    if (result['status'] != true || accounts is! List) return;
+
+    setState(() {
+      hasPassword = result['has_password'] != false;
+
+      socialAccounts = accounts
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList();
+    });
+  }
+
+  Future<void> loadSocialAccounts() async {
+    try {
+      final result = await SocialAuthService.linkedAccounts();
+
+      if (mounted) applySocialAccounts(result);
+    } catch (_) {
+      // โหลดไม่ได้ → ไม่แสดงส่วนนี้
+    }
+  }
+
+  Future<void> toggleSocial(Map<String, dynamic> account) async {
+    final SocialProvider provider = SocialProvider.values.firstWhere(
+      (value) => value.key == account['provider'],
+    );
+
+    final bool linked = account['linked'] == true;
+
+    if (linked) {
+      final bool? confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text('ยกเลิกการเชื่อม ${provider.label}?'),
+          content: Text(
+            'จะเข้าสู่ระบบด้วย ${provider.label} ไม่ได้อีก จนกว่าจะเชื่อมใหม่',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('ไม่ใช่ตอนนี้'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('ยกเลิกการเชื่อม'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed != true || !mounted) return;
+    }
+
+    setState(() => socialBusy = provider.key);
+
+    try {
+      final result = linked
+          ? await SocialAuthService.unlink(provider)
+          : await SocialAuthService.link(provider);
+
+      if (!mounted) return;
+
+      applySocialAccounts(result);
+
+      showMessage(
+        result['message']?.toString() ??
+            (result['status'] == true ? 'บันทึกแล้ว' : 'ทำรายการไม่สำเร็จ'),
+      );
+    } on SocialLoginCanceled {
+      // ผู้ใช้ปิดหน้าล็อกอินเอง
+    } catch (e) {
+      if (mounted) showMessage(e.toString());
+    } finally {
+      if (mounted) setState(() => socialBusy = null);
+    }
+  }
+
+  Widget buildSocialRow(Map<String, dynamic> account) {
+    final bool linked = account['linked'] == true;
+
+    final bool busy = socialBusy == account['provider'];
+
+    final String? email = account['email']?.toString();
+
+    final Color color = switch (account['provider']) {
+      'line' => const Color(0xFF06C755),
+      'facebook' => const Color(0xFF1877F2),
+      _ => const Color(0xFF4285F4),
+    };
+
+    return ListTile(
+      leading: buildIcon(
+        linked ? Icons.link_rounded : Icons.link_off_rounded,
+        color,
+      ),
+      contentPadding: const EdgeInsets.fromLTRB(12, 2, 8, 2),
+      title: Text(
+        account['label']?.toString() ?? '',
+        style: TextStyle(
+          color: AppColors.navy,
+          fontSize: 14.5,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      subtitle: Text(
+        linked
+            ? (email == null || email.isEmpty
+                  ? 'เชื่อมแล้ว'
+                  : 'เชื่อมแล้ว · $email')
+            : 'ยังไม่ได้เชื่อม',
+        style: TextStyle(color: AppColors.muted, fontSize: 12),
+      ),
+      trailing: busy
+          ? const Padding(
+              padding: EdgeInsets.all(12),
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          : TextButton(
+              onPressed: socialBusy == null
+                  ? () => toggleSocial(account)
+                  : null,
+              style: TextButton.styleFrom(
+                foregroundColor: linked ? AppColors.danger : AppColors.primary,
+              ),
+              child: Text(linked ? 'ยกเลิก' : 'เชื่อม'),
+            ),
+    );
+  }
+
+  // แสดงเฉพาะเจ้าที่เปิดใช้ หรือที่เคยเชื่อมไว้
+  List<Map<String, dynamic>> get visibleSocialAccounts => socialAccounts
+      .where(
+        (account) => account['enabled'] == true || account['linked'] == true,
+      )
+      .toList();
 
   // =====================================================
   // โหลด / บันทึกการตั้งค่า
@@ -310,7 +467,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
                   children: [
                     Text(
-                      'เปลี่ยนรหัสผ่าน',
+                      hasPassword ? 'เปลี่ยนรหัสผ่าน' : 'ตั้งรหัสผ่าน',
 
                       style: TextStyle(
                         color: AppColors.navy,
@@ -324,42 +481,44 @@ class _SettingsPageState extends State<SettingsPage> {
                     const SizedBox(height: 6),
 
                     Text(
-                      'รหัสผ่านใหม่ต้องมีอย่างน้อย 8 ตัวอักษร',
+                      hasPassword ? 'รหัสผ่านใหม่ต้องมีอย่างน้อย 8 ตัวอักษร' : 'ตั้งรหัสผ่านเพื่อเข้าสู่ระบบด้วยอีเมลได้ด้วย (อย่างน้อย 8 ตัวอักษร)',
 
                       style: TextStyle(color: AppColors.muted, fontSize: 11),
                     ),
 
                     const SizedBox(height: 22),
 
-                    TextField(
-                      obscureText: hideCurrent,
+                    if (hasPassword) ...[
+                      TextField(
+                        obscureText: hideCurrent,
 
-                      onChanged: (value) {
-                        currentPassword = value;
-                      },
+                        onChanged: (value) {
+                          currentPassword = value;
+                        },
 
-                      decoration: InputDecoration(
-                        labelText: 'รหัสผ่านปัจจุบัน',
+                        decoration: InputDecoration(
+                          labelText: 'รหัสผ่านปัจจุบัน',
 
-                        prefixIcon: const Icon(Icons.lock_outline_rounded),
+                          prefixIcon: const Icon(Icons.lock_outline_rounded),
 
-                        suffixIcon: IconButton(
-                          onPressed: () {
-                            setSheetState(() {
-                              hideCurrent = !hideCurrent;
-                            });
-                          },
+                          suffixIcon: IconButton(
+                            onPressed: () {
+                              setSheetState(() {
+                                hideCurrent = !hideCurrent;
+                              });
+                            },
 
-                          icon: Icon(
-                            hideCurrent
-                                ? Icons.visibility_outlined
-                                : Icons.visibility_off_outlined,
+                            icon: Icon(
+                              hideCurrent
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined,
+                            ),
                           ),
                         ),
                       ),
-                    ),
 
-                    const SizedBox(height: 14),
+                      const SizedBox(height: 14),
+                    ],
 
                     TextField(
                       obscureText: hideNew,
@@ -423,7 +582,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
                     FilledButton(
                       onPressed: () {
-                        if (currentPassword.isEmpty ||
+                        if ((hasPassword && currentPassword.isEmpty) ||
                             newPassword.length < 8 ||
                             newPassword != confirmation) {
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -444,7 +603,9 @@ class _SettingsPageState extends State<SettingsPage> {
                         });
                       },
 
-                      child: const Text('เปลี่ยนรหัสผ่าน'),
+                      child: Text(
+                        hasPassword ? 'เปลี่ยนรหัสผ่าน' : 'ตั้งรหัสผ่าน',
+                      ),
                     ),
                   ],
                 ),
@@ -463,7 +624,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
     try {
       final response = await ProfileService.updatePassword(
-        currentPassword: result['current']!,
+        currentPassword: hasPassword ? result['current'] : null,
 
         password: result['password']!,
 
@@ -478,6 +639,8 @@ class _SettingsPageState extends State<SettingsPage> {
                 ? 'เปลี่ยนรหัสผ่านแล้ว'
                 : 'เปลี่ยนรหัสผ่านไม่สำเร็จ'),
       );
+
+      if (response['status'] == true) loadSocialAccounts();
     } catch (e) {
       if (!mounted) return;
 
@@ -550,30 +713,35 @@ class _SettingsPageState extends State<SettingsPage> {
                     const SizedBox(height: 20),
 
                     TextField(
-                      obscureText: hidePassword,
+                      obscureText: hasPassword && hidePassword,
 
                       onChanged: (value) {
                         password = value;
                       },
 
                       decoration: InputDecoration(
-                        labelText: 'ยืนยันด้วยรหัสผ่าน',
+                        // ไม่มีรหัสผ่าน (สมัครด้วย Google / LINE / Facebook) → พิมพ์ "ลบบัญชี"
+                        labelText: hasPassword
+                            ? 'ยืนยันด้วยรหัสผ่าน'
+                            : 'พิมพ์คำว่า "ลบบัญชี" เพื่อยืนยัน',
 
                         prefixIcon: const Icon(Icons.lock_outline_rounded),
 
-                        suffixIcon: IconButton(
-                          onPressed: () {
-                            setSheetState(() {
-                              hidePassword = !hidePassword;
-                            });
-                          },
+                        suffixIcon: !hasPassword
+                            ? null
+                            : IconButton(
+                                onPressed: () {
+                                  setSheetState(() {
+                                    hidePassword = !hidePassword;
+                                  });
+                                },
 
-                          icon: Icon(
-                            hidePassword
-                                ? Icons.visibility_outlined
-                                : Icons.visibility_off_outlined,
-                          ),
-                        ),
+                                icon: Icon(
+                                  hidePassword
+                                      ? Icons.visibility_outlined
+                                      : Icons.visibility_off_outlined,
+                                ),
+                              ),
                       ),
                     ),
 
@@ -626,8 +794,12 @@ class _SettingsPageState extends State<SettingsPage> {
                           ? () {
                               if (password.isEmpty) {
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('กรุณากรอกรหัสผ่าน'),
+                                  SnackBar(
+                                    content: Text(
+                                      hasPassword
+                                          ? 'กรุณากรอกรหัสผ่าน'
+                                          : 'กรุณาพิมพ์คำว่า "ลบบัญชี"',
+                                    ),
                                   ),
                                 );
 
@@ -656,7 +828,9 @@ class _SettingsPageState extends State<SettingsPage> {
     await Future<void>.delayed(const Duration(milliseconds: 250));
 
     try {
-      final response = await ProfileService.deleteAccount(password: result);
+      final response = hasPassword
+          ? await ProfileService.deleteAccount(password: result)
+          : await ProfileService.deleteAccount(confirmText: result.trim());
 
       if (!mounted) return;
 
@@ -735,8 +909,7 @@ class _SettingsPageState extends State<SettingsPage> {
       child: Column(
         children: [
           for (int i = 0; i < children.length; i++) ...[
-            if (i > 0)
-              Divider(height: 1, indent: 60, color: AppColors.border),
+            if (i > 0) Divider(height: 1, indent: 60, color: AppColors.border),
             children[i],
           ],
         ],
@@ -978,11 +1151,25 @@ class _SettingsPageState extends State<SettingsPage> {
               onTap: openBlockedUsers,
             ),
           ]),
+          if (visibleSocialAccounts.isNotEmpty) ...[
+            buildSectionTitle('บัญชีที่เชื่อมต่อ'),
+            buildGroup([
+              for (final account in visibleSocialAccounts)
+                buildSocialRow(account),
+            ]),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(6, 8, 6, 0),
+              child: Text(
+                'เชื่อมแล้วเข้าสู่ระบบด้วยบัญชีนั้นได้ทันที โดยไม่ต้องใช้รหัสผ่าน',
+                style: TextStyle(color: AppColors.muted, fontSize: 12),
+              ),
+            ),
+          ],
           buildSectionTitle('บัญชี'),
           buildGroup([
             buildActionRow(
               icon: Icons.password_rounded,
-              title: 'เปลี่ยนรหัสผ่าน',
+              title: hasPassword ? 'เปลี่ยนรหัสผ่าน' : 'ตั้งรหัสผ่าน',
               color: AppColors.warm,
               onTap: changePassword,
             ),

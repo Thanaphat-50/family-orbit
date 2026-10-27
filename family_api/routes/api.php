@@ -16,6 +16,7 @@ use App\Http\Controllers\MyShopController;
 use App\Http\Controllers\ActivityController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SettingsController;
+use App\Http\Controllers\SocialAuthController;
 use App\Http\Controllers\NotificationController;
 
 Route::get('/user', function (Request $request) {
@@ -34,6 +35,12 @@ Route::post('/register', [AuthController::class, 'register'])
     ->middleware('throttle:register');
 
 Route::post('/login', [AuthController::class, 'login'])
+    ->middleware('throttle:login');
+
+// เข้าสู่ระบบ / สมัคร ด้วย Google, LINE, Facebook
+Route::get('/auth/providers', [SocialAuthController::class, 'providers']);
+
+Route::post('/auth/social/{provider}', [SocialAuthController::class, 'login'])
     ->middleware('throttle:login');
 
 Route::post('/logout', [AuthController::class, 'logout'])
@@ -161,6 +168,22 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/chats/{conversation}/messages/{message}', [
         ChatController::class,
         'destroy'
+    ]);
+
+    // บัญชี Google / LINE / Facebook ที่เชื่อมไว้ (หน้าตั้งค่า)
+    Route::get('/social-accounts', [
+        SocialAuthController::class,
+        'index'
+    ]);
+
+    Route::post('/social-accounts/{provider}', [
+        SocialAuthController::class,
+        'link'
+    ])->middleware('throttle:login');
+
+    Route::delete('/social-accounts/{provider}', [
+        SocialAuthController::class,
+        'unlink'
     ]);
 
     // มือถือสำหรับแจ้งเตือนเด้ง (ออกจากระบบแล้วถูกลบเอง)

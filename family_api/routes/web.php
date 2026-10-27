@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AccountDeletionPageController;
+use App\Http\Controllers\SocialAuthController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -18,6 +19,10 @@ Route::view('/child-safety', 'legal.child-safety', ['app' => config('legal.app_n
     ->name('legal.child-safety');
 
 // หน้าเว็บขอลบบัญชี (ลิงก์สำหรับ Google Play)
+// Facebook ส่งกลับมาหลังเข้าสู่ระบบ → ส่งต่อเข้าแอป
+Route::get('/auth/facebook/callback', [SocialAuthController::class, 'facebookCallback'])
+    ->name('auth.facebook.callback');
+
 Route::get('/account/delete', [AccountDeletionPageController::class, 'show'])
     ->name('account.delete');
 

@@ -85,12 +85,15 @@ class ProfileController extends Controller
     }
 
     // PUT /api/profile/password
+    // สมัครด้วย Google / LINE / Facebook (ยังไม่มีรหัสผ่าน) → ตั้งรหัสใหม่ได้เลย
     public function updatePassword(Request $request)
     {
         $user = $request->user();
 
+        $hadPassword = $user->hasPassword();
+
         $validated = $request->validate([
-            'current_password' => ['required', 'string'],
+            'current_password' => [$hadPassword ? 'required' : 'nullable', 'string'],
             'password' => [
                 'required',
                 'string',
@@ -99,8 +102,8 @@ class ProfileController extends Controller
             ],
         ]);
 
-        if (!Hash::check(
-            $validated['current_password'],
+        if ($hadPassword && !Hash::check(
+            (string) $validated['current_password'],
             $user->password
         )) {
             return response()->json([
@@ -117,7 +120,9 @@ class ProfileController extends Controller
 
         return response()->json([
             'status' => true,
-            'message' => 'เปลี่ยนรหัสผ่านเรียบร้อยแล้ว',
+            'message' => $hadPassword
+                ? 'เปลี่ยนรหัสผ่านเรียบร้อยแล้ว'
+                : 'ตั้งรหัสผ่านเรียบร้อยแล้ว ใช้เข้าสู่ระบบด้วยอีเมลได้แล้ว',
         ]);
     }
 
@@ -249,6 +254,7 @@ class ProfileController extends Controller
             'name' => $user->name,
             'email' => $user->email,
             'profile_photo' => $user->profile_photo,
+            'has_password' => $user->hasPassword(),
             'profile_photo_url' => $this->getPhotoUrl(
                 $request,
                 $user->profile_photo

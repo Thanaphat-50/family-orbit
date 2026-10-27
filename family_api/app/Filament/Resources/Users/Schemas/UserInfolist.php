@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Users\Schemas;
 
+use App\Models\SocialAccount;
 use App\Models\UserReport;
 use Filament\Infolists\Components\IconEntry;
 use Filament\Infolists\Components\RepeatableEntry;
@@ -32,6 +33,12 @@ class UserInfolist
                 TextEntry::make('created_at')
                     ->label('สมัครเมื่อ')
                     ->dateTime(),
+
+                TextEntry::make('socialAccounts.provider')
+                    ->label('เข้าสู่ระบบด้วย')
+                    ->badge()
+                    ->formatStateUsing(fn (string $state) => SocialAccount::LABELS[$state] ?? $state)
+                    ->placeholder('อีเมลและรหัสผ่าน'),
 
                 // รายงานจากผู้ใช้คนอื่น (ล่าสุดก่อน)
                 RepeatableEntry::make('reportsReceived')

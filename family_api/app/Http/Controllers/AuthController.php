@@ -71,23 +71,34 @@ class AuthController extends Controller
 
     // =====================================================
     // DELETE /api/account
-    // ลบบัญชีและข้อมูลทั้งหมด (ต้องยืนยันด้วยรหัสผ่าน)
+    // ลบบัญชีและข้อมูลทั้งหมด
+    // - มีรหัสผ่าน: ยืนยันด้วยรหัสผ่าน
+    // - สมัครด้วย Google / LINE / Facebook (ไม่มีรหัสผ่าน): พิมพ์คำว่า "ลบบัญชี"
     // =====================================================
+
+    public const DELETE_CONFIRM_TEXT = 'ลบบัญชี';
 
     public function deleteAccount(
         Request $request,
         AccountDeletionService $deletion
     ) {
-        $data = $request->validate([
-            'password' => 'required|string',
-        ]);
-
         $user = $request->user();
 
-        if (!Hash::check($data['password'], $user->password)) {
+        if ($user->hasPassword()) {
+            $data = $request->validate([
+                'password' => 'required|string',
+            ]);
+
+            if (!Hash::check($data['password'], $user->password)) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'รหัสผ่านไม่ถูกต้อง',
+                ], 422);
+            }
+        } elseif (trim((string) $request->input('confirm_text')) !== self::DELETE_CONFIRM_TEXT) {
             return response()->json([
                 'status' => false,
-                'message' => 'รหัสผ่านไม่ถูกต้อง',
+                'message' => 'กรุณาพิมพ์คำว่า "' . self::DELETE_CONFIRM_TEXT . '" เพื่อยืนยัน',
             ], 422);
         }
 

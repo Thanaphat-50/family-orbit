@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../config/app_info.dart';
 import '../services/auth_service.dart';
+import '../services/social_auth_service.dart';
+import '../widgets/social_login_buttons.dart';
 import '../theme/app_theme.dart';
 import '../widgets/orbit_background.dart';
 
@@ -29,6 +31,45 @@ class _LoginPageState
 
   bool isLoading = false;
   bool obscurePassword = true;
+
+  // กำลังเข้าสู่ระบบด้วย Google / LINE / Facebook
+  SocialProvider? socialBusy;
+
+  Future<void> loginWith(SocialProvider provider) async {
+    setState(() => socialBusy = provider);
+
+    try {
+      final result = await SocialAuthService.signIn(provider);
+
+      if (!mounted) return;
+
+      if (result['token'] != null) {
+        openHome(result['user']);
+      } else {
+        showMessage(
+          result['message']?.toString() ??
+              'เข้าสู่ระบบด้วย ${provider.label} ไม่สำเร็จ',
+        );
+      }
+    } on SocialLoginCanceled {
+      // ผู้ใช้ปิดหน้าล็อกอินเอง
+    } catch (e) {
+      if (mounted) showMessage(e.toString());
+    } finally {
+      if (mounted) setState(() => socialBusy = null);
+    }
+  }
+
+  void openHome(dynamic user) {
+    final String userName = user is Map
+        ? (user['name']?.toString() ?? 'User')
+        : 'User';
+
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => HomePage(userName: userName)),
+      (route) => false,
+    );
+  }
 
   Future<void> login() async {
     final email =
@@ -476,9 +517,16 @@ class _LoginPageState
                             height: 16,
                           ),
 
+                          // Google / LINE / Facebook (เฉพาะเจ้าที่เปิดใช้)
+                          SocialLoginButtons(
+                            busy: socialBusy,
+                            enabled: !isLoading,
+                            onPressed: loginWith,
+                          ),
+
                           OutlinedButton(
                             onPressed:
-                                isLoading
+                                isLoading || socialBusy != null
                                     ? null
                                     : () {
                                         Navigator.of(

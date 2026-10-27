@@ -78,7 +78,8 @@ class ProfileService {
   // =====================================================
 
   static Future<Map<String, dynamic>> updatePassword({
-    required String currentPassword,
+    // บัญชีที่ยังไม่มีรหัสผ่าน (สมัครด้วย Google / LINE / Facebook) ส่ง null
+    String? currentPassword,
     required String password,
     required String passwordConfirmation,
   }) async {
@@ -88,7 +89,7 @@ class ProfileService {
       headers: await _headers(),
 
       body: jsonEncode({
-        'current_password': currentPassword,
+        'current_password': ?currentPassword,
 
         'password': password,
 
@@ -142,8 +143,10 @@ class ProfileService {
   // ลบบัญชีและข้อมูลทั้งหมด (ยืนยันด้วยรหัสผ่าน)
   // =====================================================
 
+  // มีรหัสผ่าน → password / ไม่มีรหัสผ่าน → confirmText = "ลบบัญชี"
   static Future<Map<String, dynamic>> deleteAccount({
-    required String password,
+    String? password,
+    String? confirmText,
   }) async {
     final headers = await _headers();
 
@@ -153,7 +156,10 @@ class ProfileService {
 
         headers: headers,
 
-        body: jsonEncode({'password': password}),
+        body: jsonEncode({
+          'password': ?password,
+          'confirm_text': ?confirmText,
+        }),
       ),
     );
 
