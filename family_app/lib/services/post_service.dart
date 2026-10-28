@@ -81,11 +81,13 @@ class PostService {
   //             มีรูป → ส่งแบบ multipart / ไม่มีรูป → JSON เหมือนเดิม
   // =====================================================
 
+  // showOnMap = โพสต์ครอบครัว แสดงข้อความนี้ข้างตำแหน่งของเราบนแผนที่ด้วย
   static Future<Map<String, dynamic>> createPost(
     String content, {
     String visibility = 'family',
     String? category,
     List<String> imagePaths = const [],
+    bool showOnMap = false,
   }) async {
     if (imagePaths.isNotEmpty) {
       return _createPostWithImages(
@@ -93,6 +95,7 @@ class PostService {
         visibility: visibility,
         category: category,
         imagePaths: imagePaths,
+        showOnMap: showOnMap,
       );
     }
 
@@ -106,6 +109,7 @@ class PostService {
           'content': content,
           'visibility': visibility,
           'category': ?category,
+          if (showOnMap) 'show_on_map': true,
         }),
       ),
     );
@@ -121,6 +125,7 @@ class PostService {
     required String visibility,
     String? category,
     required List<String> imagePaths,
+    bool showOnMap = false,
   }) async {
     final token = await AuthService.getToken();
 
@@ -135,6 +140,10 @@ class PostService {
 
     if (category != null) {
       request.fields['category'] = category;
+    }
+
+    if (showOnMap) {
+      request.fields['show_on_map'] = '1';
     }
 
     for (final path in imagePaths) {
@@ -153,6 +162,25 @@ class PostService {
         'message': 'รูปมีขนาดรวมใหญ่เกินไป กรุณาเลือกรูปให้น้อยลง',
       };
     }
+
+    return ApiHelper.decode(response);
+  }
+
+  // =====================================================
+  // ข้อความบนแผนที่ (โพสต์ครอบครัวของเรา)
+  // show = true → แสดงข้างตำแหน่งของเรา 12 ชั่วโมง / false → เอาออก
+  // =====================================================
+
+  static Future<Map<String, dynamic>> setOnMap(int postId, bool show) async {
+    final headers = await _headers();
+
+    final Uri uri = Uri.parse('$baseUrl/posts/$postId/map-status');
+
+    final response = await ApiHelper.request(
+      () => show
+          ? http.post(uri, headers: headers)
+          : http.delete(uri, headers: headers),
+    );
 
     return ApiHelper.decode(response);
   }

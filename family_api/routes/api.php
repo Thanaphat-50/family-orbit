@@ -6,6 +6,7 @@ use App\Http\Controllers\AccountDeletionRequestController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\FamilyController;
 use App\Http\Controllers\LocationController;
+use App\Http\Controllers\MapStatusController;
 use App\Http\Controllers\PostController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\CommentController;
@@ -114,6 +115,17 @@ Route::middleware('auth:sanctum')->group(function () {
         PostController::class,
         'like'
     ])->middleware('throttle:ugc');
+
+    // ข้อความบนแผนที่ (แสดง / เอาออก)
+    Route::post('/posts/{post}/map-status', [
+        MapStatusController::class,
+        'store'
+    ]);
+
+    Route::delete('/posts/{post}/map-status', [
+        MapStatusController::class,
+        'destroy'
+    ]);
 
     Route::post('/comments/{comment}/report', [
         CommentController::class,

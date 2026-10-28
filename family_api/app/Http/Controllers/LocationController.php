@@ -3,9 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\FamilyMember;
+use App\Models\Post;
 use App\Models\User;
 use App\Models\UserLocation;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 
 class LocationController extends Controller
 {
@@ -137,6 +139,26 @@ class LocationController extends Controller
             ))
             ->sortByDesc('is_me')
             ->values();
+
+        // ข้อความบนแผนที่ของแต่ละคน (โพสต์ครอบครัวนี้ล่าสุดที่ยังไม่หมดเวลา)
+        $statuses = Post::onMap()
+            ->where('family_id', $membership->family_id)
+            ->whereIn('user_id', $locations->pluck('user_id'))
+            ->orderByDesc('id')
+            ->get(['id', 'user_id', 'content', 'created_at', 'map_status_until'])
+            ->unique('user_id')
+            ->keyBy('user_id');
+
+        $locations->each(function (UserLocation $location) use ($statuses) {
+            $post = $statuses->get($location->user_id);
+
+            $location->setAttribute('status', $post ? [
+                'post_id' => $post->id,
+                'text' => Str::limit(trim($post->content), 120),
+                'created_at' => $post->created_at?->toIso8601String(),
+                'until' => $post->map_status_until?->toIso8601String(),
+            ] : null);
+        });
 
         return response()->json([
             'status' => true,

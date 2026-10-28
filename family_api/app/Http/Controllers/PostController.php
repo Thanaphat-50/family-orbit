@@ -290,6 +290,8 @@ class PostController extends Controller
             'category' => ['nullable', Rule::in(Post::CATEGORIES)],
             'images' => 'nullable|array|max:' . self::MAX_IMAGES,
             'images.*' => 'image|mimes:jpg,jpeg,png,webp|max:' . self::MAX_IMAGE_KB,
+            // โพสต์ครอบครัว: แสดงข้อความนี้ข้างตำแหน่งของเราบนแผนที่ด้วย
+            'show_on_map' => 'nullable|boolean',
         ], [
             'content.required_without' => 'กรุณาพิมพ์ข้อความหรือแนบรูปก่อนโพสต์',
             'images.max' => 'แนบรูปได้สูงสุด ' . self::MAX_IMAGES . ' รูป',
@@ -380,6 +382,11 @@ class PostController extends Controller
             MediaStorage::delete($imagePaths);
 
             throw $e;
+        }
+
+        // โพสต์ชุมชน / โพสต์ที่มีแต่รูป → ไม่แสดงบนแผนที่
+        if (($data['show_on_map'] ?? false) && $post->canShowOnMap()) {
+            $post->showOnMap();
         }
 
         $post->load([

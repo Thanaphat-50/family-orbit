@@ -138,6 +138,21 @@ class _FeedPageState extends State<FeedPage> {
   // หมวดของโพสต์ชุมชนที่กำลังเขียน
   String composeCategory = 'general';
 
+  // โพสต์ครอบครัว: แสดงข้อความนี้บนแผนที่ด้วย
+  bool composeShowOnMap = false;
+
+  // ข้อความสั้นที่กดใส่ได้เลยตอนเปิด "แสดงบนแผนที่"
+  static const List<String> quickMapStatuses = [
+    'ทำงานอยู่',
+    'กำลังเดินทาง',
+    'ถึงบ้านแล้ว',
+    'ออกไปข้างนอก',
+    'เรียนอยู่',
+  ];
+
+  // โพสต์ที่กำลังตั้งค่าแผนที่ (กันกดซ้ำ)
+  final Set<int> mapUpdatingPostIds = {};
+
   // หมวดที่กรองฟีดชุมชนอยู่ (null = ทั้งหมด)
   String? filterCategory;
 
@@ -516,12 +531,17 @@ class _FeedPageState extends State<FeedPage> {
         ? composeCategory
         : null;
 
+    // แผนที่แสดงเฉพาะข้อความ (โพสต์ที่มีแต่รูปไม่แสดง)
+    final bool showOnMap =
+        target == FeedScope.family && composeShowOnMap && content.isNotEmpty;
+
     try {
       final result = await PostService.createPost(
         content,
         visibility: apiScope(target),
         category: category,
         imagePaths: imagePaths,
+        showOnMap: showOnMap,
       );
 
       if (!mounted) return;
@@ -535,6 +555,8 @@ class _FeedPageState extends State<FeedPage> {
           pickedImages.clear();
 
           composeCategory = 'general';
+
+          composeShowOnMap = false;
 
           // กรองหมวดอื่นอยู่ → กลับไป "ทั้งหมด" ให้เห็นโพสต์ที่เพิ่งแชร์
           if (filterCategory != null && filterCategory != category) {
@@ -556,6 +578,8 @@ class _FeedPageState extends State<FeedPage> {
         showMessage(
           target == FeedScope.community
               ? 'แชร์ในชุมชนแล้ว'
+              : showOnMap
+              ? 'แชร์ให้ครอบครัวแล้ว และแสดงบนแผนที่ 12 ชั่วโมง'
               : 'แชร์ให้ครอบครัวแล้ว',
         );
       } else if (result['code'] == 'terms_required') {
@@ -1451,6 +1475,10 @@ class _FeedPageState extends State<FeedPage> {
           const SizedBox(height: 12),
           buildCategoryPicker(),
         ],
+        if (scope == FeedScope.family) ...[
+          const SizedBox(height: 12),
+          buildMapStatusOption(),
+        ],
         const SizedBox(height: 12),
         Row(
           children: [
@@ -1518,6 +1546,151 @@ class _FeedPageState extends State<FeedPage> {
           ),
         ],
       ],
+    );
+  }
+
+  // โพสต์ครอบครัว: สวิตช์ "แสดงบนแผนที่" + ข้อความสั้นให้กดใส่
+  Widget buildMapStatusOption() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 4, 6, 4),
+      decoration: BoxDecoration(
+        color: composeShowOnMap ? AppColors.softPrimary : AppColors.fill,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.add_location_alt_outlined,
+                size: 20,
+                color: composeShowOnMap ? AppColors.primary : AppColors.muted,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'แสดงข้อความนี้บนแผนที่',
+                      style: TextStyle(
+                        color: AppColors.navy,
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      'ครอบครัวเห็นข้างตำแหน่งของคุณ 12 ชั่วโมง',
+                      style: TextStyle(color: AppColors.muted, fontSize: 11.5),
+                    ),
+                  ],
+                ),
+              ),
+              Switch(
+                value: composeShowOnMap,
+                onChanged: isPosting
+                    ? null
+                    : (value) {
+                        updateComposer(() => composeShowOnMap = value);
+                      },
+              ),
+            ],
+          ),
+          if (composeShowOnMap) ...[
+            const SizedBox(height: 2),
+            buildChipStrip([
+              for (final text in quickMapStatuses)
+                ActionChip(
+                  label: Text(text),
+                  labelStyle: TextStyle(
+                    color: AppColors.primary,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  backgroundColor: AppColors.surface,
+                  side: BorderSide(
+                    color: AppColors.primary.withValues(alpha: 0.25),
+                  ),
+                  shape: const StadiumBorder(),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: isPosting
+                      ? null
+                      : () {
+                          postController.text = text;
+                          postController.selection = TextSelection.collapsed(
+                            offset: text.length,
+                          );
+                        },
+                ),
+            ]),
+            const SizedBox(height: 8),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // เมนูโพสต์: แสดงบนแผนที่ / เอาออกจากแผนที่
+  Future<void> toggleMapStatus(Map<String, dynamic> post, int postId) async {
+    if (mapUpdatingPostIds.contains(postId)) return;
+
+    final bool show = post['on_map'] != true;
+
+    setState(() => mapUpdatingPostIds.add(postId));
+
+    try {
+      final result = await PostService.setOnMap(postId, show);
+
+      if (!mounted) return;
+
+      if (result['status'] == true) {
+        setState(() {
+          // แสดงได้ทีละ 1 ข้อความ → โพสต์อื่นของเราออกจากแผนที่
+          if (show) {
+            for (final other in feed.posts) {
+              if (isMine(other)) other['on_map'] = false;
+            }
+          }
+
+          post['on_map'] = show;
+        });
+      }
+
+      showMessage(
+        result['message']?.toString() ??
+            (result['status'] == true ? 'บันทึกแล้ว' : 'ตั้งค่าไม่สำเร็จ'),
+      );
+    } catch (e) {
+      if (mounted) showMessage(e.toString());
+    } finally {
+      if (mounted) setState(() => mapUpdatingPostIds.remove(postId));
+    }
+  }
+
+  // ป้าย "บนแผนที่" ข้างเวลาโพสต์
+  Widget buildOnMapBadge() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: AppColors.softPrimary,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.location_on_rounded, size: 11, color: AppColors.primary),
+          const SizedBox(width: 2),
+          Text(
+            'บนแผนที่',
+            style: TextStyle(
+              color: AppColors.primary,
+              fontSize: 10.5,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1910,6 +2083,10 @@ class _FeedPageState extends State<FeedPage> {
                                   ),
                                 ),
                               ),
+                              if (!community && post['on_map'] == true) ...[
+                                const SizedBox(width: 6),
+                                buildOnMapBadge(),
+                              ],
                             ],
                           ),
                         ],
@@ -2184,10 +2361,17 @@ class _FeedPageState extends State<FeedPage> {
   }
 
   // เมนู ⋯
-  // - โพสต์ของเรา: ลบโพสต์
+  // - โพสต์ของเรา: ลบโพสต์ (+ โพสต์ครอบครัวที่มีข้อความ: แสดง/เอาออกจากแผนที่)
   // - โพสต์ชุมชนของคนอื่น: รายงาน / บล็อก
   Widget buildPostMenu(Map<String, dynamic> post, int postId, bool mine) {
     final int? authorId = authorIdOf(post);
+
+    final bool canMap =
+        mine &&
+        !isCommunityPost(post) &&
+        (post['content']?.toString().trim().isNotEmpty ?? false);
+
+    final bool onMap = post['on_map'] == true;
 
     final dynamic user = post['user'];
 
@@ -2201,6 +2385,8 @@ class _FeedPageState extends State<FeedPage> {
       icon: Icon(Icons.more_horiz_rounded, color: AppColors.muted),
       onSelected: (value) {
         switch (value) {
+          case 'map':
+            toggleMapStatus(post, postId);
           case 'delete':
             confirmDeletePost(postId);
           case 'report':
@@ -2213,6 +2399,15 @@ class _FeedPageState extends State<FeedPage> {
       },
       itemBuilder: (context) {
         return [
+          if (canMap)
+            buildMenuItem(
+              value: 'map',
+              icon: onMap
+                  ? Icons.location_off_outlined
+                  : Icons.add_location_alt_outlined,
+              label: onMap ? 'เอาออกจากแผนที่' : 'แสดงบนแผนที่',
+              color: AppColors.navy,
+            ),
           if (mine)
             buildMenuItem(
               value: 'delete',

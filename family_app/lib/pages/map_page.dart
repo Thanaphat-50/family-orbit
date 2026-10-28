@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
@@ -8,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../services/chat_service.dart';
 import '../services/location_service.dart';
 import '../services/location_tracker.dart';
+import '../services/post_service.dart';
 import '../services/settings_service.dart';
 import '../theme/app_theme.dart';
 import 'chat_room_page.dart';
@@ -55,6 +57,11 @@ class _MapPageState extends State<MapPage> {
 
   // ตำแหน่งเกินเวลานี้ = อาจไม่ใช่ตำแหน่งปัจจุบัน (แอปของเขาอาจปิดอยู่)
   static const Duration staleAfter = Duration(minutes: 15);
+
+  // รูปป้ายข้อความเหนือหมุด (วาดครั้งเดียวต่อข้อความ/โหมดสี)
+  final Map<String, BitmapDescriptor> statusBubbles = {};
+
+  final Set<String> drawingBubbles = {};
 
   // ตำแหน่งตั้งต้นของ Map
   // ใช้ก่อน GPS โหลดเสร็จ
@@ -241,6 +248,8 @@ class _MapPageState extends State<MapPage> {
         });
 
         locationsVersion.value++;
+
+        prepareStatusBubbles();
       }
     } catch (_) {
       // Timer จะลองใหม่อีกรอบ
@@ -491,6 +500,271 @@ class _MapPageState extends State<MapPage> {
     return 'อัปเดต ${date.day} ${months[date.month]}';
   }
 
+  // ข้อความบนแผนที่ (โพสต์ครอบครัวที่เลือก "แสดงบนแผนที่")
+  Map<String, dynamic>? statusOf(Map<String, dynamic> location) {
+    final dynamic status = location['status'];
+
+    if (status is! Map) return null;
+
+    final String text = status['text']?.toString().trim() ?? '';
+
+    return text.isEmpty ? null : Map<String, dynamic>.from(status);
+  }
+
+  String? statusTextOf(Map<String, dynamic> location) {
+    return statusOf(location)?['text']?.toString().trim();
+  }
+
+  String bubbleKey(String text) =>
+      '${AppColors.isDark ? 'dark' : 'light'}|$text';
+
+  // วาดป้ายของข้อความที่ยังไม่มีรูป แล้ววาดแผนที่ใหม่
+  Future<void> prepareStatusBubbles() async {
+    if (!mounted) return;
+
+    final double ratio = MediaQuery.devicePixelRatioOf(context);
+
+    bool added = false;
+
+    for (final location in List.of(familyLocations)) {
+      final String? text = statusTextOf(location);
+
+      if (text == null) continue;
+
+      final String key = bubbleKey(text);
+
+      if (statusBubbles.containsKey(key) || !drawingBubbles.add(key)) continue;
+
+      try {
+        statusBubbles[key] = await drawStatusBubble(text, ratio);
+
+        added = true;
+      } catch (_) {
+        // วาดไม่ได้ → ไม่มีป้ายบนแผนที่ (ยังเห็นข้อความในการ์ดด้านล่าง)
+      } finally {
+        drawingBubbles.remove(key);
+      }
+    }
+
+    if (added && mounted) setState(() {});
+  }
+
+  // ป้ายคำพูดเหนือหมุด: Marker ใส่ Widget ไม่ได้ จึงวาดเป็นรูป
+  // เว้นที่ด้านล่างเท่าความสูงหมุด → ใช้จุดยึดล่างกลางแล้วลอยเหนือหมุดพอดี
+  static Future<BitmapDescriptor> drawStatusBubble(
+    String text,
+    double ratio,
+  ) async {
+    const double maxTextWidth = 170;
+    const double padX = 11;
+    const double padY = 6;
+    const double tail = 7;
+    const double pinGap = 42;
+    const double margin = 4;
+
+    final TextPainter painter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+          color: AppColors.navy,
+          fontSize: 13 * ratio,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+      ellipsis: '…',
+    )..layout(maxWidth: maxTextWidth * ratio);
+
+    final double bubbleWidth = painter.width + padX * 2 * ratio;
+    final double bubbleHeight = painter.height + padY * 2 * ratio;
+
+    final double width = bubbleWidth + margin * 2 * ratio;
+    final double height = bubbleHeight + (tail + pinGap + margin * 2) * ratio;
+
+    final Rect rect = Rect.fromLTWH(
+      margin * ratio,
+      margin * ratio,
+      bubbleWidth,
+      bubbleHeight,
+    );
+
+    final Path shape = Path.combine(
+      PathOperation.union,
+      Path()
+        ..addRRect(RRect.fromRectAndRadius(rect, Radius.circular(14 * ratio))),
+      Path()
+        ..moveTo(rect.center.dx - tail * ratio, rect.bottom - 2)
+        ..lineTo(rect.center.dx, rect.bottom + tail * ratio)
+        ..lineTo(rect.center.dx + tail * ratio, rect.bottom - 2)
+        ..close(),
+    );
+
+    final ui.PictureRecorder recorder = ui.PictureRecorder();
+
+    final Canvas canvas = Canvas(recorder);
+
+    canvas.drawShadow(shape, Colors.black, 2.5 * ratio, false);
+
+    canvas.drawPath(shape, Paint()..color = AppColors.surface);
+
+    canvas.drawPath(
+      shape,
+      Paint()
+        ..color = AppColors.primary
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.6 * ratio,
+    );
+
+    painter.paint(
+      canvas,
+      Offset(rect.left + padX * ratio, rect.top + padY * ratio),
+    );
+
+    final ui.Image image = await recorder.endRecording().toImage(
+      width.ceil(),
+      height.ceil(),
+    );
+
+    final data = await image.toByteData(format: ui.ImageByteFormat.png);
+
+    return BitmapDescriptor.bytes(
+      data!.buffer.asUint8List(),
+      imagePixelRatio: ratio,
+    );
+  }
+
+  // ข้อความบนแผนที่ในแผ่นรายละเอียด: "ทำงานอยู่" + เวลาโพสต์
+  Widget buildStatusQuote(Map<String, dynamic> status) {
+    final DateTime? until = DateTime.tryParse(status['until']?.toString() ?? '')
+        ?.toLocal();
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+
+      decoration: BoxDecoration(
+        color: AppColors.softPrimary,
+        borderRadius: BorderRadius.circular(16),
+      ),
+
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+
+        children: [
+          Icon(Icons.chat_bubble_rounded, size: 18, color: AppColors.primary),
+
+          const SizedBox(width: 10),
+
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+
+              children: [
+                Text(
+                  status['text']?.toString() ?? '',
+
+                  style: TextStyle(
+                    color: AppColors.navy,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    height: 1.35,
+                  ),
+                ),
+
+                const SizedBox(height: 4),
+
+                Text(
+                  'โพสต์ ${formatLastSeen(status['created_at'])}'
+                  '${until == null ? '' : ' · แสดงถึง ${until.day == DateTime.now().day ? '' : 'พรุ่งนี้ '}${formatClock(until)}'}',
+
+                  style: TextStyle(color: AppColors.muted, fontSize: 11.5),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // แตะจุดของเราที่มีข้อความ → ดู / เอาออกจากแผนที่
+  Future<void> showMyStatus(Map<String, dynamic> location) async {
+    final Map<String, dynamic>? status = statusOf(location);
+
+    final dynamic postId = status?['post_id'];
+
+    if (status == null || postId is! num) return;
+
+    final bool? remove = await showModalBottomSheet<bool>(
+      context: context,
+
+      showDragHandle: true,
+
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
+
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+
+              children: [
+                Text(
+                  'ข้อความของคุณบนแผนที่',
+                  style: TextStyle(
+                    color: AppColors.navy,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                buildStatusQuote(status),
+
+                const SizedBox(height: 16),
+
+                OutlinedButton.icon(
+                  onPressed: () => Navigator.of(sheetContext).pop(true),
+
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.danger,
+                    minimumSize: const Size(double.infinity, 48),
+                  ),
+
+                  icon: const Icon(Icons.location_off_outlined),
+
+                  label: const Text('เอาออกจากแผนที่'),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (remove != true || !mounted) return;
+
+    try {
+      final result = await PostService.setOnMap(postId.toInt(), false);
+
+      if (!mounted) return;
+
+      showMessage(
+        result['message']?.toString() ??
+            (result['status'] == true
+                ? 'เอาข้อความออกจากแผนที่แล้ว'
+                : 'เอาออกไม่สำเร็จ'),
+      );
+
+      if (result['status'] == true) await loadFamilyLocations();
+    } catch (e) {
+      showMessage(e.toString());
+    }
+  }
+
   // บรรทัดสั้นใต้ชื่อ: "1.2 กม. · 3 นาทีที่แล้ว"
   String memberSummary(Map<String, dynamic> location) {
     final String lastSeen = formatLastSeen(location['last_seen_at']);
@@ -565,6 +839,31 @@ class _MapPageState extends State<MapPage> {
           onTap: () => openMember(location),
         ),
       );
+
+      // ป้ายข้อความ (เช่น "ทำงานอยู่") ลอยเหนือหมุด
+      final String? status = statusTextOf(location);
+
+      final BitmapDescriptor? bubble = status == null
+          ? null
+          : statusBubbles[bubbleKey(status)];
+
+      if (bubble != null) {
+        markers.add(
+          Marker(
+            markerId: MarkerId('status_$userId'),
+
+            position: LatLng(latitude, longitude),
+
+            icon: bubble,
+
+            zIndexInt: 2,
+
+            consumeTapEvents: true,
+
+            onTap: () => openMember(location),
+          ),
+        );
+      }
     }
 
     return markers;
@@ -675,9 +974,14 @@ class _MapPageState extends State<MapPage> {
   Future<void> openMember(Map<String, dynamic> location) async {
     final int? userId = userIdOf(location);
 
-    // จุดของเราเอง → เลื่อนไปที่ตัวเราอย่างเดียว
+    // จุดของเราเอง → เลื่อนไปที่ตัวเรา (มีข้อความบนแผนที่ → ดู/เอาออกได้)
     if (isMe(location) || userId == null) {
       await moveToMember(location);
+
+      if (isMe(location) && statusOf(location) != null && mounted) {
+        await showMyStatus(location);
+      }
+
       return;
     }
 
@@ -875,6 +1179,12 @@ class _MapPageState extends State<MapPage> {
                 ),
               ],
             ),
+
+            if (statusOf(location) != null) ...[
+              const SizedBox(height: 14),
+
+              buildStatusQuote(statusOf(location)!),
+            ],
 
             const SizedBox(height: 18),
 
@@ -1589,6 +1899,24 @@ class _MapPageState extends State<MapPage> {
                                           fontWeight: FontWeight.w800,
                                         ),
                                       ),
+
+                                      if (statusTextOf(location) != null) ...[
+                                        const SizedBox(height: 2),
+
+                                        Text(
+                                          '💬 ${statusTextOf(location)}',
+
+                                          maxLines: 1,
+
+                                          overflow: TextOverflow.ellipsis,
+
+                                          style: TextStyle(
+                                            color: AppColors.primary,
+                                            fontSize: 10.5,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ],
 
                                       const SizedBox(height: 3),
 

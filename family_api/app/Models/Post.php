@@ -25,9 +25,55 @@ class Post extends Model
         'content',
     ];
 
+    // ข้อความบนแผนที่ (เช่น "ทำงานอยู่") แสดงข้างตำแหน่งของเจ้าของนานเท่านี้
+    public const MAP_STATUS_HOURS = 12;
+
     protected $casts = [
         'hidden_at' => 'datetime',
+        'map_status_until' => 'datetime',
     ];
+
+    // on_map → แอปแสดงป้าย "บนแผนที่" และเมนูเอาออก
+    protected $appends = [
+        'on_map',
+    ];
+
+    public function getOnMapAttribute(): bool
+    {
+        // บาง Query เลือกเฉพาะบางคอลัมน์ → ไม่มีค่านี้ = ไม่ได้อยู่บนแผนที่
+        $until = $this->getAttributes()['map_status_until'] ?? null;
+
+        return $until !== null && $this->asDateTime($until)->isFuture();
+    }
+
+    // แสดงบนแผนที่ได้เฉพาะโพสต์ครอบครัวที่มีข้อความ
+    public function canShowOnMap(): bool
+    {
+        return !$this->isCommunity() && trim((string) $this->content) !== '';
+    }
+
+    // แสดงบนแผนที่ แทนข้อความเดิมของเจ้าของ (คนละ 1 ข้อความ)
+    public function showOnMap(): void
+    {
+        DB::transaction(function () {
+            static::where('user_id', $this->user_id)
+                ->whereKeyNot($this->getKey())
+                ->whereNotNull('map_status_until')
+                ->update(['map_status_until' => null]);
+
+            $this->map_status_until = now()->addHours(self::MAP_STATUS_HOURS);
+
+            $this->save();
+        });
+    }
+
+    // ข้อความบนแผนที่ที่ยังไม่หมดเวลา
+    public function scopeOnMap($query)
+    {
+        return $query->where('visibility', 'family')
+            ->whereNull('hidden_at')
+            ->where('map_status_until', '>', now());
+    }
 
     public function user()
     {
