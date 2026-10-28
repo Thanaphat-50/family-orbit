@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Models\AccountDeletionRequest;
+use App\Models\AppNotification;
 use App\Models\Family;
 use App\Models\FamilyMember;
 use App\Models\Conversation;
@@ -17,7 +19,7 @@ use Throwable;
 
 // =======================================================
 // ลบบัญชีผู้ใช้และข้อมูลทั้งหมด
-// ใช้ทั้งจากแอป (DELETE /api/account) และหน้าเว็บ (/account/delete)
+// ผู้ใช้ส่งคำขอ (แอป / หน้าเว็บ) → ผู้ดูแลกดลบในหน้า Admin (completeRequest)
 // =======================================================
 
 class AccountDeletionService
@@ -101,6 +103,57 @@ class AccountDeletionService
                     'error' => $e->getMessage(),
                 ]);
             }
+        }
+    }
+
+    // =====================================================
+    // ผู้ดูแลอนุมัติคำขอ → ลบบัญชี
+    // ลบไม่ได้ (เช่น ยังเป็น Owner ที่มีสมาชิก) → RuntimeException พร้อมเหตุผล
+    // =====================================================
+
+    public function completeRequest(AccountDeletionRequest $request, ?User $admin): void
+    {
+        if (!$request->isPending()) {
+            throw new RuntimeException('คำขอนี้ดำเนินการไปแล้ว');
+        }
+
+        // ผู้ใช้ถูกลบไปแล้วทางอื่น → ปิดคำขอได้เลย
+        $user = $request->user;
+
+        if ($user) {
+            $this->delete($user);
+        }
+
+        $request->forceFill([
+            'status' => AccountDeletionRequest::STATUS_COMPLETED,
+            'processed_by' => $admin?->id,
+            'processed_at' => now(),
+        ])->save();
+    }
+
+    // ผู้ดูแลไม่ลบ (เช่น ต้องให้ผู้ใช้โอนสิทธิ์ Owner ก่อน) → แจ้งผู้ใช้พร้อมเหตุผล
+    public function rejectRequest(AccountDeletionRequest $request, ?User $admin, string $note): void
+    {
+        if (!$request->isPending()) {
+            throw new RuntimeException('คำขอนี้ดำเนินการไปแล้ว');
+        }
+
+        $request->forceFill([
+            'status' => AccountDeletionRequest::STATUS_REJECTED,
+            'processed_by' => $admin?->id,
+            'processed_at' => now(),
+            'note' => $note,
+        ])->save();
+
+        if ($request->user_id) {
+            AppNotification::create([
+                'user_id' => $request->user_id,
+                'type' => 'account_deletion',
+                'title' => 'คำขอลบบัญชี',
+                'message' => 'ยังไม่ได้ลบบัญชีของคุณ: ' . $note,
+                'data' => [],
+                'is_read' => false,
+            ]);
         }
     }
 }

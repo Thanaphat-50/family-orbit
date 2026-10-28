@@ -58,11 +58,17 @@ class SocialAuthController extends Controller
         $existing = $email ? User::where('email', $email)->first() : null;
 
         if ($existing && !$identity['email_verified']) {
+            // แอปใช้ email + sign_in_with แสดงหน้าต่างพาไปเข้าสู่ระบบด้วยวิธีเดิม
             return response()->json([
                 'status' => false,
                 'code' => 'email_in_use',
-                'message' => 'อีเมล ' . $email . ' มีบัญชีอยู่แล้ว กรุณาเข้าสู่ระบบด้วยอีเมลและรหัสผ่าน แล้วเชื่อม '
+                'message' => 'อีเมล ' . $email . ' มีบัญชีอยู่แล้ว กรุณาเข้าสู่ระบบด้วยวิธีเดิม แล้วเชื่อม '
                     . SocialAccount::LABELS[$provider] . ' ได้ที่ ตั้งค่า → บัญชีที่เชื่อมต่อ',
+                'email' => $email,
+                'sign_in_with' => [
+                    'password' => $existing->hasPassword(),
+                    'providers' => $existing->socialAccounts()->pluck('provider')->values(),
+                ],
             ], 409);
         }
 

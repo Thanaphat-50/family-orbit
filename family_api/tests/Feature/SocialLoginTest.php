@@ -184,7 +184,10 @@ class SocialLoginTest extends TestCase
 
         $this->postJson('/api/auth/social/line', ['id_token' => 'line-token'])
             ->assertStatus(409)
-            ->assertJsonPath('code', 'email_in_use');
+            ->assertJsonPath('code', 'email_in_use')
+            ->assertJsonPath('email', 'daeng@example.com')
+            ->assertJsonPath('sign_in_with.password', true)
+            ->assertJsonPath('sign_in_with.providers', []);
 
         $this->assertSame(0, SocialAccount::count());
         $this->assertSame(1, User::count());
@@ -315,7 +318,7 @@ class SocialLoginTest extends TestCase
         ])->assertStatus(422);
     }
 
-    public function test_passwordless_user_deletes_account_by_typing_confirmation(): void
+    public function test_passwordless_user_requests_deletion_by_typing_confirmation(): void
     {
         $this->fakeLine(['email' => null]);
 
@@ -325,9 +328,17 @@ class SocialLoginTest extends TestCase
 
         Sanctum::actingAs($user);
 
-        $this->deleteJson('/api/account', ['confirm_text' => 'ลบ'])->assertStatus(422);
+        $this->postJson('/api/account/deletion-request', ['confirm_text' => 'ลบ'])->assertStatus(422);
 
-        $this->deleteJson('/api/account', ['confirm_text' => 'ลบบัญชี'])->assertOk();
+        $this->postJson('/api/account/deletion-request', ['confirm_text' => 'ลบบัญชี'])
+            ->assertOk()
+            ->assertJsonPath('request.status', 'pending');
+
+        // ผู้ดูแลอนุมัติ → บัญชีและการเชื่อมต่อถูกลบ
+        app(\App\Services\AccountDeletionService::class)->completeRequest(
+            \App\Models\AccountDeletionRequest::first(),
+            null
+        );
 
         $this->assertNull(User::find($user->id));
         $this->assertSame(0, SocialAccount::count());

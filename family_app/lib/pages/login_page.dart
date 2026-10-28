@@ -29,14 +29,21 @@ class _LoginPageState
   final passwordController =
       TextEditingController();
 
+  final passwordFocus = FocusNode();
+
   bool isLoading = false;
   bool obscurePassword = true;
 
   // กำลังเข้าสู่ระบบด้วย Google / LINE / Facebook
   SocialProvider? socialBusy;
 
+  // LINE / Facebook ที่เจออีเมลซ้ำ → เข้าสู่ระบบด้วยวิธีเดิมแล้วถามว่าจะเชื่อมไหม
+  SocialProvider? pendingLink;
+
   Future<void> loginWith(SocialProvider provider) async {
     setState(() => socialBusy = provider);
+
+    SocialProvider? next;
 
     try {
       final result = await SocialAuthService.signIn(provider);
@@ -44,7 +51,9 @@ class _LoginPageState
       if (!mounted) return;
 
       if (result['token'] != null) {
-        openHome(result['user']);
+        await finishSignIn(result['user'], signedInWith: provider);
+      } else if (result['code'] == 'email_in_use') {
+        next = await askOriginalSignIn(provider, result);
       } else {
         showMessage(
           result['message']?.toString() ??
@@ -58,6 +67,162 @@ class _LoginPageState
     } finally {
       if (mounted) setState(() => socialBusy = null);
     }
+
+    // เลือกเข้าด้วยบัญชีโซเชียลที่เชื่อมไว้เดิม
+    if (next != null && mounted) await loginWith(next);
+  }
+
+  // อีเมลนี้มีบัญชีอยู่แล้ว → อธิบาย แล้วพาไปเข้าสู่ระบบด้วยวิธีเดิม
+  // คืนค่าเจ้าที่จะเข้าต่อ (null = กรอกรหัสผ่าน หรือปิดหน้าต่าง)
+  Future<SocialProvider?> askOriginalSignIn(
+    SocialProvider provider,
+    Map<String, dynamic> result,
+  ) async {
+    final String email = result['email']?.toString() ?? '';
+
+    final dynamic signInWith = result['sign_in_with'];
+
+    final bool usesPassword =
+        signInWith is! Map || signInWith['password'] == true;
+
+    final dynamic linkedKeys = signInWith is Map ? signInWith['providers'] : null;
+
+    final List<SocialProvider> linked = linkedKeys is List
+        ? SocialProvider.values
+            .where((p) => p != provider && linkedKeys.contains(p.key))
+            .toList()
+        : [];
+
+    final List<String> ways = [
+      if (usesPassword) 'อีเมลและรหัสผ่าน',
+      for (final p in linked) p.label,
+    ];
+
+    final String? choice = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: Icon(
+          Icons.manage_accounts_outlined,
+          color: AppColors.primary,
+          size: 36,
+        ),
+        title: const Text('มีบัญชีที่ใช้อีเมลนี้อยู่แล้ว'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                '${email.isEmpty ? 'อีเมลจาก ${provider.label}' : email} '
+                'สมัครไว้แล้ว'
+                '${ways.isEmpty ? '' : 'ด้วย${ways.join(' หรือ ')}'}\n\n'
+                'เพื่อความปลอดภัย กรุณาเข้าสู่ระบบด้วยวิธีเดิมก่อน '
+                'แล้วกดเชื่อม ${provider.label} '
+                'ครั้งหน้าจะเข้าด้วย ${provider.label} ได้เลย',
+                style: TextStyle(
+                  color: AppColors.muted,
+                  fontSize: 14,
+                  height: 1.55,
+                ),
+              ),
+              const SizedBox(height: 18),
+              for (final p in linked) ...[
+                FilledButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(p.key),
+                  child: Text('เข้าสู่ระบบด้วย ${p.label}'),
+                ),
+                const SizedBox(height: 8),
+              ],
+              if (usesPassword)
+                FilledButton.tonal(
+                  onPressed: () =>
+                      Navigator.of(dialogContext).pop('password'),
+                  child: const Text('เข้าสู่ระบบด้วยอีเมลและรหัสผ่าน'),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('ปิด'),
+          ),
+        ],
+      ),
+    );
+
+    if (choice == null || !mounted) return null;
+
+    pendingLink = provider;
+
+    if (choice == 'password') {
+      if (email.isNotEmpty) emailController.text = email;
+
+      passwordController.clear();
+      passwordFocus.requestFocus();
+
+      showMessage('กรอกรหัสผ่านของบัญชีนี้ แล้วกด "เข้าสู่ระบบ"');
+
+      return null;
+    }
+
+    return SocialProvider.values.firstWhere((p) => p.key == choice);
+  }
+
+  // เข้าสู่ระบบสำเร็จ → ถ้าเพิ่งเจออีเมลซ้ำจาก LINE / Facebook
+  // ถามว่าจะเชื่อมกับบัญชีนี้เลยไหม แล้วค่อยเข้าหน้าแรก
+  Future<void> finishSignIn(
+    dynamic user, {
+    SocialProvider? signedInWith,
+  }) async {
+    final SocialProvider? provider = pendingLink;
+
+    pendingLink = null;
+
+    if (provider != null && provider != signedInWith && mounted) {
+      final bool? link = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text('เชื่อม ${provider.label} กับบัญชีนี้?'),
+          content: Text(
+            'ครั้งหน้ากดปุ่ม ${provider.label} '
+            'แล้วเข้าบัญชีนี้ได้เลย ไม่ต้องใช้รหัสผ่าน',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('ไม่ใช่ตอนนี้'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: Text('เชื่อม ${provider.label}'),
+            ),
+          ],
+        ),
+      );
+
+      if (link == true && mounted) {
+        String message;
+
+        try {
+          final result = await SocialAuthService.link(provider);
+
+          message = result['message']?.toString() ??
+              (result['status'] == true
+                  ? 'เชื่อม ${provider.label} แล้ว'
+                  : 'เชื่อม ${provider.label} ไม่สำเร็จ');
+        } on SocialLoginCanceled {
+          message = 'ยังไม่ได้เชื่อม ${provider.label} '
+              'เชื่อมภายหลังได้ที่ ตั้งค่า → บัญชีที่เชื่อมต่อ';
+        } catch (e) {
+          message = e.toString();
+        }
+
+        if (mounted) showMessage(message);
+      }
+    }
+
+    if (mounted) openHome(user);
   }
 
   void openHome(dynamic user) {
@@ -104,27 +269,7 @@ class _LoginPageState
               result['token'] != null;
 
       if (success) {
-        final dynamic user =
-            result['user'];
-
-        String userName = 'User';
-
-        if (user is Map) {
-          userName =
-              user['name']?.toString() ??
-                  'User';
-        }
-
-        Navigator.of(context)
-            .pushAndRemoveUntil(
-          MaterialPageRoute(
-            builder: (_) =>
-                HomePage(
-              userName: userName,
-            ),
-          ),
-          (route) => false,
-        );
+        await finishSignIn(result['user']);
       } else {
         showMessage(
           result['message'] ??
@@ -384,6 +529,8 @@ class _LoginPageState
                           TextField(
                             controller:
                                 passwordController,
+                            focusNode:
+                                passwordFocus,
                             obscureText:
                                 obscurePassword,
                             textInputAction:
@@ -579,6 +726,7 @@ class _LoginPageState
   void dispose() {
     emailController.dispose();
     passwordController.dispose();
+    passwordFocus.dispose();
 
     super.dispose();
   }

@@ -18,7 +18,7 @@ import 'login_page.dart';
 // - การแจ้งเตือน: เปิด/ปิดแต่ละประเภท
 // - ตำแหน่ง: แชร์ตำแหน่งกับครอบครัว
 // - ความเป็นส่วนตัว: ผู้ใช้ที่บล็อก
-// - บัญชี: เปลี่ยนรหัสผ่าน / ออกจากระบบ / ลบบัญชี
+// - บัญชี: เปลี่ยนรหัสผ่าน / ออกจากระบบ / ขอลบบัญชี (ทีมงานลบให้)
 // - เกี่ยวกับแอป: นโยบาย และเวอร์ชัน
 // =======================================================
 
@@ -78,12 +78,18 @@ class _SettingsPageState extends State<SettingsPage> {
   // เจ้าที่กำลังเชื่อม / ยกเลิก
   String? socialBusy;
 
+  // คำขอลบบัญชีที่รอทีมงานดำเนินการ (null = ไม่มี)
+  Map<String, dynamic>? deletionRequest;
+
+  bool deletionBusy = false;
+
   @override
   void initState() {
     super.initState();
     loadSettings();
     loadVersion();
     loadSocialAccounts();
+    loadDeletionRequest();
   }
 
   // =====================================================
@@ -649,17 +655,91 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   // =====================================================
-  // DELETE ACCOUNT
-  // ลบบัญชีและข้อมูลทั้งหมด (ยืนยันด้วยรหัสผ่าน)
+  // ACCOUNT DELETION REQUEST
+  // ผู้ใช้ส่งคำขอ → ทีมงานลบบัญชีและข้อมูลทั้งหมดให้ภายใน 30 วัน
+  // ระหว่างรอยังใช้แอปได้ และยกเลิกคำขอได้
   // =====================================================
 
-  Future<void> deleteAccount() async {
-    String password = '';
+  Future<void> loadDeletionRequest() async {
+    try {
+      final result = await ProfileService.getDeletionRequest();
 
-    bool hidePassword = true;
+      if (!mounted || result['status'] != true) return;
+
+      final dynamic request = result['request'];
+
+      setState(() {
+        deletionRequest = request is Map
+            ? Map<String, dynamic>.from(request)
+            : null;
+      });
+    } catch (_) {
+      // โหลดไม่ได้ → แสดงปุ่มขอลบบัญชีตามปกติ
+    }
+  }
+
+  // 28 ต.ค. 2569
+  static String formatThaiDate(DateTime date) {
+    const months = [
+      '',
+      'ม.ค.',
+      'ก.พ.',
+      'มี.ค.',
+      'เม.ย.',
+      'พ.ค.',
+      'มิ.ย.',
+      'ก.ค.',
+      'ส.ค.',
+      'ก.ย.',
+      'ต.ค.',
+      'พ.ย.',
+      'ธ.ค.',
+    ];
+
+    return '${date.day} ${months[date.month]} ${date.year + 543}';
+  }
+
+  // วันที่ส่ง และวันที่ทีมงานจะลบให้ไม่เกิน
+  ({String sent, String due})? deletionDates() {
+    final request = deletionRequest;
+
+    if (request == null) return null;
+
+    final DateTime? created = DateTime.tryParse(
+      request['created_at']?.toString() ?? '',
+    )?.toLocal();
+
+    if (created == null) return null;
+
+    final int days = request['process_within_days'] is int
+        ? request['process_within_days'] as int
+        : 30;
+
+    return (
+      sent: formatThaiDate(created),
+      due: formatThaiDate(created.add(Duration(days: days))),
+    );
+  }
+
+  void openDeletion() {
+    if (deletionBusy) return;
+
+    if (deletionRequest != null) {
+      showDeletionRequest();
+    } else {
+      requestAccountDeletion();
+    }
+  }
+
+  Future<void> requestAccountDeletion() async {
+    String secret = '';
+    String reason = '';
+
+    bool hideSecret = true;
     bool confirmed = false;
 
-    final String? result = await showModalBottomSheet<String>(
+    final ({String secret, String reason})?
+    result = await showModalBottomSheet<({String secret, String reason})>(
       context: context,
 
       isScrollControlled: true,
@@ -681,7 +761,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
                   children: [
                     Text(
-                      'ลบบัญชี',
+                      'ขอลบบัญชี',
 
                       style: TextStyle(
                         color: AppColors.danger,
@@ -695,10 +775,11 @@ class _SettingsPageState extends State<SettingsPage> {
                     const SizedBox(height: 10),
 
                     Text(
-                      'ข้อมูลต่อไปนี้จะถูกลบถาวร และกู้คืนไม่ได้\n'
+                      'ทีมงานจะลบบัญชีและข้อมูลต่อไปนี้ให้ภายใน 30 วัน '
+                      'และกู้คืนไม่ได้\n'
                       '• บัญชีและรูปโปรไฟล์\n'
                       '• การเป็นสมาชิกครอบครัวและตำแหน่ง\n'
-                      '• โพสต์ ความคิดเห็น และกิจกรรมทั้งหมด\n'
+                      '• โพสต์ ความคิดเห็น แชท และกิจกรรมทั้งหมด\n'
                       '• ร้านค้า สินค้า และรูปทั้งหมด',
 
                       style: TextStyle(
@@ -710,13 +791,78 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                     ),
 
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 12),
+
+                    Container(
+                      padding: const EdgeInsets.all(12),
+
+                      decoration: BoxDecoration(
+                        color: AppColors.fill,
+
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+
+                        children: [
+                          Icon(
+                            Icons.info_outline_rounded,
+
+                            size: 18,
+
+                            color: AppColors.primary,
+                          ),
+
+                          const SizedBox(width: 8),
+
+                          Expanded(
+                            child: Text(
+                              'ระหว่างรอยังใช้แอปได้ตามปกติ '
+                              'และยกเลิกคำขอได้ที่หน้านี้',
+
+                              style: TextStyle(
+                                color: AppColors.navy,
+
+                                fontSize: 12.5,
+
+                                height: 1.5,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 18),
 
                     TextField(
-                      obscureText: hasPassword && hidePassword,
+                      minLines: 1,
+
+                      maxLines: 3,
+
+                      maxLength: 1000,
 
                       onChanged: (value) {
-                        password = value;
+                        reason = value;
+                      },
+
+                      decoration: const InputDecoration(
+                        labelText: 'เหตุผล (ไม่บังคับ)',
+
+                        prefixIcon: Icon(Icons.edit_note_rounded),
+
+                        counterText: '',
+                      ),
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    TextField(
+                      obscureText: hasPassword && hideSecret,
+
+                      onChanged: (value) {
+                        secret = value;
                       },
 
                       decoration: InputDecoration(
@@ -732,12 +878,12 @@ class _SettingsPageState extends State<SettingsPage> {
                             : IconButton(
                                 onPressed: () {
                                   setSheetState(() {
-                                    hidePassword = !hidePassword;
+                                    hideSecret = !hideSecret;
                                   });
                                 },
 
                                 icon: Icon(
-                                  hidePassword
+                                  hideSecret
                                       ? Icons.visibility_outlined
                                       : Icons.visibility_off_outlined,
                                 ),
@@ -757,7 +903,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       activeColor: AppColors.danger,
 
                       title: Text(
-                        'ฉันเข้าใจว่าข้อมูลทั้งหมดจะถูกลบถาวร',
+                        'ฉันเข้าใจว่าเมื่อลบแล้ว ข้อมูลทั้งหมดจะกู้คืนไม่ได้',
 
                         style: TextStyle(
                           color: AppColors.navy,
@@ -792,7 +938,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
                       onPressed: confirmed
                           ? () {
-                              if (password.isEmpty) {
+                              if (secret.trim().isEmpty) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
                                     content: Text(
@@ -806,11 +952,12 @@ class _SettingsPageState extends State<SettingsPage> {
                                 return;
                               }
 
-                              Navigator.of(sheetContext).pop(password);
+                              Navigator.of(sheetContext)
+                                  .pop((secret: secret, reason: reason.trim()));
                             }
                           : null,
 
-                      child: const Text('ลบบัญชีถาวร'),
+                      child: const Text('ส่งคำขอลบบัญชี'),
                     ),
                   ],
                 ),
@@ -825,39 +972,124 @@ class _SettingsPageState extends State<SettingsPage> {
       return;
     }
 
-    await Future<void>.delayed(const Duration(milliseconds: 250));
+    setState(() => deletionBusy = true);
 
     try {
+      final String? reasonText = result.reason.isEmpty ? null : result.reason;
+
       final response = hasPassword
-          ? await ProfileService.deleteAccount(password: result)
-          : await ProfileService.deleteAccount(confirmText: result.trim());
+          ? await ProfileService.requestAccountDeletion(
+              password: result.secret,
+              reason: reasonText,
+            )
+          : await ProfileService.requestAccountDeletion(
+              confirmText: result.secret.trim(),
+              reason: reasonText,
+            );
 
       if (!mounted) return;
 
       if (response['status'] != true) {
-        showMessage(response['message'] ?? 'ลบบัญชีไม่สำเร็จ');
+        showMessage(response['message']?.toString() ?? 'ส่งคำขอไม่สำเร็จ');
         return;
       }
 
-      // บัญชีถูกลบแล้ว → ล้าง Token ในเครื่อง แล้วกลับหน้า Login
-      await AuthService.clearToken();
+      final dynamic request = response['request'];
 
-      if (!mounted) return;
+      setState(() {
+        deletionRequest = request is Map
+            ? Map<String, dynamic>.from(request)
+            : null;
+      });
 
-      final messenger = ScaffoldMessenger.of(context);
-
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const LoginPage()),
-        (route) => false,
-      );
-
-      messenger.showSnackBar(
-        SnackBar(content: Text(response['message'] ?? 'ลบบัญชีเรียบร้อยแล้ว')),
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          icon: Icon(
+            Icons.mark_email_read_outlined,
+            color: AppColors.primary,
+            size: 34,
+          ),
+          title: const Text('ส่งคำขอแล้ว'),
+          content: Text(
+            '${response['message'] ?? 'ส่งคำขอลบบัญชีแล้ว'}\n\n'
+            'ระหว่างนี้ยังใช้แอปได้ตามปกติ ถ้าเปลี่ยนใจ '
+            'ยกเลิกคำขอได้ที่ ตั้งค่า → คำขอลบบัญชี',
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('เข้าใจแล้ว'),
+            ),
+          ],
+        ),
       );
     } catch (e) {
       if (!mounted) return;
 
       showMessage(e.toString());
+    } finally {
+      if (mounted) setState(() => deletionBusy = false);
+    }
+  }
+
+  // มีคำขอรออยู่ → ดูสถานะ / ยกเลิก
+  Future<void> showDeletionRequest() async {
+    final dates = deletionDates();
+
+    final bool? cancel = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('คำขอลบบัญชี'),
+        content: Text(
+          dates == null
+              ? 'ทีมงานกำลังดำเนินการลบบัญชีของคุณ\n\n'
+                    'ระหว่างนี้ยังใช้แอปได้ตามปกติ'
+              : 'ส่งคำขอเมื่อ ${dates.sent}\n'
+                    'ทีมงานจะลบบัญชีและข้อมูลทั้งหมดให้ภายใน ${dates.due}\n\n'
+                    'ระหว่างนี้ยังใช้แอปได้ตามปกติ',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(
+              'ยกเลิกคำขอ',
+              style: TextStyle(color: AppColors.danger),
+            ),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('ปิด'),
+          ),
+        ],
+      ),
+    );
+
+    if (cancel != true || !mounted) return;
+
+    setState(() => deletionBusy = true);
+
+    try {
+      final response = await ProfileService.cancelDeletionRequest();
+
+      if (!mounted) return;
+
+      if (response['status'] == true) {
+        setState(() => deletionRequest = null);
+      }
+
+      showMessage(
+        response['message']?.toString() ??
+            (response['status'] == true
+                ? 'ยกเลิกคำขอลบบัญชีแล้ว'
+                : 'ยกเลิกไม่สำเร็จ'),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      showMessage(e.toString());
+    } finally {
+      if (mounted) setState(() => deletionBusy = false);
     }
   }
 
@@ -1180,14 +1412,25 @@ class _SettingsPageState extends State<SettingsPage> {
               danger: true,
               onTap: logout,
             ),
-            buildActionRow(
-              icon: Icons.delete_forever_rounded,
-              title: 'ลบบัญชี',
-              subtitle: 'ลบบัญชีและข้อมูลทั้งหมดถาวร',
-              color: AppColors.danger,
-              danger: true,
-              onTap: deleteAccount,
-            ),
+            if (deletionRequest != null)
+              buildActionRow(
+                icon: Icons.hourglass_top_rounded,
+                title: 'คำขอลบบัญชี: รอดำเนินการ',
+                subtitle: deletionDates() == null
+                    ? 'แตะเพื่อดูรายละเอียดหรือยกเลิกคำขอ'
+                    : 'ทีมงานจะลบให้ภายใน ${deletionDates()!.due} · แตะเพื่อยกเลิก',
+                color: AppColors.warm,
+                onTap: openDeletion,
+              )
+            else
+              buildActionRow(
+                icon: Icons.delete_forever_rounded,
+                title: 'ขอลบบัญชี',
+                subtitle: 'ส่งคำขอให้ทีมงานลบบัญชีและข้อมูลทั้งหมด',
+                color: AppColors.danger,
+                danger: true,
+                onTap: openDeletion,
+              ),
           ]),
           buildSectionTitle('เกี่ยวกับแอป'),
           buildGroup([

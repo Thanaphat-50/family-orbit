@@ -69,6 +69,12 @@ class User extends Authenticatable implements FilamentUser
         )->withTimestamps();
     }
 
+    // คำขอลบบัญชี (ผู้ดูแลเป็นคนลบ)
+    public function deletionRequests()
+    {
+        return $this->hasMany(AccountDeletionRequest::class);
+    }
+
     // บัญชี Google / LINE / Facebook ที่เชื่อมไว้
     public function socialAccounts()
     {

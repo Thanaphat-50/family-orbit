@@ -165,8 +165,8 @@ class PostImageTest extends TestCase
 
         $this->assertCount(2, $this->storedFiles());
 
-        $this->deleteJson('/api/account', ['password' => 'secret-pass'])
-            ->assertOk();
+        // ผู้ดูแลอนุมัติคำขอลบบัญชี
+        app(\App\Services\AccountDeletionService::class)->delete($member->fresh());
 
         // เหลือเฉพาะรูปของ Owner
         $this->assertSame(1, PostImage::count());

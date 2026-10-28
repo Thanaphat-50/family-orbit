@@ -2,6 +2,7 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\AccountDeletionRequestController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\FamilyController;
 use App\Http\Controllers\LocationController;
@@ -47,7 +48,8 @@ Route::post('/logout', [AuthController::class, 'logout'])
     ->middleware('auth:sanctum');
 
 // ลบบัญชี (จำกัด 5 ครั้ง/นาที กันเดารหัสผ่าน)
-Route::delete('/account', [AuthController::class, 'deleteAccount'])
+// แอปเวอร์ชันเก่า: "ลบบัญชี" → ส่งคำขอลบแทน
+Route::delete('/account', [AccountDeletionRequestController::class, 'store'])
     ->middleware(['auth:sanctum', 'throttle:5,1']);
 
 Route::middleware('auth:sanctum')->group(function () {
@@ -184,6 +186,22 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/social-accounts/{provider}', [
         SocialAuthController::class,
         'unlink'
+    ]);
+
+    // คำขอลบบัญชี (ผู้ดูแลเป็นคนลบ)
+    Route::get('/account/deletion-request', [
+        AccountDeletionRequestController::class,
+        'show'
+    ]);
+
+    Route::post('/account/deletion-request', [
+        AccountDeletionRequestController::class,
+        'store'
+    ])->middleware('throttle:5,1');
+
+    Route::delete('/account/deletion-request', [
+        AccountDeletionRequestController::class,
+        'destroy'
     ]);
 
     // มือถือสำหรับแจ้งเตือนเด้ง (ออกจากระบบแล้วถูกลบเอง)

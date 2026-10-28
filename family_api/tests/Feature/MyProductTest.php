@@ -266,7 +266,8 @@ class MyProductTest extends TestCase
 
         $this->postJson('/api/my-shop/products', $this->productForm())->assertCreated();
 
-        $this->deleteJson('/api/account', ['password' => 'secret-pass'])->assertOk();
+        // ผู้ดูแลอนุมัติคำขอลบบัญชี
+        app(\App\Services\AccountDeletionService::class)->delete($owner->fresh());
 
         $this->assertSame(0, Product::count());
         $this->assertSame(0, ProductImage::count());

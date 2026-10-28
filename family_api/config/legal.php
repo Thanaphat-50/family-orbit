@@ -17,6 +17,6 @@ return [
 
     'support_email' => env('SUPPORT_EMAIL'),
 
-    'effective_date' => '27 ตุลาคม 2569',
+    'effective_date' => '28 ตุลาคม 2569',
 
 ];

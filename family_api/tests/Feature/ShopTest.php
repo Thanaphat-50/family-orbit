@@ -243,8 +243,8 @@ class ShopTest extends TestCase
             'logo' => $this->fakePng(),
         ]))->assertCreated();
 
-        $this->deleteJson('/api/account', ['password' => 'secret-pass'])
-            ->assertOk();
+        // ผู้ดูแลอนุมัติคำขอลบบัญชี
+        app(\App\Services\AccountDeletionService::class)->delete($user->fresh());
 
         $this->assertSame(0, Shop::count());
         $this->assertSame([], $this->logoFiles());

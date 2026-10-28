@@ -139,27 +139,58 @@ class ProfileService {
   }
 
   // =====================================================
-  // DELETE ACCOUNT
-  // ลบบัญชีและข้อมูลทั้งหมด (ยืนยันด้วยรหัสผ่าน)
+  // ACCOUNT DELETION REQUEST
+  // ผู้ใช้ส่งคำขอ → ทีมงานลบบัญชีและข้อมูลทั้งหมดให้ (ภายใน 30 วัน)
   // =====================================================
 
+  // คำขอที่รออยู่ → request: {id, status, created_at, process_within_days} หรือ null
+  static Future<Map<String, dynamic>> getDeletionRequest() async {
+    final headers = await _headers();
+
+    final response = await ApiHelper.request(
+      () => http.get(
+        Uri.parse('$baseUrl/account/deletion-request'),
+
+        headers: headers,
+      ),
+    );
+
+    return ApiHelper.decode(response);
+  }
+
   // มีรหัสผ่าน → password / ไม่มีรหัสผ่าน → confirmText = "ลบบัญชี"
-  static Future<Map<String, dynamic>> deleteAccount({
+  static Future<Map<String, dynamic>> requestAccountDeletion({
     String? password,
     String? confirmText,
+    String? reason,
   }) async {
     final headers = await _headers();
 
     final response = await ApiHelper.request(
-      () => http.delete(
-        Uri.parse('$baseUrl/account'),
+      () => http.post(
+        Uri.parse('$baseUrl/account/deletion-request'),
 
         headers: headers,
 
         body: jsonEncode({
           'password': ?password,
           'confirm_text': ?confirmText,
+          'reason': ?reason,
         }),
+      ),
+    );
+
+    return ApiHelper.decode(response);
+  }
+
+  static Future<Map<String, dynamic>> cancelDeletionRequest() async {
+    final headers = await _headers();
+
+    final response = await ApiHelper.request(
+      () => http.delete(
+        Uri.parse('$baseUrl/account/deletion-request'),
+
+        headers: headers,
       ),
     );
 
