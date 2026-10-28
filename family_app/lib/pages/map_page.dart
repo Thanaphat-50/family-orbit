@@ -3,11 +3,15 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../services/chat_service.dart';
 import '../services/location_service.dart';
 import '../services/location_tracker.dart';
 import '../services/settings_service.dart';
 import '../theme/app_theme.dart';
+import 'chat_room_page.dart';
+import 'user_profile_page.dart';
 
 class MapPage extends StatefulWidget {
   const MapPage({super.key});
@@ -39,6 +43,18 @@ class _MapPageState extends State<MapPage> {
   DateTime? lastRefresh;
 
   String? locationError;
+
+  // สมาชิกที่กำลังดูรายละเอียด (วาดเส้นจากเราไปหา)
+  int? focusedUserId;
+
+  // แผ่นรายละเอียดเปิดอยู่ → ดันกล้องขึ้นไม่ให้จุดถูกบัง
+  bool detailOpen = false;
+
+  // เพิ่มทุกครั้งที่ตำแหน่งเปลี่ยน → แผ่นรายละเอียดคำนวณระยะทางใหม่
+  final ValueNotifier<int> locationsVersion = ValueNotifier(0);
+
+  // ตำแหน่งเกินเวลานี้ = อาจไม่ใช่ตำแหน่งปัจจุบัน (แอปของเขาอาจปิดอยู่)
+  static const Duration staleAfter = Duration(minutes: 15);
 
   // ตำแหน่งตั้งต้นของ Map
   // ใช้ก่อน GPS โหลดเสร็จ
@@ -180,6 +196,8 @@ class _MapPageState extends State<MapPage> {
               setState(() {
                 currentPosition = position;
               });
+
+              locationsVersion.value++;
             });
   }
 
@@ -221,6 +239,8 @@ class _MapPageState extends State<MapPage> {
 
           lastRefresh = DateTime.now();
         });
+
+        locationsVersion.value++;
       }
     } catch (_) {
       // Timer จะลองใหม่อีกรอบ
@@ -372,6 +392,118 @@ class _MapPageState extends State<MapPage> {
     }
   }
 
+  bool isMe(Map<String, dynamic> location) => location['is_me'] == true;
+
+  int? userIdOf(Map<String, dynamic> location) {
+    final dynamic id = location['user_id'];
+
+    return id is num ? id.toInt() : int.tryParse(id?.toString() ?? '');
+  }
+
+  Map<String, dynamic>? locationOf(int userId) {
+    for (final location in familyLocations) {
+      if (userIdOf(location) == userId) return location;
+    }
+
+    return null;
+  }
+
+  DateTime? lastSeenOf(Map<String, dynamic> location) {
+    return DateTime.tryParse(location['last_seen_at']?.toString() ?? '')
+        ?.toLocal();
+  }
+
+  bool isStale(Map<String, dynamic> location) {
+    final DateTime? lastSeen = lastSeenOf(location);
+
+    return lastSeen == null || DateTime.now().difference(lastSeen) > staleAfter;
+  }
+
+  // ระยะทางเส้นตรงจากเรา (เมตร) / ยังไม่รู้ตำแหน่งเรา → null
+  double? distanceTo(Map<String, dynamic> location) {
+    final Position? me = currentPosition;
+
+    final latitude = toDouble(location['latitude']);
+
+    final longitude = toDouble(location['longitude']);
+
+    if (me == null || latitude == null || longitude == null) return null;
+
+    return Geolocator.distanceBetween(
+      me.latitude,
+      me.longitude,
+      latitude,
+      longitude,
+    );
+  }
+
+  static String formatDistance(double meters) {
+    if (meters < 1000) {
+      // ใกล้มาก ๆ ปัดเป็นสิบเมตร อ่านง่ายกว่า
+      final int rounded = meters < 100
+          ? meters.round()
+          : (meters / 10).round() * 10;
+
+      return '$rounded ม.';
+    }
+
+    final double km = meters / 1000;
+
+    return km < 10 ? '${km.toStringAsFixed(1)} กม.' : '${km.round()} กม.';
+  }
+
+  // 14:32 น.
+  static String formatClock(DateTime date) {
+    return '${date.hour.toString().padLeft(2, '0')}:'
+        '${date.minute.toString().padLeft(2, '0')} น.';
+  }
+
+  // อัปเดตวันนี้ / อัปเดตเมื่อวาน / อัปเดต 26 ต.ค.
+  static String formatUpdatedDay(DateTime date) {
+    const months = [
+      '',
+      'ม.ค.',
+      'ก.พ.',
+      'มี.ค.',
+      'เม.ย.',
+      'พ.ค.',
+      'มิ.ย.',
+      'ก.ค.',
+      'ส.ค.',
+      'ก.ย.',
+      'ต.ค.',
+      'พ.ย.',
+      'ธ.ค.',
+    ];
+
+    final DateTime now = DateTime.now();
+
+    final DateTime today = DateTime(now.year, now.month, now.day);
+
+    final DateTime day = DateTime(date.year, date.month, date.day);
+
+    if (day == today) return 'อัปเดตวันนี้';
+
+    if (day == today.subtract(const Duration(days: 1))) {
+      return 'อัปเดตเมื่อวาน';
+    }
+
+    return 'อัปเดต ${date.day} ${months[date.month]}';
+  }
+
+  // บรรทัดสั้นใต้ชื่อ: "1.2 กม. · 3 นาทีที่แล้ว"
+  String memberSummary(Map<String, dynamic> location) {
+    final String lastSeen = formatLastSeen(location['last_seen_at']);
+
+    if (isMe(location)) return 'คุณ · $lastSeen';
+
+    final double? distance = distanceTo(location);
+
+    return distance == null
+        ? lastSeen
+        : '${formatDistance(distance)} · $lastSeen';
+  }
+
   String getSyncText() {
     if (lastRefresh == null) {
       return 'กำลังซิงก์';
@@ -425,15 +557,47 @@ class _MapPageState extends State<MapPage> {
           ),
 
           infoWindow: InfoWindow(
-            title: name,
+            title: isMe(location) ? '$name (คุณ)' : name,
 
-            snippet: formatLastSeen(location['last_seen_at']),
+            snippet: memberSummary(location),
           ),
+
+          onTap: () => openMember(location),
         ),
       );
     }
 
     return markers;
+  }
+
+  // เส้นประจากเราไปหาสมาชิกที่กำลังดู
+  Set<Polyline> buildPolylines() {
+    final int? userId = focusedUserId;
+
+    final Position? me = currentPosition;
+
+    if (userId == null || me == null) return {};
+
+    final Map<String, dynamic>? location = locationOf(userId);
+
+    final latitude = location == null ? null : toDouble(location['latitude']);
+
+    final longitude = location == null ? null : toDouble(location['longitude']);
+
+    if (latitude == null || longitude == null) return {};
+
+    return {
+      Polyline(
+        polylineId: const PolylineId('to_member'),
+        points: [
+          LatLng(me.latitude, me.longitude),
+          LatLng(latitude, longitude),
+        ],
+        color: AppColors.primary,
+        width: 4,
+        patterns: [PatternItem.dash(18), PatternItem.gap(12)],
+      ),
+    };
   }
 
   // =====================================================
@@ -456,6 +620,400 @@ class _MapPageState extends State<MapPage> {
     await mapController!.animateCamera(
       CameraUpdate.newCameraPosition(
         CameraPosition(target: LatLng(latitude, longitude), zoom: 16),
+      ),
+    );
+  }
+
+  // =====================================================
+  // MEMBER DETAILS
+  // ระยะทางจากเรา เวลาอัปเดต ความแม่นยำ + นำทาง / แชท / โปรไฟล์
+  // =====================================================
+
+  // เห็นทั้งเราและสมาชิกบนแผนที่ (เหนือแผ่นรายละเอียด)
+  Future<void> showMeAndMember(Map<String, dynamic> location) async {
+    final controller = mapController;
+
+    final Position? me = currentPosition;
+
+    final latitude = toDouble(location['latitude']);
+
+    final longitude = toDouble(location['longitude']);
+
+    if (controller == null || latitude == null || longitude == null) return;
+
+    if (me == null) {
+      await moveToMember(location);
+      return;
+    }
+
+    final double south = latitude < me.latitude ? latitude : me.latitude;
+    final double north = latitude < me.latitude ? me.latitude : latitude;
+    final double west = longitude < me.longitude ? longitude : me.longitude;
+    final double east = longitude < me.longitude ? me.longitude : longitude;
+
+    // อยู่ใกล้กันมาก → ซูมที่สมาชิกแทน
+    if ((north - south).abs() < 0.0005 && (east - west).abs() < 0.0005) {
+      await moveToMember(location);
+      return;
+    }
+
+    try {
+      await controller.animateCamera(
+        CameraUpdate.newLatLngBounds(
+          LatLngBounds(
+            southwest: LatLng(south, west),
+            northeast: LatLng(north, east),
+          ),
+          60,
+        ),
+      );
+    } catch (_) {
+      await moveToMember(location);
+    }
+  }
+
+  Future<void> openMember(Map<String, dynamic> location) async {
+    final int? userId = userIdOf(location);
+
+    // จุดของเราเอง → เลื่อนไปที่ตัวเราอย่างเดียว
+    if (isMe(location) || userId == null) {
+      await moveToMember(location);
+      return;
+    }
+
+    setState(() {
+      focusedUserId = userId;
+      detailOpen = true;
+    });
+
+    // รอให้แผนที่รับระยะขอบใหม่ก่อน แล้วค่อยเลื่อนกล้อง
+    await Future<void>.delayed(const Duration(milliseconds: 150));
+
+    if (!mounted) return;
+
+    showMeAndMember(location);
+
+    final String? action = await showModalBottomSheet<String>(
+      context: context,
+
+      showDragHandle: true,
+
+      isScrollControlled: true,
+
+      barrierColor: Colors.black.withValues(alpha: 0.08),
+
+      builder: (sheetContext) {
+        return ValueListenableBuilder<int>(
+          valueListenable: locationsVersion,
+
+          builder: (context, _, _) {
+            // ใช้ตำแหน่งล่าสุด (รีเฟรชทุก 10 วินาที) ถ้าหาไม่เจอใช้อันเดิม
+            final Map<String, dynamic> latest = locationOf(userId) ?? location;
+
+            return buildMemberSheet(sheetContext, latest);
+          },
+        );
+      },
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      focusedUserId = null;
+      detailOpen = false;
+    });
+
+    if (action == 'chat') {
+      await openChatWith(userId);
+    } else if (action == 'profile') {
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) =>
+              UserProfilePage(userId: userId, name: getMemberName(location)),
+        ),
+      );
+    }
+  }
+
+  // เปิด Google Maps นำทางไปหาสมาชิก (บอกเส้นทางและเวลาเดินทางจริง)
+  Future<void> openDirections(Map<String, dynamic> location) async {
+    final latitude = toDouble(location['latitude']);
+
+    final longitude = toDouble(location['longitude']);
+
+    if (latitude == null || longitude == null) return;
+
+    final Uri uri = Uri.https('www.google.com', '/maps/dir/', {
+      'api': '1',
+      'destination': '$latitude,$longitude',
+    });
+
+    bool opened = false;
+
+    try {
+      opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      opened = false;
+    }
+
+    if (!opened) showMessage('เปิด Google Maps ไม่ได้');
+  }
+
+  Future<void> openChatWith(int userId) async {
+    try {
+      final result = await ChatService.openChat(userId);
+
+      if (!mounted) return;
+
+      final dynamic room = result['conversation'];
+
+      if (result['status'] == true && room is Map && room['id'] is num) {
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => ChatRoomPage(
+              conversationId: (room['id'] as num).toInt(),
+              user: room['user'] is Map
+                  ? Map<String, dynamic>.from(room['user'])
+                  : null,
+            ),
+          ),
+        );
+      } else {
+        showMessage(result['message']?.toString() ?? 'เปิดแชทไม่สำเร็จ');
+      }
+    } catch (e) {
+      showMessage(e.toString());
+    }
+  }
+
+  Widget buildMemberSheet(
+    BuildContext sheetContext,
+    Map<String, dynamic> location,
+  ) {
+    final String name = getMemberName(location);
+
+    final double? distance = distanceTo(location);
+
+    final DateTime? lastSeen = lastSeenOf(location);
+
+    final bool stale = isStale(location);
+
+    final double? accuracy = toDouble(location['accuracy']);
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
+
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+
+          children: [
+            Row(
+              children: [
+                _MemberProfileAvatar(
+                  imageUrl: getProfileImageUrl(location),
+                  name: name,
+                  size: 54,
+                ),
+
+                const SizedBox(width: 13),
+
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+
+                    children: [
+                      Text(
+                        name,
+
+                        maxLines: 1,
+
+                        overflow: TextOverflow.ellipsis,
+
+                        style: TextStyle(
+                          color: AppColors.navy,
+                          fontSize: 19,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+
+                      const SizedBox(height: 4),
+
+                      Row(
+                        children: [
+                          Container(
+                            width: 8,
+                            height: 8,
+
+                            decoration: BoxDecoration(
+                              color: stale ? AppColors.warm : AppColors.success,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+
+                          const SizedBox(width: 6),
+
+                          Expanded(
+                            child: Text(
+                              stale
+                                  ? 'ตำแหน่งล่าสุด ${formatLastSeen(location['last_seen_at'])}'
+                                  : 'อัปเดต ${formatLastSeen(location['last_seen_at'])}',
+
+                              style: TextStyle(
+                                color: stale ? AppColors.warm : AppColors.muted,
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 18),
+
+            Row(
+              children: [
+                Expanded(
+                  child: _MemberInfoTile(
+                    icon: Icons.social_distance_rounded,
+                    label: 'ห่างจากคุณ',
+                    value: distance == null ? '—' : formatDistance(distance),
+                    color: AppColors.primary,
+                  ),
+                ),
+
+                const SizedBox(width: 9),
+
+                Expanded(
+                  child: _MemberInfoTile(
+                    icon: Icons.schedule_rounded,
+                    label: lastSeen == null
+                        ? 'อัปเดตเมื่อ'
+                        : formatUpdatedDay(lastSeen),
+                    value: lastSeen == null ? '—' : formatClock(lastSeen),
+                    color: AppColors.sky,
+                  ),
+                ),
+
+                const SizedBox(width: 9),
+
+                Expanded(
+                  child: _MemberInfoTile(
+                    icon: Icons.gps_fixed_rounded,
+                    label: 'ความแม่นยำ',
+                    value: accuracy == null
+                        ? '—'
+                        : '±${formatDistance(accuracy)}',
+                    color: AppColors.success,
+                  ),
+                ),
+              ],
+            ),
+
+            if (distance == null) ...[
+              const SizedBox(height: 10),
+
+              Text(
+                'เปิดตำแหน่งของคุณเพื่อดูระยะทาง',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: AppColors.muted, fontSize: 12),
+              ),
+            ],
+
+            if (stale) ...[
+              const SizedBox(height: 12),
+
+              Container(
+                padding: const EdgeInsets.all(12),
+
+                decoration: BoxDecoration(
+                  color: AppColors.softWarm,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+
+                  children: [
+                    Icon(
+                      Icons.info_outline_rounded,
+                      size: 18,
+                      color: AppColors.warm,
+                    ),
+
+                    const SizedBox(width: 8),
+
+                    Expanded(
+                      child: Text(
+                        'อาจไม่ใช่ตำแหน่งปัจจุบัน ตำแหน่งจะอัปเดต'
+                        'เมื่อ $name เปิดแอปใกล้กัน',
+
+                        style: TextStyle(
+                          color: AppColors.navy,
+                          fontSize: 12.5,
+                          height: 1.45,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
+            const SizedBox(height: 18),
+
+            FilledButton.icon(
+              onPressed: () => openDirections(location),
+
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(double.infinity, 50),
+              ),
+
+              icon: const Icon(Icons.directions_rounded),
+
+              label: const Text('นำทางด้วย Google Maps'),
+            ),
+
+            const SizedBox(height: 6),
+
+            Text(
+              'ระยะทางเป็นเส้นตรง เส้นทางและเวลาเดินทางจริงดูใน Google Maps',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: AppColors.muted, fontSize: 11.5),
+            ),
+
+            const SizedBox(height: 12),
+
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => Navigator.of(sheetContext).pop('chat'),
+                    icon: const Icon(Icons.chat_bubble_outline_rounded),
+                    label: const Text('แชท'),
+                  ),
+                ),
+
+                const SizedBox(width: 10),
+
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => Navigator.of(sheetContext).pop('profile'),
+                    icon: const Icon(Icons.person_outline_rounded),
+                    label: const Text('โปรไฟล์'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -681,10 +1239,7 @@ class _MapPageState extends State<MapPage> {
 
                   Text(
                     '${familyLocations.length} สมาชิก • ${getSyncText()}',
-                    style: TextStyle(
-                      color: AppColors.muted,
-                      fontSize: 10,
-                    ),
+                    style: TextStyle(color: AppColors.muted, fontSize: 10),
                   ),
                 ],
               ),
@@ -987,7 +1542,7 @@ class _MapPageState extends State<MapPage> {
                           borderRadius: BorderRadius.circular(17),
 
                           onTap: () {
-                            moveToMember(location);
+                            openMember(location);
                           },
 
                           child: Container(
@@ -1022,7 +1577,7 @@ class _MapPageState extends State<MapPage> {
                                         CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        name,
+                                        isMe(location) ? '$name (คุณ)' : name,
 
                                         maxLines: 1,
 
@@ -1044,7 +1599,9 @@ class _MapPageState extends State<MapPage> {
                                             height: 6,
 
                                             decoration: BoxDecoration(
-                                              color: AppColors.success,
+                                              color: isStale(location)
+                                                  ? AppColors.warm
+                                                  : AppColors.success,
                                               shape: BoxShape.circle,
                                             ),
                                           ),
@@ -1053,9 +1610,7 @@ class _MapPageState extends State<MapPage> {
 
                                           Expanded(
                                             child: Text(
-                                              formatLastSeen(
-                                                location['last_seen_at'],
-                                              ),
+                                              memberSummary(location),
 
                                               maxLines: 1,
 
@@ -1120,6 +1675,8 @@ class _MapPageState extends State<MapPage> {
 
           markers: buildMarkers(),
 
+          polylines: buildPolylines(),
+
           myLocationEnabled: locationAllowed,
 
           myLocationButtonEnabled: false,
@@ -1132,7 +1689,8 @@ class _MapPageState extends State<MapPage> {
 
           buildingsEnabled: true,
 
-          padding: const EdgeInsets.only(top: 90, bottom: 155),
+          // แผ่นรายละเอียดเปิด → เว้นด้านล่างมากขึ้น ให้จุดอยู่เหนือแผ่น
+          padding: EdgeInsets.only(top: 90, bottom: detailOpen ? 430 : 155),
         ),
 
         // =================================================
@@ -1159,6 +1717,8 @@ class _MapPageState extends State<MapPage> {
 
     positionSubscription?.cancel();
 
+    locationsVersion.dispose();
+
     super.dispose();
   }
 }
@@ -1170,8 +1730,13 @@ class _MapPageState extends State<MapPage> {
 class _MemberProfileAvatar extends StatelessWidget {
   final String? imageUrl;
   final String name;
+  final double size;
 
-  const _MemberProfileAvatar({required this.imageUrl, required this.name});
+  const _MemberProfileAvatar({
+    required this.imageUrl,
+    required this.name,
+    this.size = 41,
+  });
 
   String get initial {
     final value = name.trim();
@@ -1188,16 +1753,16 @@ class _MemberProfileAvatar extends StatelessWidget {
     final url = imageUrl?.trim();
 
     return Container(
-      width: 41,
-      height: 41,
+      width: size,
+      height: size,
       decoration: const BoxDecoration(shape: BoxShape.circle),
       clipBehavior: Clip.antiAlias,
       child: url == null || url.isEmpty
           ? _buildFallback()
           : Image.network(
               url,
-              width: 41,
-              height: 41,
+              width: size,
+              height: size,
               fit: BoxFit.cover,
               errorBuilder: (context, error, stackTrace) {
                 return _buildFallback();
@@ -1208,8 +1773,8 @@ class _MemberProfileAvatar extends StatelessWidget {
 
   Widget _buildFallback() {
     return Container(
-      width: 41,
-      height: 41,
+      width: size,
+      height: size,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -1220,11 +1785,77 @@ class _MemberProfileAvatar extends StatelessWidget {
       ),
       child: Text(
         initial,
-        style: const TextStyle(
+        style: TextStyle(
           color: Colors.white,
-          fontSize: 15,
+          fontSize: size * 0.37,
           fontWeight: FontWeight.w800,
         ),
+      ),
+    );
+  }
+}
+
+// =======================================================
+// MEMBER INFO TILE (ระยะทาง / เวลา / ความแม่นยำ)
+// =======================================================
+
+class _MemberInfoTile extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+
+  const _MemberInfoTile({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(11, 11, 8, 11),
+
+      decoration: BoxDecoration(
+        color: AppColors.fill,
+        borderRadius: BorderRadius.circular(16),
+      ),
+
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+
+        children: [
+          Icon(icon, size: 19, color: color),
+
+          const SizedBox(height: 8),
+
+          Text(
+            value,
+
+            maxLines: 1,
+
+            overflow: TextOverflow.ellipsis,
+
+            style: TextStyle(
+              color: AppColors.navy,
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+
+          const SizedBox(height: 2),
+
+          Text(
+            label,
+
+            maxLines: 1,
+
+            overflow: TextOverflow.ellipsis,
+
+            style: TextStyle(color: AppColors.muted, fontSize: 11),
+          ),
+        ],
       ),
     );
   }

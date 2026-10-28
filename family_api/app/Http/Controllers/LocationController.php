@@ -129,7 +129,14 @@ class LocationController extends Controller
             ->with([
                 'user:id,name,email,profile_photo'
             ])
-            ->get();
+            ->get()
+            // is_me → แอปรู้ว่าจุดไหนคือเรา (ไม่ต้องคิดระยะทาง/นำทางไปหาตัวเอง)
+            ->each(fn (UserLocation $location) => $location->setAttribute(
+                'is_me',
+                (int) $location->user_id === (int) $user->id
+            ))
+            ->sortByDesc('is_me')
+            ->values();
 
         return response()->json([
             'status' => true,

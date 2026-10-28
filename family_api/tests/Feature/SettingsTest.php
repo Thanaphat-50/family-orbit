@@ -134,6 +134,7 @@ class SettingsTest extends TestCase
             ->assertOk()
             ->assertJsonCount(1, 'locations')
             ->assertJsonPath('locations.0.user.name', 'แม่')
+            ->assertJsonPath('locations.0.is_me', true)
             ->assertJsonPath('paused.0.name', 'พ่อ');
 
         // พ่อดูเอง → ไม่มีชื่อตัวเองในรายชื่อที่ปิดแชร์
@@ -150,5 +151,14 @@ class SettingsTest extends TestCase
         $this->postJson('/api/location', ['latitude' => 13.8, 'longitude' => 100.6])->assertOk();
 
         $this->assertSame(1, UserLocation::where('user_id', $dad->id)->count());
+
+        // ตำแหน่งของตัวเองอยู่บนสุด และติด is_me
+        $this->getJson('/api/family/locations')
+            ->assertOk()
+            ->assertJsonCount(2, 'locations')
+            ->assertJsonPath('locations.0.user.name', 'พ่อ')
+            ->assertJsonPath('locations.0.is_me', true)
+            ->assertJsonPath('locations.1.user.name', 'แม่')
+            ->assertJsonPath('locations.1.is_me', false);
     }
 }
