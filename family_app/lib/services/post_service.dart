@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 
 import 'api_helper.dart';
 import 'auth_service.dart';
@@ -91,14 +93,16 @@ class PostService {
     String? category,
     List<String> imagePaths = const [],
     bool showOnMap = false,
+    PostVideoFile? video,
   }) async {
-    if (imagePaths.isNotEmpty) {
+    if (imagePaths.isNotEmpty || video != null) {
       return _createPostWithImages(
         content,
         visibility: visibility,
         category: category,
         imagePaths: imagePaths,
         showOnMap: showOnMap,
+        video: video,
       );
     }
 
@@ -120,8 +124,10 @@ class PostService {
     return ApiHelper.decode(response);
   }
 
-  // อัปโหลดหลายรูปใช้เวลานานกว่า Request ปกติ
+  // อัปโหลดหลายรูป/วิดีโอใช้เวลานานกว่า Request ปกติ
   static const Duration _uploadTimeLimit = Duration(seconds: 90);
+
+  static const Duration _videoUploadTimeLimit = Duration(minutes: 5);
 
   static Future<Map<String, dynamic>> _createPostWithImages(
     String content, {
@@ -129,6 +135,7 @@ class PostService {
     String? category,
     required List<String> imagePaths,
     bool showOnMap = false,
+    PostVideoFile? video,
   }) async {
     final token = await AuthService.getToken();
 
@@ -153,20 +160,107 @@ class PostService {
       request.files.add(await http.MultipartFile.fromPath('images[]', path));
     }
 
+    if (video != null) {
+      // อัปโหลดเข้า Bucket ไว้แล้ว → ส่งแค่ที่อยู่ / ไม่งั้นส่งไฟล์มากับโพสต์
+      if (video.uploadedPath != null) {
+        request.fields['video_path'] = video.uploadedPath!;
+      } else {
+        request.files.add(
+          await http.MultipartFile.fromPath(
+            'video',
+            video.filePath,
+            contentType: MediaType('video', 'mp4'),
+          ),
+        );
+      }
+
+      if (video.thumbnailPath != null) {
+        request.files.add(
+          await http.MultipartFile.fromPath(
+            'video_thumbnail',
+            video.thumbnailPath!,
+          ),
+        );
+      }
+
+      if (video.durationSeconds != null) {
+        request.fields['video_duration'] = '${video.durationSeconds}';
+      }
+
+      if (video.width != null) request.fields['video_width'] = '${video.width}';
+
+      if (video.height != null) {
+        request.fields['video_height'] = '${video.height}';
+      }
+    }
+
     final response = await ApiHelper.request(
       () async => http.Response.fromStream(await request.send()),
-      timeLimit: _uploadTimeLimit,
+      timeLimit: video?.uploadedPath == null && video != null
+          ? _videoUploadTimeLimit
+          : _uploadTimeLimit,
     );
 
     // ไฟล์รวมใหญ่เกินที่ Server รับได้
     if (response.statusCode == 413) {
       return {
         'status': false,
-        'message': 'รูปมีขนาดรวมใหญ่เกินไป กรุณาเลือกรูปให้น้อยลง',
+        'message': video != null
+            ? 'วิดีโอมีขนาดใหญ่เกินไป กรุณาเลือกวิดีโอที่สั้นลง'
+            : 'รูปมีขนาดรวมใหญ่เกินไป กรุณาเลือกรูปให้น้อยลง',
       };
     }
 
     return ApiHelper.decode(response);
+  }
+
+  // =====================================================
+  // วิดีโอ: ขอลิงก์อัปโหลดตรงเข้า Bucket แล้วส่งไฟล์ขึ้นไป
+  // upload = null → Server ให้ส่งไฟล์มากับโพสต์แทน
+  // =====================================================
+
+  static Future<Map<String, dynamic>> videoUploadTicket() async {
+    final headers = await _headers();
+
+    final response = await ApiHelper.request(
+      () =>
+          http.post(Uri.parse('$baseUrl/posts/video-upload'), headers: headers),
+    );
+
+    return ApiHelper.decode(response);
+  }
+
+  // PUT ไฟล์ไปที่ลิงก์ (ส่งทีละส่วน ไม่โหลดทั้งไฟล์เข้าหน่วยความจำ)
+  static Future<bool> uploadVideoFile({
+    required String url,
+    required Map<String, String> headers,
+    required String filePath,
+  }) async {
+    final File file = File(filePath);
+
+    final http.StreamedRequest request =
+        http.StreamedRequest('PUT', Uri.parse(url))
+          ..headers.addAll(headers)
+          ..contentLength = await file.length();
+
+    file.openRead().listen(
+      request.sink.add,
+      onDone: request.sink.close,
+      onError: (Object error) => request.sink.addError(error),
+      cancelOnError: true,
+    );
+
+    try {
+      final http.StreamedResponse response = await request.send().timeout(
+        _videoUploadTimeLimit,
+      );
+
+      await response.stream.drain<void>();
+
+      return response.statusCode >= 200 && response.statusCode < 300;
+    } catch (_) {
+      return false;
+    }
   }
 
   // =====================================================
@@ -338,5 +432,36 @@ class PostService {
     );
 
     return ApiHelper.decode(response);
+  }
+}
+
+// วิดีโอที่จะแนบกับโพสต์
+// uploadedPath: อัปโหลดเข้า Bucket ไว้แล้ว / ไม่งั้นส่ง filePath มากับโพสต์
+class PostVideoFile {
+  final String filePath;
+  final String? uploadedPath;
+  final String? thumbnailPath;
+  final int? durationSeconds;
+  final int? width;
+  final int? height;
+
+  const PostVideoFile({
+    required this.filePath,
+    this.uploadedPath,
+    this.thumbnailPath,
+    this.durationSeconds,
+    this.width,
+    this.height,
+  });
+
+  PostVideoFile withUploadedPath(String path) {
+    return PostVideoFile(
+      filePath: filePath,
+      uploadedPath: path,
+      thumbnailPath: thumbnailPath,
+      durationSeconds: durationSeconds,
+      width: width,
+      height: height,
+    );
   }
 }

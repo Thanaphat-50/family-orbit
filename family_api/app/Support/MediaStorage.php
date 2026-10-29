@@ -84,6 +84,33 @@ class MediaStorage
         return $paths;
     }
 
+    // ลิงก์ให้แอปอัปโหลดไฟล์ใหญ่ (วิดีโอ) ตรงเข้า Bucket
+    // ไม่ผ่าน Server → ไม่ติดขนาดอัปโหลดของ PHP
+    // ที่เก็บในเครื่อง (public) ทำไม่ได้ → null แอปส่งไฟล์มากับโพสต์แทน
+    // @return array{url: string, headers: array}|null
+    public static function uploadUrl(string $path, int $minutes = 30): ?array
+    {
+        if (self::disk() === 'public') {
+            return null;
+        }
+
+        $storage = Storage::disk(self::disk());
+
+        if (!$storage->providesTemporaryUploadUrls()) {
+            return null;
+        }
+
+        try {
+            return $storage->temporaryUploadUrl($path, now()->addMinutes($minutes));
+        } catch (Throwable $e) {
+            Log::warning('Cannot generate media upload URL', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
     // ลบไฟล์ (ลบไม่สำเร็จแค่บันทึก Log ไม่ให้งานหลักล้ม)
     public static function delete(array $paths): void
     {

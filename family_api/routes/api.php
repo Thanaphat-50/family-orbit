@@ -124,6 +124,12 @@ Route::middleware('auth:sanctum')->group(function () {
         'like'
     ])->middleware('throttle:ugc');
 
+    // ลิงก์อัปโหลดวิดีโอตรงเข้า Bucket (ก่อนสร้างโพสต์)
+    Route::post('/posts/video-upload', [
+        PostController::class,
+        'videoUploadUrl'
+    ])->middleware('throttle:ugc');
+
     // แชร์: ส่งต่อไปแอปอื่น / แชร์ซ้ำในชุมชน / ส่งให้ครอบครัว
     Route::post('/posts/{post}/share', [
         PostController::class,

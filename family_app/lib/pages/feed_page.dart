@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:video_compress/video_compress.dart';
 
 import '../config/app_info.dart';
 import '../services/post_service.dart';
@@ -13,6 +14,7 @@ import '../widgets/photo_viewer.dart';
 import '../widgets/post_categories.dart';
 import 'post_detail_page.dart';
 import 'user_profile_page.dart';
+import 'video_player_page.dart';
 
 // ฟีด "ครอบครัว" (เฉพาะครอบครัว) และ "ชุมชน" (ทุกคนในแอป)
 enum FeedScope { family, community, mine }
@@ -94,6 +96,20 @@ class _FeedPageState extends State<FeedPage> {
 
   // รูปที่เลือกไว้สำหรับโพสต์ที่กำลังเขียน
   final List<XFile> pickedImages = [];
+
+  // วิดีโอที่เลือกไว้ (โพสต์ละ 1 วิดีโอ ใช้แทนรูป)
+  PostVideoFile? pickedVideo;
+
+  // ขั้นตอนตอนส่ง (บีบอัด / อัปโหลดวิดีโอ)
+  String? postingStatus;
+
+  // ตรงกับ Laravel (PostVideo::MAX_SECONDS / MAX_KB)
+  static const int maxVideoSeconds = 60;
+  static const int maxVideoBytes = 50 * 1024 * 1024;
+
+  // บีบอัดเฉพาะไฟล์ที่ใหญ่กว่านี้ และรอไม่เกินนี้ (เครื่องช้า → ใช้ไฟล์เดิม)
+  static const int compressAboveBytes = 20 * 1024 * 1024;
+  static const Duration compressTimeLimit = Duration(minutes: 2);
 
   bool isPosting = false;
 
@@ -871,8 +887,8 @@ class _FeedPageState extends State<FeedPage> {
         .map((image) => image.path)
         .toList();
 
-    if (content.isEmpty && imagePaths.isEmpty) {
-      composerMessage('กรุณาพิมพ์ข้อความหรือเพิ่มรูปก่อนโพสต์');
+    if (content.isEmpty && imagePaths.isEmpty && pickedVideo == null) {
+      composerMessage('กรุณาพิมพ์ข้อความ หรือเพิ่มรูป/วิดีโอก่อนโพสต์');
       return;
     }
 
@@ -898,12 +914,23 @@ class _FeedPageState extends State<FeedPage> {
         target == FeedScope.family && composeShowOnMap && content.isNotEmpty;
 
     try {
+      PostVideoFile? video;
+
+      if (pickedVideo != null) {
+        video = await prepareVideo(pickedVideo!);
+
+        if (video == null || !mounted) return;
+
+        updateComposer(() => postingStatus = 'กำลังโพสต์…');
+      }
+
       final result = await PostService.createPost(
         content,
         visibility: apiScope(target),
         category: category,
         imagePaths: imagePaths,
         showOnMap: showOnMap,
+        video: video,
       );
 
       if (!mounted) return;
@@ -915,6 +942,8 @@ class _FeedPageState extends State<FeedPage> {
 
         updateComposer(() {
           pickedImages.clear();
+
+          pickedVideo = null;
 
           composeCategory = 'general';
 
@@ -963,9 +992,179 @@ class _FeedPageState extends State<FeedPage> {
       if (mounted) {
         updateComposer(() {
           isPosting = false;
+          postingStatus = null;
         });
       }
     }
+  }
+
+  // =====================================================
+  // วิดีโอ: เลือก / ถ่าย → บีบอัด 720p → อัปโหลด
+  // =====================================================
+
+  Future<void> pickVideo() async {
+    dismissKeyboard();
+
+    final ImageSource? source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: Icon(
+                Icons.video_library_outlined,
+                color: AppColors.primary,
+              ),
+              title: const Text('เลือกจากคลังวิดีโอ'),
+              onTap: () => Navigator.of(sheetContext).pop(ImageSource.gallery),
+            ),
+            ListTile(
+              leading: Icon(Icons.videocam_outlined, color: AppColors.primary),
+              title: const Text('ถ่ายวิดีโอ'),
+              subtitle: const Text('ยาวไม่เกิน $maxVideoSeconds วินาที'),
+              onTap: () => Navigator.of(sheetContext).pop(ImageSource.camera),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+
+    if (source == null || !mounted) return;
+
+    try {
+      final XFile? file = await imagePicker.pickVideo(
+        source: source,
+        maxDuration: const Duration(seconds: maxVideoSeconds),
+      );
+
+      if (file == null || !mounted) return;
+
+      final MediaInfo info = await VideoCompress.getMediaInfo(file.path);
+
+      final double seconds = (info.duration ?? 0) / 1000;
+
+      if (seconds > maxVideoSeconds + 1) {
+        composerMessage('วิดีโอต้องยาวไม่เกิน $maxVideoSeconds วินาที');
+        return;
+      }
+
+      File? thumbnail;
+
+      try {
+        thumbnail = await VideoCompress.getFileThumbnail(file.path, quality: 70);
+      } catch (_) {
+        // ไม่มีรูปตัวอย่างก็โพสต์ได้
+      }
+
+      if (!mounted) return;
+
+      updateComposer(() {
+        pickedVideo = PostVideoFile(
+          filePath: file.path,
+          thumbnailPath: thumbnail?.path,
+          durationSeconds: seconds.round(),
+          // video_compress หมุนขนาดตามการถ่าย (แนวตั้ง/แนวนอน) ให้แล้ว
+          width: info.width,
+          height: info.height,
+        );
+
+        composerError = null;
+      });
+    } catch (e) {
+      if (mounted) composerMessage('เลือกวิดีโอไม่สำเร็จ กรุณาลองอีกครั้ง');
+    }
+  }
+
+  // บีบอัดเป็น 720p (คืนที่อยู่ไฟล์ที่ได้ / ไม่สำเร็จหรือนานเกิน → ไฟล์เดิม)
+  Future<String> compressVideo(String path) async {
+    updateComposer(() => postingStatus = 'กำลังบีบอัดวิดีโอ…');
+
+    final Subscription progress = VideoCompress.compressProgress$.subscribe((
+      value,
+    ) {
+      if (mounted) {
+        updateComposer(
+          () => postingStatus = 'กำลังบีบอัดวิดีโอ ${value.round()}%',
+        );
+      }
+    });
+
+    try {
+      final MediaInfo? compressed = await VideoCompress.compressVideo(
+        path,
+        quality: VideoQuality.Res1280x720Quality,
+        includeAudio: true,
+      ).timeout(compressTimeLimit);
+
+      return compressed?.path ?? path;
+    } catch (_) {
+      await VideoCompress.cancelCompression();
+
+      return path;
+    } finally {
+      progress.unsubscribe();
+    }
+  }
+
+  // บีบอัด → ขอลิงก์ → อัปโหลดตรงเข้า Bucket (ถ้า Server ให้ลิงก์มา)
+  // คืน null เมื่อไม่สำเร็จ (แสดงข้อความในหน้าต่างเขียนโพสต์แล้ว)
+  Future<PostVideoFile?> prepareVideo(PostVideoFile picked) async {
+    String path = picked.filePath;
+
+    // ไฟล์เล็กอยู่แล้ว → ส่งเลย ไม่ต้องรอบีบอัด
+    if (await File(path).length() > compressAboveBytes) {
+      path = await compressVideo(path);
+    }
+
+    if (await File(path).length() > maxVideoBytes) {
+      composerMessage('วิดีโอใหญ่เกิน 50 MB กรุณาเลือกวิดีโอที่สั้นลง');
+      return null;
+    }
+
+    PostVideoFile video = PostVideoFile(
+      filePath: path,
+      thumbnailPath: picked.thumbnailPath,
+      durationSeconds: picked.durationSeconds,
+      width: picked.width,
+      height: picked.height,
+    );
+
+    updateComposer(() => postingStatus = 'กำลังอัปโหลดวิดีโอ…');
+
+    final ticket = await PostService.videoUploadTicket();
+
+    if (ticket['status'] != true) {
+      composerMessage(
+        ticket['message']?.toString() ?? 'อัปโหลดวิดีโอไม่สำเร็จ',
+      );
+      return null;
+    }
+
+    final dynamic upload = ticket['upload'];
+
+    if (upload is Map) {
+      final dynamic rawHeaders = upload['headers'];
+
+      final bool ok = await PostService.uploadVideoFile(
+        url: upload['url'].toString(),
+        headers: rawHeaders is Map
+            ? rawHeaders.map((key, value) => MapEntry('$key', '$value'))
+            : const {},
+        filePath: path,
+      );
+
+      if (!ok) {
+        composerMessage('อัปโหลดวิดีโอไม่สำเร็จ กรุณาลองอีกครั้ง');
+        return null;
+      }
+
+      video = video.withUploadedPath(upload['path'].toString());
+    }
+
+    return video;
   }
 
   // =====================================================
@@ -1726,7 +1925,9 @@ class _FeedPageState extends State<FeedPage> {
       valueListenable: postController,
       builder: (context, value, child) {
         final bool hasDraft =
-            value.text.trim().isNotEmpty || pickedImages.isNotEmpty;
+            value.text.trim().isNotEmpty ||
+            pickedImages.isNotEmpty ||
+            pickedVideo != null;
 
         return FloatingActionButton(
           heroTag: null,
@@ -1833,6 +2034,10 @@ class _FeedPageState extends State<FeedPage> {
           const SizedBox(height: 12),
           buildPickedImages(),
         ],
+        if (pickedVideo != null) ...[
+          const SizedBox(height: 12),
+          buildPickedVideo(),
+        ],
         if (scope == FeedScope.community) ...[
           const SizedBox(height: 12),
           buildCategoryPicker(),
@@ -1852,6 +2057,8 @@ class _FeedPageState extends State<FeedPage> {
                   Flexible(child: buildAudienceChip()),
                   const SizedBox(width: 8),
                   buildAddPhotoButton(),
+                  const SizedBox(width: 8),
+                  buildAddVideoButton(),
                 ],
               ),
             ),
@@ -1862,7 +2069,9 @@ class _FeedPageState extends State<FeedPage> {
               valueListenable: postController,
               builder: (context, value, child) {
                 final bool canPost =
-                    (value.text.trim().isNotEmpty || pickedImages.isNotEmpty) &&
+                    (value.text.trim().isNotEmpty ||
+                        pickedImages.isNotEmpty ||
+                        pickedVideo != null) &&
                     !isPosting;
 
                 return FilledButton.icon(
@@ -1896,6 +2105,17 @@ class _FeedPageState extends State<FeedPage> {
             ),
           ],
         ),
+        if (isPosting && postingStatus != null) ...[
+          const SizedBox(height: 10),
+          Text(
+            postingStatus!,
+            style: TextStyle(
+              color: AppColors.primary,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
         if (composerError != null) ...[
           const SizedBox(height: 10),
           Text(
@@ -2067,7 +2287,7 @@ class _FeedPageState extends State<FeedPage> {
         borderRadius: BorderRadius.circular(999),
         child: InkWell(
           borderRadius: BorderRadius.circular(999),
-          onTap: isPosting ? null : pickImages,
+          onTap: isPosting || pickedVideo != null ? null : pickImages,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             child: Row(
@@ -2076,7 +2296,10 @@ class _FeedPageState extends State<FeedPage> {
                 Icon(
                   Icons.add_photo_alternate_outlined,
                   size: 18,
-                  color: AppColors.primary,
+                  // เลือกวิดีโอแล้ว → แนบรูปไม่ได้
+                  color: pickedVideo == null
+                      ? AppColors.primary
+                      : AppColors.primary.withValues(alpha: 0.35),
                 ),
                 if (count > 0) ...[
                   const SizedBox(width: 4),
@@ -2091,6 +2314,184 @@ class _FeedPageState extends State<FeedPage> {
                 ],
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ปุ่ม 🎬 เพิ่มวิดีโอ (โพสต์ละ 1 วิดีโอ ใช้แทนรูป)
+  Widget buildAddVideoButton() {
+    final bool enabled =
+        !isPosting && pickedImages.isEmpty && pickedVideo == null;
+
+    return Tooltip(
+      message: 'เพิ่มวิดีโอ',
+      child: Material(
+        color: AppColors.softPrimary,
+        borderRadius: BorderRadius.circular(999),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(999),
+          onTap: enabled ? pickVideo : null,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            child: Icon(
+              Icons.videocam_outlined,
+              size: 18,
+              color: enabled
+                  ? AppColors.primary
+                  : AppColors.primary.withValues(alpha: 0.35),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // วิดีโอที่เลือกไว้: รูปตัวอย่าง + ความยาว กด ✕ เพื่อเอาออก
+  Widget buildPickedVideo() {
+    final PostVideoFile video = pickedVideo!;
+
+    const double size = 112;
+
+    return Stack(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: Container(
+            width: size,
+            height: size,
+            color: Colors.black,
+            child: video.thumbnailPath == null
+                ? const Icon(Icons.videocam_rounded, color: Colors.white54)
+                : Image.file(
+                    File(video.thumbnailPath!),
+                    width: size,
+                    height: size,
+                    fit: BoxFit.cover,
+                  ),
+          ),
+        ),
+        const Positioned.fill(
+          child: Center(
+            child: Icon(
+              Icons.play_circle_fill_rounded,
+              color: Colors.white,
+              size: 34,
+            ),
+          ),
+        ),
+        if (video.durationSeconds != null)
+          Positioned(
+            left: 6,
+            bottom: 6,
+            child: buildDurationBadge(video.durationSeconds!),
+          ),
+        Positioned(
+          top: 4,
+          right: 4,
+          child: GestureDetector(
+            onTap: isPosting
+                ? null
+                : () => updateComposer(() => pickedVideo = null),
+            child: Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.55),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.close_rounded,
+                size: 15,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget buildDurationBadge(int seconds) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}',
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+
+  // วิดีโอในโพสต์: รูปตัวอย่าง + ปุ่มเล่น แตะเพื่อเปิดดูเต็มจอ
+  Widget buildVideo(Map<String, dynamic> video) {
+    final String? url = video['url']?.toString();
+
+    final String? thumbnail = video['thumbnail_url']?.toString();
+
+    final double? width = (video['width'] as num?)?.toDouble();
+
+    final double? height = (video['height'] as num?)?.toDouble();
+
+    // แนวตั้งแสดงแค่ 3:4 ไม่ให้การ์ดยาวเกิน
+    final double ratio =
+        (width != null && height != null && width > 0 && height > 0)
+        ? (width / height).clamp(0.75, 1.9)
+        : 16 / 9;
+
+    final int? seconds = (video['duration_seconds'] as num?)?.toInt();
+
+    return GestureDetector(
+      onTap: url == null
+          ? null
+          : () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => VideoPlayerPage(url: url)),
+            ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: AspectRatio(
+          aspectRatio: ratio,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              const ColoredBox(color: Colors.black),
+              if (thumbnail != null)
+                Image.network(
+                  thumbnail,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) =>
+                      const SizedBox.shrink(),
+                ),
+              Center(
+                child: Container(
+                  width: 62,
+                  height: 62,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.45),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.play_arrow_rounded,
+                    color: Colors.white,
+                    size: 42,
+                  ),
+                ),
+              ),
+              if (seconds != null)
+                Positioned(
+                  right: 10,
+                  bottom: 10,
+                  child: buildDurationBadge(seconds),
+                ),
+            ],
           ),
         ),
       ),
@@ -2565,6 +2966,12 @@ class _FeedPageState extends State<FeedPage> {
                   ),
                 ),
               ],
+              if (original['video'] is Map) ...[
+                const SizedBox(height: 10),
+                buildVideo(
+                  Map<String, dynamic>.from(original['video'] as Map),
+                ),
+              ],
               if (images.isNotEmpty) ...[
                 const SizedBox(height: 10),
                 ClipRRect(
@@ -2815,6 +3222,22 @@ class _FeedPageState extends State<FeedPage> {
                     14,
                   ),
                   child: buildImageGrid(imageUrls),
+                ),
+
+              // ===========================================
+              // Video
+              // ===========================================
+              if (post['video'] is Map)
+                Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    content.isEmpty ? 10 : 0,
+                    16,
+                    14,
+                  ),
+                  child: buildVideo(
+                    Map<String, dynamic>.from(post['video'] as Map),
+                  ),
                 ),
 
               // ===========================================

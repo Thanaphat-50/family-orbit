@@ -8,6 +8,7 @@ use App\Models\Family;
 use App\Models\FamilyMember;
 use App\Models\Conversation;
 use App\Models\PostImage;
+use App\Models\PostVideo;
 use App\Models\Shop;
 use App\Models\User;
 use App\Support\MediaStorage;
@@ -75,6 +76,15 @@ class AccountDeletionService
                 );
         })->pluck('path')->all();
 
+        // วิดีโอและรูปตัวอย่างในโพสต์เดียวกัน
+        $videoPaths = PostVideo::whereHas('post', function ($posts) use ($user) {
+            $posts->where('user_id', $user->id)
+                ->orWhereIn(
+                    'family_id',
+                    Family::where('owner_id', $user->id)->select('id')
+                );
+        })->get()->flatMap(fn (PostVideo $video) => $video->filePaths())->all();
+
         // โลโก้ร้านและรูปสินค้าของผู้ใช้ (ร้านถูกลบตาม cascade)
         $shopMediaPaths = Shop::mediaPathsOfOwner($user->id);
 
@@ -92,7 +102,7 @@ class AccountDeletionService
         });
 
         // ลบไฟล์รูปในโพสต์และไฟล์ของร้านหลังลบข้อมูลสำเร็จแล้ว
-        MediaStorage::delete([...$imagePaths, ...$shopMediaPaths, ...$chatMediaPaths]);
+        MediaStorage::delete([...$imagePaths, ...$videoPaths, ...$shopMediaPaths, ...$chatMediaPaths]);
 
         // ลบรูปโปรไฟล์หลังลบข้อมูลสำเร็จแล้ว
         if ($photoPath) {

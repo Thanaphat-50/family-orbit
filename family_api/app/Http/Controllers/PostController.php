@@ -8,6 +8,7 @@ use App\Models\Interaction;
 use App\Models\Post;
 use App\Models\PostLike;
 use App\Models\PostReport;
+use App\Models\PostVideo;
 use App\Models\User;
 use App\Services\FeedRanker;
 use App\Support\MediaStorage;
@@ -15,6 +16,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use RuntimeException;
 use Throwable;
@@ -337,15 +340,25 @@ class PostController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate([
-            'content' => 'required_without:images|nullable|string|max:5000',
+            'content' => 'required_without_all:images,video,video_path|nullable|string|max:5000',
             'visibility' => 'nullable|in:family,community',
             'category' => ['nullable', Rule::in(Post::CATEGORIES)],
             'images' => 'nullable|array|max:' . self::MAX_IMAGES,
             'images.*' => 'image|mimes:jpg,jpeg,png,webp|max:' . self::MAX_IMAGE_KB,
             // โพสต์ครอบครัว: แสดงข้อความนี้ข้างตำแหน่งของเราบนแผนที่ด้วย
             'show_on_map' => 'nullable|boolean',
+            // วิดีโอ: ส่งไฟล์มาเลย (video) หรืออัปโหลดเข้า Bucket ไว้แล้ว (video_path)
+            'video' => 'nullable|file|mimetypes:video/mp4,video/quicktime,video/3gpp|max:' . PostVideo::MAX_KB,
+            'video_path' => 'nullable|string|max:255',
+            'video_thumbnail' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
+            'video_duration' => 'nullable|integer|min:0|max:' . (PostVideo::MAX_SECONDS + 5),
+            'video_width' => 'nullable|integer|min:0|max:10000',
+            'video_height' => 'nullable|integer|min:0|max:10000',
         ], [
-            'content.required_without' => 'กรุณาพิมพ์ข้อความหรือแนบรูปก่อนโพสต์',
+            'content.required_without_all' => 'กรุณาพิมพ์ข้อความ หรือแนบรูป/วิดีโอก่อนโพสต์',
+            'video.mimetypes' => 'รองรับเฉพาะวิดีโอ MP4',
+            'video.max' => 'วิดีโอต้องมีขนาดไม่เกิน 50 MB',
+            'video_duration.max' => 'วิดีโอต้องยาวไม่เกิน ' . PostVideo::MAX_SECONDS . ' วินาที',
             'images.max' => 'แนบรูปได้สูงสุด ' . self::MAX_IMAGES . ' รูป',
             'images.*.image' => 'รองรับเฉพาะรูป JPG, PNG หรือ WEBP',
             'images.*.mimes' => 'รองรับเฉพาะรูป JPG, PNG หรือ WEBP',
@@ -388,6 +401,23 @@ class PostController extends Controller
             ], 403);
         }
 
+        $hasVideo = $request->hasFile('video') || filled($data['video_path'] ?? null);
+
+        if ($hasVideo && $request->hasFile('images')) {
+            return response()->json([
+                'status' => false,
+                'message' => 'แนบได้ทั้งรูปหรือวิดีโออย่างใดอย่างหนึ่ง',
+            ], 422);
+        }
+
+        // วิดีโอที่อัปโหลดเข้า Bucket ไว้แล้ว: ต้องเป็นของเราและมีไฟล์จริง
+        if (filled($data['video_path'] ?? null) && !$this->validUploadedVideo($user, $data['video_path'])) {
+            return response()->json([
+                'status' => false,
+                'message' => 'ไม่พบวิดีโอที่อัปโหลด หรือวิดีโอใหญ่เกิน 50 MB กรุณาลองใหม่',
+            ], 422);
+        }
+
         // เก็บไฟล์รูปก่อน ถ้าล้มกลางทางให้ลบไฟล์ที่เก็บไปแล้วทิ้ง
         $imagePaths = [];
 
@@ -420,6 +450,27 @@ class PostController extends Controller
             ], 500);
         }
 
+        // ไฟล์วิดีโอ (ส่งมากับโพสต์) + รูปตัวอย่าง
+        $videoFiles = [];
+
+        try {
+            if ($hasVideo) {
+                $videoFiles = $this->storeVideoFiles($request, $user, $data);
+            }
+        } catch (Throwable $e) {
+            MediaStorage::delete($imagePaths);
+
+            Log::error('Post video upload failed', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'status' => false,
+                'message' => 'อัปโหลดวิดีโอไม่สำเร็จ กรุณาลองอีกครั้ง',
+            ], 500);
+        }
+
         try {
             $post = $this->createPostRecords(
                 $user,
@@ -429,9 +480,22 @@ class PostController extends Controller
                 $content,
                 $imagePaths
             );
+
+            if ($videoFiles !== []) {
+                $post->video()->create([
+                    ...$videoFiles,
+                    'duration_seconds' => $data['video_duration'] ?? null,
+                    'width' => $data['video_width'] ?? null,
+                    'height' => $data['video_height'] ?? null,
+                ]);
+            }
         } catch (Throwable $e) {
             // บันทึกลงฐานข้อมูลไม่สำเร็จ → ไม่เก็บไฟล์ค้างไว้
-            MediaStorage::delete($imagePaths);
+            MediaStorage::delete([
+                ...$imagePaths,
+                $videoFiles['path'] ?? null,
+                $videoFiles['thumbnail_path'] ?? null,
+            ]);
 
             throw $e;
         }
@@ -453,6 +517,106 @@ class PostController extends Controller
             'message' => 'สร้างโพสต์สำเร็จ',
             'post' => $post,
         ], 201);
+    }
+
+    // =====================================================
+    // ขอลิงก์อัปโหลดวิดีโอตรงเข้า Bucket
+    // POST /api/posts/video-upload
+    // - upload: {url, headers, path} → แอป PUT ไฟล์ไปที่ url แล้วส่ง video_path ตอนโพสต์
+    // - upload: null → ที่เก็บไม่รองรับ (ในเครื่อง) แอปส่งไฟล์ video มากับโพสต์แทน
+    // =====================================================
+
+    public function videoUploadUrl(Request $request)
+    {
+        $user = $request->user();
+
+        if (!FamilyMember::where('user_id', $user->id)->exists()) {
+            return response()->json([
+                'status' => false,
+                'message' => 'คุณยังไม่ได้อยู่ในครอบครัว',
+            ], 403);
+        }
+
+        $path = 'post_videos/' . $user->id . '/' . Str::uuid() . '.mp4';
+
+        $upload = MediaStorage::uploadUrl($path);
+
+        return response()->json([
+            'status' => true,
+            'max_kb' => PostVideo::MAX_KB,
+            'max_seconds' => PostVideo::MAX_SECONDS,
+            'upload' => $upload === null ? null : [
+                'url' => $upload['url'],
+                // PUT ต้องส่ง header ตามที่ลงลายเซ็นไว้
+                'headers' => collect($upload['headers'])
+                    ->except(['Host', 'host'])
+                    ->map(fn ($value) => is_array($value) ? implode(', ', $value) : $value)
+                    ->put('Content-Type', 'video/mp4')
+                    ->all(),
+                'path' => $path,
+            ],
+        ]);
+    }
+
+    // video_path ต้องอยู่ในโฟลเดอร์ของเรา มีไฟล์จริง และไม่ใหญ่เกิน
+    private function validUploadedVideo(User $user, string $path): bool
+    {
+        $pattern = '#^post_videos/' . $user->id . '/[A-Za-z0-9-]+' . preg_quote('.mp4', '#') . '$#';
+
+        if (!preg_match($pattern, $path)) {
+            return false;
+        }
+
+        try {
+            $storage = Storage::disk(MediaStorage::disk());
+
+            return $storage->exists($path)
+                && $storage->size($path) <= PostVideo::MAX_KB * 1024;
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    // เก็บวิดีโอ (ถ้าส่งไฟล์มา) และรูปตัวอย่าง → ['path' => ..., 'thumbnail_path' => ..., 'size_bytes' => ...]
+    private function storeVideoFiles(Request $request, User $user, array $data): array
+    {
+        $disk = MediaStorage::disk();
+
+        $stored = [];
+
+        try {
+            if ($request->hasFile('video')) {
+                $file = $request->file('video');
+
+                $stored['path'] = $file->storeAs(
+                    'post_videos/' . $user->id,
+                    Str::uuid() . '.mp4',
+                    $disk
+                ) ?: throw new RuntimeException('Could not store the video.');
+
+                $stored['size_bytes'] = $file->getSize();
+            } else {
+                $stored['path'] = $data['video_path'];
+
+                $stored['size_bytes'] = Storage::disk($disk)->size($data['video_path']);
+            }
+
+            if ($request->hasFile('video_thumbnail')) {
+                $stored['thumbnail_path'] = $request->file('video_thumbnail')
+                    ->store('post_video_thumbnails', $disk)
+                    ?: throw new RuntimeException('Could not store the thumbnail.');
+            }
+        } catch (Throwable $e) {
+            // ไม่ลบวิดีโอที่อัปโหลดเข้า Bucket ไว้ก่อน (ผู้ใช้ลองโพสต์ใหม่ได้)
+            MediaStorage::delete([
+                $request->hasFile('video') ? ($stored['path'] ?? null) : null,
+                $stored['thumbnail_path'] ?? null,
+            ]);
+
+            throw $e;
+        }
+
+        return $stored;
     }
 
     // สร้างโพสต์ + แถวรูป + แจ้งเตือนสมาชิก ใน Transaction เดียว
@@ -812,9 +976,11 @@ class PostController extends Controller
         return [
             'user:' . self::USER_COLUMNS,
             'images',
+            'video',
             'comments.user:' . self::USER_COLUMNS,
             'sharedPost.user:' . self::USER_COLUMNS,
             'sharedPost.images',
+            'sharedPost.video',
         ];
     }
 
@@ -823,8 +989,10 @@ class PostController extends Controller
         return [
             'user:' . self::USER_COLUMNS,
             'images',
+            'video',
             'sharedPost.user:' . self::USER_COLUMNS,
             'sharedPost.images',
+            'sharedPost.video',
             'comments' => function ($query) use ($blockedIds, $user) {
                 $query->whereNull('hidden_at')
                     ->whereDoesntHave('reports', function ($reports) use ($user) {

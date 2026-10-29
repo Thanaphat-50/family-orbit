@@ -95,6 +95,12 @@ class Post extends Model
         return $this->belongsTo(Post::class, 'shared_post_id');
     }
 
+    // วิดีโอ (โพสต์ละ 1 วิดีโอ)
+    public function video()
+    {
+        return $this->hasOne(PostVideo::class);
+    }
+
     // จำนวนครั้งที่ถูกแชร์ (ทุกช่องทาง)
     public function shares()
     {
@@ -134,11 +140,14 @@ class Post extends Model
     protected static function booted(): void
     {
         static::deleting(function (Post $post) {
-            $post->loadMissing('images');
+            $post->loadMissing(['images', 'video']);
         });
 
         static::deleted(function (Post $post) {
-            $paths = $post->images->pluck('path')->all();
+            $paths = [
+                ...$post->images->pluck('path')->all(),
+                ...($post->video?->filePaths() ?? []),
+            ];
 
             DB::afterCommit(fn () => MediaStorage::delete($paths));
         });
