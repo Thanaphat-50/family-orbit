@@ -20,13 +20,7 @@ use Illuminate\Database\Eloquent\Builder;
 class PostsTable
 {
     // ชื่อหมวดภาษาไทย (key ตรงกับ Post::CATEGORIES)
-    private const CATEGORY_LABELS = [
-        'general' => 'ทั่วไป',
-        'qa' => 'ถาม-ตอบ',
-        'news' => 'ข่าวสาร',
-        'help' => 'ช่วยเหลือ',
-        'event' => 'กิจกรรม',
-    ];
+    private const CATEGORY_LABELS = Post::CATEGORY_LABELS;
 
     public static function configure(Table $table): Table
     {

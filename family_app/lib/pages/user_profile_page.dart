@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/chat_service.dart';
 import '../services/post_service.dart';
 import '../services/profile_service.dart';
+import '../services/social_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/community_sheets.dart';
 import '../widgets/user_avatar.dart';
@@ -112,6 +113,42 @@ class _UserProfilePageState extends State<UserProfilePage> {
   bool get isMe => profile?['is_me'] == true;
 
   bool get isBlocked => profile?['blocked'] == true;
+
+  bool get isFollowing => profile?['is_following'] == true;
+
+  bool followBusy = false;
+
+  // ติดตาม / เลิกติดตาม (ไม่ต้องรออนุมัติ)
+  Future<void> toggleFollow() async {
+    if (followBusy) return;
+
+    setState(() => followBusy = true);
+
+    try {
+      final result = await SocialService.setFollowing(
+        widget.userId,
+        !isFollowing,
+      );
+
+      if (!mounted) return;
+
+      if (result['status'] == true) {
+        setState(() {
+          profile = {
+            ...?profile,
+            'is_following': result['is_following'] == true,
+            'followers_count': result['followers_count'],
+          };
+        });
+      } else {
+        showMessage(result['message']?.toString() ?? 'ทำรายการไม่สำเร็จ');
+      }
+    } catch (e) {
+      if (mounted) showMessage(e.toString());
+    } finally {
+      if (mounted) setState(() => followBusy = false);
+    }
+  }
 
   int countOf(String key) {
     final dynamic value = profile?[key];
@@ -259,8 +296,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
   }
 
   // แชทส่วนตัว (เฉพาะคนในครอบครัวเดียวกัน)
-  bool get canChat =>
-      profile?['is_family'] == true && !isMe && !isBlocked;
+  bool get canChat => profile?['is_family'] == true && !isMe && !isBlocked;
 
   Future<void> openChat() async {
     setState(() => isBusy = true);
@@ -417,10 +453,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
           ],
         ),
         const SizedBox(height: 2),
-        Text(
-          label,
-          style: TextStyle(color: AppColors.muted, fontSize: 12),
-        ),
+        Text(label, style: TextStyle(color: AppColors.muted, fontSize: 12)),
       ],
     );
   }
@@ -487,12 +520,37 @@ class _UserProfilePageState extends State<UserProfilePage> {
                     ),
                 ],
               ),
-              if (canChat) ...[
+              if (!isMe && !isBlocked) ...[
                 const SizedBox(height: 14),
-                FilledButton.icon(
-                  onPressed: isBusy ? null : openChat,
-                  icon: const Icon(Icons.chat_bubble_outline_rounded, size: 18),
-                  label: const Text('ส่งข้อความ'),
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 10,
+                  runSpacing: 8,
+                  children: [
+                    isFollowing
+                        ? OutlinedButton.icon(
+                            onPressed: followBusy ? null : toggleFollow,
+                            icon: const Icon(Icons.check_rounded, size: 18),
+                            label: const Text('ติดตามแล้ว'),
+                          )
+                        : FilledButton.icon(
+                            onPressed: followBusy ? null : toggleFollow,
+                            icon: const Icon(
+                              Icons.person_add_alt_1_rounded,
+                              size: 18,
+                            ),
+                            label: const Text('ติดตาม'),
+                          ),
+                    if (canChat)
+                      FilledButton.tonalIcon(
+                        onPressed: isBusy ? null : openChat,
+                        icon: const Icon(
+                          Icons.chat_bubble_outline_rounded,
+                          size: 18,
+                        ),
+                        label: const Text('ส่งข้อความ'),
+                      ),
+                  ],
                 ),
               ],
               if (!isBlocked) ...[
@@ -518,6 +576,15 @@ class _UserProfilePageState extends State<UserProfilePage> {
                         color: likeColor,
                         value: countOf('likes_received'),
                         label: 'ถูกใจที่ได้รับ',
+                      ),
+                    ),
+                    Container(width: 1, height: 36, color: AppColors.border),
+                    Expanded(
+                      child: buildStat(
+                        icon: Icons.people_alt_rounded,
+                        color: AppColors.sky,
+                        value: countOf('followers_count'),
+                        label: 'ผู้ติดตาม',
                       ),
                     ),
                   ],
@@ -590,11 +657,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.person_off_outlined,
-              size: 44,
-              color: AppColors.muted,
-            ),
+            Icon(Icons.person_off_outlined, size: 44, color: AppColors.muted),
             const SizedBox(height: 12),
             Text(
               loadError ?? 'ไม่พบผู้ใช้นี้',

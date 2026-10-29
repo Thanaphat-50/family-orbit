@@ -5,6 +5,8 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AccountDeletionRequestController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\FamilyController;
+use App\Http\Controllers\FollowController;
+use App\Http\Controllers\HistoryController;
 use App\Http\Controllers\LocationController;
 use App\Http\Controllers\MapStatusController;
 use App\Http\Controllers\PostController;
@@ -121,6 +123,39 @@ Route::middleware('auth:sanctum')->group(function () {
         PostController::class,
         'like'
     ])->middleware('throttle:ugc');
+
+    // แชร์: ส่งต่อไปแอปอื่น / แชร์ซ้ำในชุมชน / ส่งให้ครอบครัว
+    Route::post('/posts/{post}/share', [
+        PostController::class,
+        'share'
+    ])->middleware('throttle:ugc');
+
+    // ติดตามผู้ใช้อื่น
+    Route::get('/users/suggestions', [
+        FollowController::class,
+        'suggestions'
+    ]);
+
+    Route::post('/users/{user}/follow', [
+        FollowController::class,
+        'store'
+    ])->middleware('throttle:ugc');
+
+    Route::delete('/users/{user}/follow', [
+        FollowController::class,
+        'destroy'
+    ]);
+
+    // ประวัติการใช้งานของเรา
+    Route::get('/me/history', [
+        HistoryController::class,
+        'index'
+    ]);
+
+    Route::delete('/me/history', [
+        HistoryController::class,
+        'clear'
+    ]);
 
     // ข้อความบนแผนที่ (แสดง / เอาออก)
     Route::post('/posts/{post}/map-status', [

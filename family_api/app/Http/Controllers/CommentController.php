@@ -6,10 +6,12 @@ use App\Models\AppNotification;
 use App\Models\Comment;
 use App\Models\CommentReport;
 use App\Models\FamilyMember;
+use App\Models\Interaction;
 use App\Models\Post;
 use App\Models\UserBlock;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class CommentController extends Controller
 {
@@ -85,6 +87,11 @@ class CommentController extends Controller
                     'user_id' => $user->id,
                     'content' =>
                         $request->content,
+                ]);
+
+                Interaction::record($user, Interaction::COMMENT, $post, meta: [
+                    'comment_id' => $comment->id,
+                    'excerpt' => Str::limit($comment->content, 80),
                 ]);
 
                 // ไม่แจ้งตัวเอง
@@ -189,6 +196,11 @@ class CommentController extends Controller
                     'คุณไม่ได้อยู่ในครอบครัวของความคิดเห็นนี้แล้ว',
             ], 403);
         }
+
+        // ลบออกจากประวัติการใช้งานของคนเขียนด้วย
+        Interaction::where('type', Interaction::COMMENT)
+            ->where('meta->comment_id', $comment->id)
+            ->delete();
 
         $comment->delete();
 

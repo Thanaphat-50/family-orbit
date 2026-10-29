@@ -36,6 +36,8 @@ class PostService {
     int page = 1,
     String? category,
     int? userId,
+    // ฟีดชุมชน: for_you = เรียงตามความสนใจ / ไม่ส่ง = ล่าสุด
+    String? sort,
   }) async {
     final headers = await _headers();
 
@@ -48,6 +50,7 @@ class PostService {
         if (paged) 'page': '$page',
         if (scope == 'community' && category != null) 'category': category,
         if (userId != null) 'user_id': '$userId',
+        if (scope == 'community' && sort != null) 'sort': sort,
       },
     );
 

@@ -2,12 +2,16 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:share_plus/share_plus.dart';
 
+import '../config/app_info.dart';
 import '../services/post_service.dart';
+import '../services/social_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/community_sheets.dart';
 import '../widgets/photo_viewer.dart';
 import '../widgets/post_categories.dart';
+import 'post_detail_page.dart';
 import 'user_profile_page.dart';
 
 // ฟีด "ครอบครัว" (เฉพาะครอบครัว) และ "ชุมชน" (ทุกคนในแอป)
@@ -126,6 +130,21 @@ class _FeedPageState extends State<FeedPage> {
 
   bool communityTermsAccepted = false;
 
+  // ฟีดชุมชน: true = สำหรับคุณ (เรียงตามความสนใจ) / false = ล่าสุด
+  bool forYou = true;
+
+  bool get showsCommunityTabs => isMainFeed && scope == FeedScope.community;
+
+  // คนที่อาจชอบเรื่องเดียวกับเรา (แสดงในแท็บ "สำหรับคุณ")
+  List<Map<String, dynamic>> suggestions = [];
+
+  final Set<int> followedIds = {};
+
+  final Set<int> followBusy = {};
+
+  // โพสต์ที่กำลังแชร์ (กันกดซ้ำ)
+  final Set<int> sharingPostIds = {};
+
   // โพสต์ที่กำลังลบ (แสดง Loading บนการ์ด)
   final Set<int> deletingPostIds = {};
 
@@ -165,6 +184,8 @@ class _FeedPageState extends State<FeedPage> {
     super.initState();
     scrollController.addListener(onScroll);
     loadPosts();
+
+    if (showsCommunityTabs) loadSuggestions();
   }
 
   String apiScope(FeedScope value) {
@@ -211,6 +232,7 @@ class _FeedPageState extends State<FeedPage> {
         page: page,
         category: isMainFeed ? filterCategory : null,
         userId: widget.authorId,
+        sort: showsCommunityTabs && forYou ? 'for_you' : null,
       );
 
       if (!mounted || generation != feedGeneration) return;
@@ -258,6 +280,346 @@ class _FeedPageState extends State<FeedPage> {
           state.isLoadingMore = false;
         });
       }
+    }
+  }
+
+  Future<void> refreshFeed() async {
+    if (showsCommunityTabs && forYou) loadSuggestions();
+
+    await loadPosts();
+  }
+
+  // สลับแท็บ สำหรับคุณ / ล่าสุด → ล้างฟีดแล้วโหลดใหม่
+  Future<void> switchCommunityTab(bool toForYou) async {
+    if (toForYou == forYou) return;
+
+    setState(() {
+      forYou = toForYou;
+      feedGeneration++;
+
+      feed.posts = [];
+      feed.isLoading = true;
+      feed.isLoadingMore = false;
+      feed.loadError = null;
+      feed.hasMore = false;
+
+      expandedPostIds.clear();
+    });
+
+    if (toForYou && suggestions.isEmpty) loadSuggestions();
+
+    await loadPosts();
+  }
+
+  // =====================================================
+  // แนะนำคนที่ชอบเรื่องเดียวกัน + ติดตาม
+  // =====================================================
+
+  Future<void> loadSuggestions() async {
+    try {
+      final result = await SocialService.suggestions();
+
+      final dynamic users = result['users'];
+
+      if (!mounted || result['status'] != true || users is! List) return;
+
+      setState(() {
+        suggestions = users
+            .whereType<Map>()
+            .map((user) => Map<String, dynamic>.from(user))
+            .toList();
+
+        followedIds.clear();
+      });
+    } catch (_) {
+      // โหลดไม่ได้ → ไม่แสดงส่วนแนะนำ
+    }
+  }
+
+  Future<void> toggleFollow(Map<String, dynamic> user) async {
+    final dynamic rawId = user['id'];
+
+    if (rawId is! num) return;
+
+    final int id = rawId.toInt();
+
+    if (followBusy.contains(id)) return;
+
+    final bool follow = !followedIds.contains(id);
+
+    setState(() => followBusy.add(id));
+
+    try {
+      final result = await SocialService.setFollowing(id, follow);
+
+      if (!mounted) return;
+
+      if (result['status'] == true) {
+        setState(() {
+          if (result['is_following'] == true) {
+            followedIds.add(id);
+          } else {
+            followedIds.remove(id);
+          }
+        });
+      } else {
+        showMessage(result['message']?.toString() ?? 'ทำรายการไม่สำเร็จ');
+      }
+    } catch (e) {
+      if (mounted) showMessage(e.toString());
+    } finally {
+      if (mounted) setState(() => followBusy.remove(id));
+    }
+  }
+
+  // =====================================================
+  // แชร์: ส่งต่อไปแอปอื่น / แชร์ในชุมชน / ส่งให้ครอบครัว
+  // =====================================================
+
+  Future<void> openShareSheet(Map<String, dynamic> post) async {
+    final int? postId = postIdOf(post);
+
+    if (postId == null || sharingPostIds.contains(postId)) return;
+
+    dismissKeyboard();
+
+    Widget option(
+      BuildContext sheetContext, {
+      required String channel,
+      required IconData icon,
+      required String title,
+      required String subtitle,
+      required Color color,
+    }) {
+      return ListTile(
+        onTap: () => Navigator.of(sheetContext).pop(channel),
+        leading: Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Icon(icon, color: color, size: 22),
+        ),
+        title: Text(
+          title,
+          style: TextStyle(
+            color: AppColors.navy,
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        subtitle: Text(
+          subtitle,
+          style: TextStyle(color: AppColors.muted, fontSize: 12),
+        ),
+      );
+    }
+
+    final String? channel = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Text(
+                  'แชร์โพสต์',
+                  style: TextStyle(
+                    color: AppColors.navy,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              option(
+                sheetContext,
+                channel: 'external',
+                icon: Icons.ios_share_rounded,
+                title: 'ส่งต่อไปแอปอื่น',
+                subtitle: 'LINE, Facebook, Messenger และอื่น ๆ',
+                color: AppColors.success,
+              ),
+              option(
+                sheetContext,
+                channel: 'community',
+                icon: Icons.repeat_rounded,
+                title: 'แชร์ในชุมชน',
+                subtitle: 'โพสต์ซ้ำในฟีดชุมชน เขียนข้อความเพิ่มได้',
+                color: communityColor,
+              ),
+              option(
+                sheetContext,
+                channel: 'family',
+                icon: Icons.family_restroom_rounded,
+                title: 'ส่งให้ครอบครัว',
+                subtitle: 'แชร์เข้าไปในหน้าครอบครัว',
+                color: AppColors.primary,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (channel == null || !mounted) return;
+
+    if (channel == 'external') {
+      await shareExternally(post, postId);
+      return;
+    }
+
+    if (channel == 'community' && !communityTermsAccepted) {
+      final bool ok = await ensureCommunityTerms();
+
+      if (!ok || !mounted) return;
+    }
+
+    final String? note = await askShareNote(channel);
+
+    if (note == null || !mounted) return;
+
+    await sendShare(postId, channel, note);
+  }
+
+  // เปิดหน้าแชร์ของมือถือ (ส่งข้อความของโพสต์ต้นฉบับ)
+  Future<void> shareExternally(Map<String, dynamic> post, int postId) async {
+    final dynamic shared = post['shared_post'];
+
+    final Map<String, dynamic> original = shared is Map
+        ? Map<String, dynamic>.from(shared)
+        : post;
+
+    final dynamic user = original['user'];
+
+    final String name = user is Map
+        ? (user['name']?.toString() ?? 'สมาชิก')
+        : 'สมาชิก';
+
+    final String content = original['content']?.toString().trim() ?? '';
+
+    final String text = [
+      if (content.isNotEmpty) content,
+      '— $name ในแอป${AppInfo.name}',
+    ].join('\n\n');
+
+    try {
+      final ShareResult result = await SharePlus.instance.share(
+        ShareParams(text: text, subject: 'โพสต์จากแอป${AppInfo.name}'),
+      );
+
+      // ปิดหน้าแชร์ไปโดยไม่ได้ส่ง → ไม่นับ
+      if (result.status == ShareResultStatus.dismissed) return;
+
+      await sendShare(postId, 'external', null, quiet: true);
+    } catch (_) {
+      if (mounted) showMessage('เปิดหน้าแชร์ไม่ได้');
+    }
+  }
+
+  // ข้อความเพิ่มเติมตอนแชร์ในแอป (null = ยกเลิก)
+  Future<String?> askShareNote(String channel) async {
+    final TextEditingController controller = TextEditingController();
+
+    final String? note = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(channel == 'community' ? 'แชร์ในชุมชน' : 'ส่งให้ครอบครัว'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          minLines: 2,
+          maxLines: 5,
+          maxLength: maxPostLength,
+          decoration: const InputDecoration(
+            hintText: 'เขียนอะไรสักหน่อย (ไม่บังคับ)',
+            counterText: '',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('ยกเลิก'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(controller.text),
+            child: const Text('แชร์'),
+          ),
+        ],
+      ),
+    );
+
+    // รอหน้าต่างปิดเสร็จก่อนค่อยทิ้ง Controller
+    Future<void>.delayed(const Duration(milliseconds: 400), controller.dispose);
+
+    return note;
+  }
+
+  Future<void> sendShare(
+    int postId,
+    String channel,
+    String? note, {
+    bool quiet = false,
+  }) async {
+    if (sharingPostIds.contains(postId)) return;
+
+    setState(() => sharingPostIds.add(postId));
+
+    try {
+      final result = await SocialService.sharePost(
+        postId,
+        channel: channel,
+        content: note,
+      );
+
+      if (!mounted) return;
+
+      if (result['status'] == true) {
+        final dynamic originalId = result['post_id'];
+
+        final dynamic count = result['shares_count'];
+
+        final dynamic newPost = result['post'];
+
+        setState(() {
+          for (final item in feed.posts) {
+            if (postIdOf(item) == originalId) item['shares_count'] = count;
+          }
+
+          // แชร์แล้วเห็นทันทีในฟีดที่เปิดอยู่
+          final bool showHere = newPost is Map &&
+              isMainFeed &&
+              ((channel == 'family' && scope == FeedScope.family) ||
+                  (channel == 'community' &&
+                      scope == FeedScope.community &&
+                      !forYou &&
+                      filterCategory == null));
+
+          if (showHere) {
+            feed.posts.insert(0, Map<String, dynamic>.from(newPost));
+          }
+        });
+
+        if (!quiet) showMessage(result['message']?.toString() ?? 'แชร์แล้ว');
+      } else if (result['code'] == 'terms_required') {
+        setState(() => communityTermsAccepted = false);
+
+        showMessage(
+          result['message']?.toString() ?? 'กรุณายอมรับกฎชุมชนก่อนโพสต์',
+        );
+      } else {
+        showMessage(result['message']?.toString() ?? 'แชร์ไม่สำเร็จ');
+      }
+    } catch (e) {
+      if (mounted) showMessage(e.toString());
+    } finally {
+      if (mounted) setState(() => sharingPostIds.remove(postId));
     }
   }
 
@@ -1917,17 +2279,21 @@ class _FeedPageState extends State<FeedPage> {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // สำหรับคุณ (ตามความสนใจ) / ล่าสุด (ตามเวลา)
           // ผู้ใช้ที่บล็อก: ตั้งค่า → ความเป็นส่วนตัว
-          Text(
-            'ล่าสุดในชุมชน',
-            style: TextStyle(
-              color: AppColors.navy,
-              fontSize: 19,
-              fontWeight: FontWeight.w800,
-            ),
+          Row(
+            children: [
+              buildFeedTab('สำหรับคุณ', forYou, () => switchCommunityTab(true)),
+              const SizedBox(width: 20),
+              buildFeedTab('ล่าสุด', !forYou, () => switchCommunityTab(false)),
+            ],
           ),
           const SizedBox(height: 8),
           buildCategoryFilter(),
+          if (forYou && suggestions.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            buildSuggestions(),
+          ],
         ],
       );
     }
@@ -1960,6 +2326,298 @@ class _FeedPageState extends State<FeedPage> {
             ),
           ),
       ],
+    );
+  }
+
+  Widget buildFeedTab(String label, bool selected, VoidCallback onTap) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              color: selected ? AppColors.navy : AppColors.muted,
+              fontSize: 19,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 3),
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            width: selected ? 28 : 0,
+            height: 3,
+            decoration: BoxDecoration(
+              color: AppColors.primary,
+              borderRadius: BorderRadius.circular(999),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildSuggestions() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'คนที่อาจชอบเรื่องเดียวกับคุณ',
+          style: TextStyle(
+            color: AppColors.navy,
+            fontSize: 14.5,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 186,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            clipBehavior: Clip.none,
+            itemCount: suggestions.length,
+            separatorBuilder: (context, index) => const SizedBox(width: 10),
+            itemBuilder: (context, index) =>
+                buildSuggestionCard(suggestions[index]),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget buildSuggestionCard(Map<String, dynamic> user) {
+    final int? id = user['id'] is num ? (user['id'] as num).toInt() : null;
+
+    final String name = user['name']?.toString() ?? 'สมาชิก';
+
+    final bool following = id != null && followedIds.contains(id);
+
+    final bool busy = id != null && followBusy.contains(id);
+
+    return Container(
+      width: 148,
+      padding: const EdgeInsets.fromLTRB(10, 14, 10, 10),
+      decoration: AppDecorations.card(radius: 18),
+      child: Column(
+        children: [
+          buildProfileLink(
+            userId: id,
+            name: name,
+            child: buildAvatar(
+              name: name,
+              imageUrl: getProfileImage(user),
+              radius: 25,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: AppColors.navy,
+              fontSize: 13.5,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            user['reason']?.toString() ?? '',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: TextStyle(color: AppColors.muted, fontSize: 11, height: 1.3),
+          ),
+          const Spacer(),
+          SizedBox(
+            width: double.infinity,
+            height: 34,
+            child: following
+                ? OutlinedButton(
+                    onPressed: busy ? null : () => toggleFollow(user),
+                    style: OutlinedButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      textStyle: const TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    child: const Text('ติดตามแล้ว'),
+                  )
+                : FilledButton(
+                    onPressed: busy ? null : () => toggleFollow(user),
+                    style: FilledButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      textStyle: const TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    child: const Text('ติดตาม'),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // โพสต์ที่แชร์ต่อมา: แสดงโพสต์ต้นฉบับย่อ แตะเพื่อเปิดดูเต็ม
+  Widget buildSharedPost(Map<String, dynamic> post) {
+    final dynamic raw = post['shared_post'];
+
+    if (raw is! Map) {
+      return Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.fill,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.link_off_rounded, color: AppColors.muted, size: 18),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'โพสต์ต้นฉบับถูกลบ หรือไม่สามารถแสดงได้',
+                style: TextStyle(color: AppColors.muted, fontSize: 13),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final Map<String, dynamic> original = Map<String, dynamic>.from(raw);
+
+    final int? originalId = postIdOf(original);
+
+    final dynamic user = original['user'];
+
+    final String name = user is Map
+        ? (user['name']?.toString() ?? 'สมาชิก')
+        : 'สมาชิก';
+
+    final String content = original['content']?.toString().trim() ?? '';
+
+    final List<String> images = imageUrlsOf(original);
+
+    final PostCategory? category = original['category'] == null
+        ? null
+        : findPostCategory(original['category'].toString());
+
+    return Material(
+      color: AppColors.fill,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: originalId == null
+            ? null
+            : () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => PostDetailPage(postId: originalId),
+                ),
+              ),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  buildAvatar(
+                    name: name,
+                    imageUrl: getProfileImage(user),
+                    radius: 14,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: AppColors.navy,
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  if (category != null) CategoryBadge(category: category),
+                ],
+              ),
+              if (content.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  content,
+                  maxLines: 6,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: AppColors.navy,
+                    fontSize: 14.5,
+                    height: 1.5,
+                  ),
+                ),
+              ],
+              if (images.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.network(
+                    images.first,
+                    height: 170,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) =>
+                        const SizedBox.shrink(),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget buildShareButton(Map<String, dynamic> post, int postId) {
+    final int count = post['shares_count'] is num
+        ? (post['shares_count'] as num).toInt()
+        : 0;
+
+    final bool busy = sharingPostIds.contains(postId);
+
+    return Material(
+      color: AppColors.fill,
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: busy ? null : () => openShareSheet(post),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.share_outlined, color: AppColors.muted, size: 18),
+              const SizedBox(width: 7),
+              Text(
+                count > 0 ? '$count' : 'แชร์',
+                style: TextStyle(
+                  color: AppColors.muted,
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -2132,6 +2790,20 @@ class _FeedPageState extends State<FeedPage> {
                 ),
 
               // ===========================================
+              // โพสต์ที่แชร์ต่อมา (โพสต์ต้นฉบับย่อ)
+              // ===========================================
+              if (post['shared_post_id'] != null)
+                Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    content.isEmpty ? 10 : 0,
+                    16,
+                    14,
+                  ),
+                  child: buildSharedPost(post),
+                ),
+
+              // ===========================================
               // Images
               // ===========================================
               if (imageUrls.isNotEmpty)
@@ -2160,6 +2832,13 @@ class _FeedPageState extends State<FeedPage> {
                     // ปุ่มความคิดเห็น: ยังไม่มี = ชวนเขียน / มีแล้ว = จำนวน
                     if (postId != null)
                       buildCommentButton(postId, comments.length),
+
+                    // แชร์ได้เฉพาะโพสต์ชุมชน (หรือโพสต์ที่แชร์ต่อมาจากชุมชน)
+                    if (postId != null &&
+                        (community || post['shared_post'] is Map)) ...[
+                      const SizedBox(width: 10),
+                      buildShareButton(post, postId),
+                    ],
                   ],
                 ),
               ),
@@ -2922,7 +3601,7 @@ class _FeedPageState extends State<FeedPage> {
       children: [
         RefreshIndicator(
           color: AppColors.primary,
-          onRefresh: () => loadPosts(),
+          onRefresh: refreshFeed,
           child: ListView(
             controller: scrollController,
             physics: const AlwaysScrollableScrollPhysics(),

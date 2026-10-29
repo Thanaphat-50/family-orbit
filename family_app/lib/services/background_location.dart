@@ -70,6 +70,8 @@ class BackgroundLocation {
         // เปิดเครื่องใหม่ → เริ่มเอง (ตรวจสวิตช์/สิทธิ์อีกครั้งใน backgroundLocationMain)
         autoStartOnBoot: true,
         isForegroundMode: true,
+        // ช่องแจ้งเตือนระดับต่ำสุด (สร้างใน MainActivity.kt) → ย่อเล็กที่สุด
+        notificationChannelId: 'location_sharing',
         initialNotificationTitle: 'ใกล้กันกำลังแชร์ตำแหน่ง',
         initialNotificationContent:
             'ครอบครัวเห็นตำแหน่งของคุณ ปิดได้ที่ ตั้งค่า',
@@ -264,7 +266,7 @@ Future<void> backgroundLocationMain(ServiceInstance service) async {
 
         service.setForegroundNotificationInfo(
           title: 'ใกล้กันกำลังแชร์ตำแหน่ง',
-          content: 'ส่งตำแหน่งให้ครอบครัวล่าสุด $time น. · ปิดได้ที่ ตั้งค่า',
+          content: 'ล่าสุด $time น. · ปิดได้ที่ ตั้งค่า ในแอป',
         );
       }
     } catch (_) {

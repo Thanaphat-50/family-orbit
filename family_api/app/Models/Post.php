@@ -17,12 +17,21 @@ class Post extends Model
         'event',
     ];
 
+    public const CATEGORY_LABELS = [
+        'general' => 'ทั่วไป',
+        'qa' => 'ถาม-ตอบ',
+        'news' => 'ข่าวสาร',
+        'help' => 'ช่วยเหลือ',
+        'event' => 'กิจกรรม',
+    ];
+
     protected $fillable = [
         'family_id',
         'user_id',
         'visibility',
         'category',
         'content',
+        'shared_post_id',
     ];
 
     // ข้อความบนแผนที่ (เช่น "ทำงานอยู่") แสดงข้างตำแหน่งของเจ้าของนานเท่านี้
@@ -78,6 +87,18 @@ class Post extends Model
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    // โพสต์ต้นฉบับ (เมื่อโพสต์นี้เป็นการแชร์ต่อ)
+    public function sharedPost()
+    {
+        return $this->belongsTo(Post::class, 'shared_post_id');
+    }
+
+    // จำนวนครั้งที่ถูกแชร์ (ทุกช่องทาง)
+    public function shares()
+    {
+        return $this->hasMany(Interaction::class)->where('type', Interaction::SHARE);
     }
 
     public function family()

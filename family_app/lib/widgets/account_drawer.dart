@@ -14,6 +14,7 @@ import 'user_avatar.dart';
 enum AccountMenuItem {
   profile,
   myPosts,
+  history,
   communityProfile,
   family,
   notifications,
@@ -297,6 +298,13 @@ class AccountDrawer extends StatelessWidget {
                   icon: Icons.article_outlined,
                   title: 'โพสต์ของฉัน',
                   subtitle: 'ทั้งในครอบครัวและชุมชน',
+                ),
+                buildItem(
+                  context,
+                  item: AccountMenuItem.history,
+                  icon: Icons.history_rounded,
+                  title: 'ประวัติการใช้งาน',
+                  subtitle: 'ถูกใจ ความคิดเห็น แชร์ และการติดตาม',
                 ),
                 if (hasFamily)
                   buildItem(

@@ -4,12 +4,15 @@ namespace App\Http\Controllers;
 
 use App\Models\AppNotification;
 use App\Models\FamilyMember;
+use App\Models\Interaction;
 use App\Models\Post;
 use App\Models\PostLike;
 use App\Models\PostReport;
 use App\Models\User;
+use App\Services\FeedRanker;
 use App\Support\MediaStorage;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
@@ -33,6 +36,7 @@ class PostController extends Controller
     //
     // ?scope=family    (ค่าเริ่มต้น) โพสต์ในครอบครัว
     // ?scope=community &page=N      โพสต์ชุมชนของทุกคน
+    //                  &sort=for_you เรียงตามความสนใจของเรา (ไม่ส่ง = ล่าสุด)
     //                  &category=qa กรองตามหมวด (ไม่ส่ง = ทุกหมวด)
     //                  &user_id=5   เฉพาะโพสต์ชุมชนของผู้ใช้คนนี้ (แอปเวอร์ชันเก่า)
     // ?scope=user      &user_id=5   หน้าโปรไฟล์: โพสต์ของคนนี้ที่เราเห็นได้
@@ -61,7 +65,17 @@ class PostController extends Controller
             $data = $request->validate([
                 'category' => ['nullable', Rule::in(Post::CATEGORIES)],
                 'user_id' => 'nullable|integer',
+                'sort' => 'nullable|in:for_you,latest',
+                'page' => 'nullable|integer|min:1',
             ]);
+
+            if (($data['sort'] ?? 'latest') === 'for_you' && !isset($data['user_id'])) {
+                return $this->forYouFeed(
+                    $user,
+                    $data['category'] ?? null,
+                    (int) ($data['page'] ?? 1)
+                );
+            }
 
             return $this->communityFeed(
                 $user,
@@ -87,11 +101,7 @@ class PostController extends Controller
             $membership->family_id
         )
             ->where('visibility', 'family')
-            ->with([
-                'user:' . self::USER_COLUMNS,
-                'images',
-                'comments.user:' . self::USER_COLUMNS,
-            ])
+            ->with($this->familyRelations())
             ->tap(fn ($query) => $this->withLikeInfo($query, $user))
             ->latest()
             ->get()
@@ -127,7 +137,7 @@ class PostController extends Controller
             ->simplePaginate(self::COMMUNITY_PAGE_SIZE);
 
         $posts = collect($paginator->items())
-            ->map(fn ($post) => $this->withOwnership($post, $user))
+            ->map(fn ($post) => $this->withOwnership($post, $user, $blockedIds))
             ->values();
 
         return response()->json([
@@ -138,6 +148,52 @@ class PostController extends Controller
             'posts' => $posts,
             'page' => $paginator->currentPage(),
             'has_more' => $paginator->hasMorePages(),
+        ]);
+    }
+
+    // =====================================================
+    // ฟีดชุมชน "สำหรับคุณ" (จัดลำดับด้วย FeedRanker)
+    // หน้าแรก (เปิด/ดึงรีเฟรช) จัดลำดับใหม่ หน้าถัดไปใช้ลำดับเดิม
+    // → เลื่อนดูต่อแล้วไม่เจอโพสต์ซ้ำหรือข้ามไป
+    // =====================================================
+
+    private function forYouFeed(User $user, ?string $category, int $page)
+    {
+        $blockedIds = $user->blockedUsers()->pluck('users.id');
+
+        $cacheKey = 'feed:for_you:' . $user->id . ':' . ($category ?? 'all');
+
+        $ids = $page > 1 ? Cache::get($cacheKey) : null;
+
+        if (!is_array($ids)) {
+            $ids = app(FeedRanker::class)->rankedIds($user, $blockedIds, $category)->all();
+
+            Cache::put($cacheKey, $ids, now()->addMinutes(30));
+        }
+
+        $pageIds = array_slice($ids, ($page - 1) * self::COMMUNITY_PAGE_SIZE, self::COMMUNITY_PAGE_SIZE);
+
+        $order = array_flip($pageIds);
+
+        $posts = Post::whereIn('id', $pageIds)
+            // ระหว่างเลื่อนดู โพสต์อาจถูกซ่อน/ถูกลบไปแล้ว
+            ->tap(fn ($query) => $this->visibleInCommunity($query, $user, $blockedIds))
+            ->with($this->communityRelations($user, $blockedIds))
+            ->tap(fn ($query) => $this->withLikeInfo($query, $user))
+            ->get()
+            ->sortBy(fn (Post $post) => $order[$post->id])
+            ->map(fn ($post) => $this->withOwnership($post, $user, $blockedIds))
+            ->values();
+
+        return response()->json([
+            'status' => true,
+            'scope' => 'community',
+            'sort' => 'for_you',
+            'category' => $category,
+            'current_user' => $this->currentUserPayload($user),
+            'posts' => $posts,
+            'page' => $page,
+            'has_more' => count($ids) > $page * self::COMMUNITY_PAGE_SIZE,
         ]);
     }
 
@@ -249,11 +305,7 @@ class PostController extends Controller
         } else {
             $query->where('visibility', 'family')
                 ->where('family_id', $membership->family_id)
-                ->with([
-                    'user:' . self::USER_COLUMNS,
-                    'images',
-                    'comments.user:' . self::USER_COLUMNS,
-                ]);
+                ->with($this->familyRelations());
         }
 
         $found = $query
@@ -389,15 +441,12 @@ class PostController extends Controller
             $post->showOnMap();
         }
 
-        $post->load([
-            'user:' . self::USER_COLUMNS,
-            'images',
-            'comments.user:' . self::USER_COLUMNS,
-        ]);
+        $post->load($this->familyRelations());
 
         $post->setAttribute('is_mine', true);
         $post->setAttribute('likes_count', 0);
         $post->setAttribute('liked_by_me', false);
+        $post->setAttribute('shares_count', 0);
 
         return response()->json([
             'status' => true,
@@ -413,7 +462,8 @@ class PostController extends Controller
         string $visibility,
         ?string $category,
         string $content,
-        array $imagePaths
+        array $imagePaths,
+        ?int $sharedPostId = null
     ): Post {
         return DB::transaction(
             function () use (
@@ -422,7 +472,8 @@ class PostController extends Controller
                 $content,
                 $imagePaths,
                 $user,
-                $membership
+                $membership,
+                $sharedPostId
             ) {
                 $post = Post::create([
                     'family_id' =>
@@ -431,6 +482,7 @@ class PostController extends Controller
                     'visibility' => $visibility,
                     'category' => $category,
                     'content' => $content,
+                    'shared_post_id' => $sharedPostId,
                 ]);
 
                 foreach ($imagePaths as $index => $path) {
@@ -467,7 +519,7 @@ class PostController extends Controller
                         'title' => 'โพสต์ใหม่',
                         'message' =>
                             $user->name .
-                            ' สร้างโพสต์ใหม่',
+                            ($sharedPostId ? ' แชร์โพสต์ให้ครอบครัว' : ' สร้างโพสต์ใหม่'),
                         'data' => [
                             'post_id' => $post->id,
                         ],
@@ -484,6 +536,102 @@ class PostController extends Controller
     // ถูกใจ / ยกเลิกถูกใจ
     // POST /api/posts/{post}/like (กดซ้ำ = ยกเลิก)
     // =====================================================
+
+    // =====================================================
+    // แชร์โพสต์ชุมชน
+    // POST /api/posts/{post}/share
+    // channel: external  ส่งต่อไปแอปอื่น (แอปเปิดหน้าแชร์ของมือถือเอง)
+    //          community แชร์ซ้ำในชุมชน (สร้างโพสต์ใหม่ที่อ้างถึงต้นฉบับ)
+    //          family    ส่งให้ครอบครัว (โพสต์ครอบครัวที่อ้างถึงต้นฉบับ)
+    // content: ข้อความเพิ่มเติม (ไม่บังคับ)
+    // =====================================================
+
+    public function share(Request $request, Post $post)
+    {
+        $data = $request->validate([
+            'channel' => ['required', Rule::in(Interaction::SHARE_CHANNELS)],
+            'content' => 'nullable|string|max:5000',
+        ]);
+
+        $user = $request->user();
+
+        $membership = FamilyMember::where('user_id', $user->id)->first();
+
+        if (!$membership) {
+            return response()->json([
+                'status' => false,
+                'message' => 'คุณยังไม่ได้อยู่ในครอบครัว',
+            ], 403);
+        }
+
+        $blockedIds = $user->blockedUsers()->pluck('users.id');
+
+        // แชร์ต่อจากโพสต์ที่แชร์มาอีกที → อ้างถึงต้นฉบับจริง
+        $original = $post->shared_post_id !== null
+            ? Post::find($post->shared_post_id)
+            : $post;
+
+        // แชร์ได้เฉพาะโพสต์ชุมชนที่เราเห็นได้ (โพสต์ครอบครัวเป็นเรื่องส่วนตัว)
+        $visible = $original !== null
+            && $original->isCommunity()
+            && Post::whereKey($original->id)
+                ->visibleInCommunityTo($user, $blockedIds)
+                ->exists();
+
+        if (!$visible) {
+            return response()->json([
+                'status' => false,
+                'message' => 'แชร์ได้เฉพาะโพสต์ในชุมชนที่ยังแสดงอยู่',
+            ], 404);
+        }
+
+        $channel = $data['channel'];
+
+        if ($channel === 'community' && $user->community_terms_accepted_at === null) {
+            return response()->json([
+                'status' => false,
+                'code' => 'terms_required',
+                'message' => 'กรุณายอมรับกฎชุมชนก่อนโพสต์',
+            ], 403);
+        }
+
+        $shared = null;
+
+        if ($channel !== 'external') {
+            $shared = $this->createPostRecords(
+                $user,
+                $membership,
+                $channel,
+                $channel === 'community' ? ($original->category ?? 'general') : null,
+                trim($data['content'] ?? ''),
+                [],
+                $original->id
+            );
+
+            $shared = Post::whereKey($shared->id)
+                ->with($this->familyRelations())
+                ->tap(fn ($query) => $this->withLikeInfo($query, $user))
+                ->first();
+
+            $shared = $this->withOwnership($shared, $user, $blockedIds);
+        }
+
+        Interaction::record($user, Interaction::SHARE, $original, meta: ['channel' => $channel]);
+
+        $messages = [
+            'external' => 'แชร์แล้ว',
+            'community' => 'แชร์ในชุมชนแล้ว',
+            'family' => 'ส่งให้ครอบครัวแล้ว',
+        ];
+
+        return response()->json([
+            'status' => true,
+            'message' => $messages[$channel],
+            'post_id' => $original->id,
+            'shares_count' => $original->shares()->count(),
+            'post' => $shared,
+        ], $shared ? 201 : 200);
+    }
 
     public function like(
         Request $request,
@@ -509,11 +657,15 @@ class PostController extends Controller
 
         if ($existing) {
             $existing->delete();
+
+            Interaction::forget($user, Interaction::LIKE, $post);
         } else {
             PostLike::firstOrCreate([
                 'post_id' => $post->id,
                 'user_id' => $user->id,
             ]);
+
+            Interaction::record($user, Interaction::LIKE, $post);
         }
 
         return response()->json([
@@ -655,11 +807,24 @@ class PostController extends Controller
 
     // ข้อมูลที่โหลดมากับโพสต์ชุมชน
     // ไม่แสดงความคิดเห็นที่ถูกซ่อน, ที่เรารายงานแล้ว หรือของคนที่เราบล็อก
+    private function familyRelations(): array
+    {
+        return [
+            'user:' . self::USER_COLUMNS,
+            'images',
+            'comments.user:' . self::USER_COLUMNS,
+            'sharedPost.user:' . self::USER_COLUMNS,
+            'sharedPost.images',
+        ];
+    }
+
     private function communityRelations(User $user, $blockedIds): array
     {
         return [
             'user:' . self::USER_COLUMNS,
             'images',
+            'sharedPost.user:' . self::USER_COLUMNS,
+            'sharedPost.images',
             'comments' => function ($query) use ($blockedIds, $user) {
                 $query->whereNull('hidden_at')
                     ->whereDoesntHave('reports', function ($reports) use ($user) {
@@ -690,19 +855,37 @@ class PostController extends Controller
     // จำนวนถูกใจ (likes_count) และเราถูกใจแล้วหรือยัง (liked_by_me)
     private function withLikeInfo($query, User $user)
     {
-        return $query->withCount('likes')
+        return $query->withCount(['likes', 'shares'])
             ->withExists([
                 'likes as liked_by_me' => fn ($likes) => $likes->where('user_id', $user->id),
             ]);
     }
 
     // ให้แอปรู้ว่าโพสต์ไหนเป็นของเรา (แสดงปุ่มลบ)
-    private function withOwnership(Post $post, User $user): Post
+    private function withOwnership(Post $post, User $user, $blockedIds = null): Post
     {
         $post->setAttribute(
             'is_mine',
             (int) $post->user_id === (int) $user->id
         );
+
+        // โพสต์ที่แชร์ต่อมา: ต้นฉบับถูกลบ / ถูกซ่อน / เป็นของคนที่เราบล็อก → ไม่แสดงต้นฉบับ
+        if ($post->shared_post_id !== null) {
+            $original = $post->sharedPost;
+
+            $blockedIds ??= $user->blockedUsers()->pluck('users.id');
+
+            $available = $original !== null
+                && $original->isCommunity()
+                && $original->hidden_at === null
+                && !$blockedIds->contains($original->user_id);
+
+            if (!$available) {
+                $post->setRelation('sharedPost', null);
+            }
+
+            $post->setAttribute('shared_post_unavailable', !$available);
+        }
 
         return $post;
     }

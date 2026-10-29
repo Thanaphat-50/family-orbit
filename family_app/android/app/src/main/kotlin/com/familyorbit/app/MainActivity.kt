@@ -26,7 +26,20 @@ class MainActivity : FlutterActivity() {
             description = "โพสต์ ความคิดเห็น กิจกรรม และข่าวจากครอบครัว"
         }
 
-        getSystemService(NotificationManager::class.java)
-            ?.createNotificationChannel(channel)
+        // แจ้งเตือนค้างตอน "แชร์แม้ไม่ได้เปิดแอป" (Android บังคับให้มี)
+        // ระดับต่ำสุด: ไม่มีไอคอนบนแถบด้านบน ไม่มีเสียง อยู่ท้ายรายการแบบย่อ
+        val locationChannel = NotificationChannel(
+            "location_sharing",
+            "แชร์ตำแหน่งตอนปิดแอป",
+            NotificationManager.IMPORTANCE_MIN,
+        ).apply {
+            description = "แสดงว่าใกล้กันกำลังแชร์ตำแหน่งให้ครอบครัว"
+            setShowBadge(false)
+        }
+
+        getSystemService(NotificationManager::class.java)?.apply {
+            createNotificationChannel(channel)
+            createNotificationChannel(locationChannel)
+        }
     }
 }

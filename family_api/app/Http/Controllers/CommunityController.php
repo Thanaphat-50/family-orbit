@@ -176,6 +176,9 @@ class CommunityController extends Controller
                 'is_family' => $isFamily,
                 'family_role' => $familyRole,
                 'blocked' => $blockedIds->contains($user->id),
+                'followers_count' => $user->followers()->count(),
+                'following_count' => $user->following()->count(),
+                'is_following' => !$isMe && $me->following()->whereKey($user->id)->exists(),
             ],
         ]);
     }

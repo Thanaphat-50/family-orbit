@@ -25,6 +25,7 @@ import 'chat_list_page.dart';
 import 'chat_room_page.dart';
 import 'feed_page.dart';
 import 'map_page.dart';
+import 'history_page.dart';
 import 'my_posts_page.dart';
 import 'my_shop_page.dart';
 import 'notification_page.dart';
@@ -1062,6 +1063,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       case AccountMenuItem.myPosts:
         await navigator.push(
           MaterialPageRoute(builder: (_) => const MyPostsPage()),
+        );
+
+      case AccountMenuItem.history:
+        await navigator.push(
+          MaterialPageRoute(builder: (_) => const HistoryPage()),
         );
 
       case AccountMenuItem.communityProfile:

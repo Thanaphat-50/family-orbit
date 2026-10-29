@@ -75,6 +75,25 @@ class User extends Authenticatable implements FilamentUser
         return $this->hasMany(AccountDeletionRequest::class);
     }
 
+    // คนที่เราติดตาม
+    public function following()
+    {
+        return $this->belongsToMany(User::class, 'follows', 'follower_id', 'followee_id')
+            ->withTimestamps();
+    }
+
+    // คนที่ติดตามเรา
+    public function followers()
+    {
+        return $this->belongsToMany(User::class, 'follows', 'followee_id', 'follower_id')
+            ->withTimestamps();
+    }
+
+    public function interactions()
+    {
+        return $this->hasMany(Interaction::class);
+    }
+
     // บัญชี Google / LINE / Facebook ที่เชื่อมไว้
     public function socialAccounts()
     {
