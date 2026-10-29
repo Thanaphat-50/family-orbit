@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 
 import '../config/app_info.dart';
 import '../services/auth_service.dart';
+import '../services/background_location.dart';
 import '../services/chat_service.dart';
 import '../services/family_service.dart';
 import '../services/location_tracker.dart';
@@ -123,6 +124,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   Future<void> startLocationSharing() async {
     if (!hasFamily) {
       LocationTracker.stop();
+      BackgroundLocation.pause();
       return;
     }
 
@@ -138,6 +140,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     if (!mounted) return;
 
     await LocationTracker.start();
+
+    // แชร์ตอนปิดแอปด้วย (ถ้าผู้ใช้เปิดไว้และยังอนุญาต "ตลอดเวลา")
+    await BackgroundLocation.sync();
   }
 
   // =====================================================
@@ -2847,7 +2852,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
 
     // ออกจากระบบ / ลบบัญชี → หยุดส่งตำแหน่ง และล้างค่าตั้งค่าของบัญชีนี้
+    // (บัญชีถัดไปบนเครื่องนี้ต้องเปิดแชร์ตอนปิดแอปเอง)
     LocationTracker.stop();
+    BackgroundLocation.turnOff();
     SettingsService.locationSharing.value = null;
 
     pushOpenedSubscription?.cancel();

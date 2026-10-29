@@ -47,6 +47,9 @@ dependencies:
   google_sign_in: ^7.2.0
   flutter_line_sdk: ^3.0.0
   flutter_web_auth_2: ^5.1.0
+  geocoding: ^5.0.1
+  flutter_background_service: ^5.1.0
+  permission_handler: ^12.0.1
 dev_dependencies:
   flutter_test:
     sdk: flutter

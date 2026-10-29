@@ -81,6 +81,14 @@ class AppServiceProvider extends ServiceProvider
                 ->by('chat:' . ($request->user()?->id ?? $request->ip()))
                 ->response($this->tooManyAttempts(...));
         });
+
+        // เส้นทางบนแผนที่: เรียก Google Routes API (มีค่าใช้จ่ายเมื่อเกินโควตาฟรี)
+        RateLimiter::for('route', function (Request $request) {
+            return [
+                Limit::perMinute(10)->by('route-min:' . ($request->user()?->id ?? $request->ip())),
+                Limit::perDay(200)->by('route-day:' . ($request->user()?->id ?? $request->ip())),
+            ];
+        });
     }
 
     // =====================================================

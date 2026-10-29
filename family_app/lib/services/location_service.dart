@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import 'api_helper.dart';
 import 'auth_service.dart';
 import '../config/api_config.dart';
 
@@ -32,15 +33,45 @@ class LocationService {
     return jsonDecode(response.body);
   }
 
+  // เส้นทางตามถนนจากเราไปหาสมาชิก
+  // mode: drive / motorcycle / walk
+  // ตอบ distance_meters, duration_seconds, polyline
+  // code routes_disabled = Server ยังไม่ตั้งค่า → แอปใช้ระยะเส้นตรงแทน
+  static Future<Map<String, dynamic>> getRoute({
+    required int userId,
+    required double fromLat,
+    required double fromLng,
+    String mode = 'drive',
+  }) async {
+    final token = await AuthService.getToken();
+
+    final Uri uri = Uri.parse('$baseUrl/family/members/$userId/route').replace(
+      queryParameters: {
+        'from_lat': fromLat.toStringAsFixed(6),
+        'from_lng': fromLng.toStringAsFixed(6),
+        'mode': mode,
+      },
+    );
+
+    final response = await ApiHelper.request(
+      () => http.get(
+        uri,
+        headers: {
+          'Accept': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      ),
+    );
+
+    return ApiHelper.decode(response);
+  }
+
   static Future<Map<String, dynamic>> getFamilyLocations() async {
     final token = await AuthService.getToken();
 
     final response = await http.get(
       Uri.parse('$baseUrl/family/locations'),
-      headers: {
-        'Accept': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
+      headers: {'Accept': 'application/json', 'Authorization': 'Bearer $token'},
     );
 
     return jsonDecode(response.body);

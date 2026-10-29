@@ -4,12 +4,14 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../config/app_info.dart';
 import '../services/auth_service.dart';
+import '../services/background_location.dart';
 import '../services/location_tracker.dart';
 import '../services/profile_service.dart';
 import '../services/settings_service.dart';
 import '../services/social_auth_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
+import '../widgets/background_location_prompt.dart';
 import '../widgets/community_sheets.dart';
 import 'login_page.dart';
 
@@ -65,6 +67,10 @@ class _SettingsPageState extends State<SettingsPage> {
   bool locationSharing = true;
   Map<String, bool> notifications = {};
 
+  // แชร์ตำแหน่งแม้ไม่ได้เปิดแอป (เปิดสวิตช์ไว้ + อนุญาต "ตลอดเวลา")
+  bool backgroundLocation = false;
+  bool backgroundBusy = false;
+
   // ค่าที่กำลังบันทึก (กันกดซ้ำ)
   final Set<String> savingKeys = {};
 
@@ -90,6 +96,39 @@ class _SettingsPageState extends State<SettingsPage> {
     loadVersion();
     loadSocialAccounts();
     loadDeletionRequest();
+    loadBackgroundLocation();
+  }
+
+  // =====================================================
+  // แชร์ตำแหน่งแม้ไม่ได้เปิดแอป
+  // =====================================================
+
+  Future<void> loadBackgroundLocation() async {
+    if (!BackgroundLocation.supported) return;
+
+    final bool on =
+        await BackgroundLocation.isEnabled() &&
+        await BackgroundLocation.hasAlwaysPermission();
+
+    if (mounted) setState(() => backgroundLocation = on);
+  }
+
+  Future<void> setBackgroundLocation(bool enabled) async {
+    setState(() => backgroundBusy = true);
+
+    try {
+      if (enabled) {
+        await enableBackgroundLocation(context);
+      } else {
+        await BackgroundLocation.turnOff();
+
+        showMessage('ปิดแล้ว จะแชร์ตำแหน่งเฉพาะตอนเปิดแอป');
+      }
+
+      await loadBackgroundLocation();
+    } finally {
+      if (mounted) setState(() => backgroundBusy = false);
+    }
   }
 
   // =====================================================
@@ -387,6 +426,9 @@ class _SettingsPageState extends State<SettingsPage> {
         LocationTracker.stop();
         showMessage('ปิดการแชร์ตำแหน่งแล้ว');
       }
+
+      // เริ่ม/หยุดการแชร์ตอนปิดแอปตามสวิตช์นี้ด้วย
+      await BackgroundLocation.sync();
     } catch (e) {
       if (!mounted) return;
 
@@ -1333,13 +1375,27 @@ class _SettingsPageState extends State<SettingsPage> {
           icon: Icons.location_on_outlined,
           color: AppColors.success,
           title: 'แชร์ตำแหน่งกับครอบครัว',
-          subtitle: locationSharing
-              ? 'ครอบครัวเห็นตำแหน่งล่าสุดของคุณขณะเปิดแอป (ไม่ติดตามตอนปิดแอป)'
-              : 'ปิดอยู่ ครอบครัวไม่เห็นตำแหน่งของคุณ',
+          subtitle: !locationSharing
+              ? 'ปิดอยู่ ครอบครัวไม่เห็นตำแหน่งของคุณ'
+              : backgroundLocation
+              ? 'ครอบครัวเห็นตำแหน่งของคุณ แม้ปิดแอป'
+              : 'ครอบครัวเห็นตำแหน่งล่าสุดของคุณขณะเปิดแอป',
           value: locationSharing,
           busy: savingKeys.contains('location_sharing'),
           onChanged: setLocationSharing,
         ),
+        if (BackgroundLocation.supported)
+          buildSwitchRow(
+            icon: Icons.share_location_rounded,
+            color: AppColors.primary,
+            title: 'แชร์แม้ไม่ได้เปิดแอป',
+            subtitle: backgroundLocation
+                ? 'ส่งเมื่อคุณขยับ และอย่างน้อยทุก 5 นาที (มีแจ้งเตือนค้างไว้)'
+                : 'ครอบครัวเห็นตำแหน่งปัจจุบันแม้คุณปิดแอป',
+            value: locationSharing && backgroundLocation,
+            busy: backgroundBusy || !locationSharing,
+            onChanged: setBackgroundLocation,
+          ),
       ]),
       buildSectionTitle('การแจ้งเตือน'),
       buildGroup([

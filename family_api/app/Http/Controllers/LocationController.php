@@ -6,8 +6,11 @@ use App\Models\FamilyMember;
 use App\Models\Post;
 use App\Models\User;
 use App\Models\UserLocation;
+use App\Services\RouteFinder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
+use RuntimeException;
 
 class LocationController extends Controller
 {
@@ -164,6 +167,81 @@ class LocationController extends Controller
             'status' => true,
             'locations' => $locations,
             'paused' => $paused,
+        ]);
+    }
+
+    // =====================================================
+    // เส้นทางตามถนนจากเราไปหาสมาชิก
+    // GET /api/family/members/{user}/route?from_lat=&from_lng=&mode=drive
+    // =====================================================
+
+    public function route(Request $request, User $user, RouteFinder $routes)
+    {
+        $data = $request->validate([
+            'from_lat' => 'required|numeric|between:-90,90',
+            'from_lng' => 'required|numeric|between:-180,180',
+            'mode' => ['nullable', Rule::in(array_keys(RouteFinder::MODES))],
+        ]);
+
+        $familyId = FamilyMember::where('user_id', $request->user()->id)
+            ->value('family_id');
+
+        $sameFamily = $familyId !== null
+            && FamilyMember::where('family_id', $familyId)
+                ->where('user_id', $user->id)
+                ->exists();
+
+        // ดูเส้นทางได้เฉพาะสมาชิกครอบครัวเดียวกันที่เปิดแชร์ตำแหน่งอยู่
+        $location = $sameFamily && $user->location_sharing !== false
+            ? UserLocation::where('user_id', $user->id)->first()
+            : null;
+
+        if (!$location) {
+            return response()->json([
+                'status' => false,
+                'message' => 'ไม่พบตำแหน่งของสมาชิกคนนี้',
+            ], 404);
+        }
+
+        // แอปใช้ 4xx (5xx แอปถือเป็น Server ล่ม) → แสดงระยะทางเส้นตรงแทน
+        if (!$routes->enabled()) {
+            return response()->json([
+                'status' => false,
+                'code' => 'routes_disabled',
+                'message' => 'ยังไม่ได้เปิดใช้การคำนวณเส้นทาง',
+            ], 409);
+        }
+
+        $mode = $data['mode'] ?? 'drive';
+
+        try {
+            $route = $routes->route(
+                (float) $data['from_lat'],
+                (float) $data['from_lng'],
+                (float) $location->latitude,
+                (float) $location->longitude,
+                $mode
+            );
+        } catch (RuntimeException) {
+            return response()->json([
+                'status' => false,
+                'code' => 'route_failed',
+                'message' => 'คำนวณเส้นทางไม่สำเร็จ กรุณาลองใหม่',
+            ], 424);
+        }
+
+        if (!$route) {
+            return response()->json([
+                'status' => false,
+                'code' => 'no_route',
+                'message' => 'ไม่พบเส้นทางสำหรับการเดินทางแบบนี้',
+            ], 404);
+        }
+
+        return response()->json([
+            'status' => true,
+            'mode' => $mode,
+            ...$route,
         ]);
     }
 }

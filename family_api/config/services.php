@@ -34,6 +34,10 @@ return [
     // Web client ID ของ Google (คั่นด้วย , ได้หลายตัว)
     'google' => [
         'client_ids' => env('GOOGLE_CLIENT_IDS'),
+
+        // คีย์ฝั่ง Server สำหรับ Routes API (ระยะทาง/เวลาเดินทางตามถนน)
+        // ไม่ตั้ง → แอปแสดงระยะทางเส้นตรงแทน
+        'maps_server_key' => env('GOOGLE_MAPS_SERVER_KEY'),
     ],
 
     'line' => [

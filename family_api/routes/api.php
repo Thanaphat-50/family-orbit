@@ -80,6 +80,12 @@ Route::middleware('auth:sanctum')->group(function () {
         'familyLocations'
     ]);
 
+    // เส้นทางตามถนนไปหาสมาชิก (Google Routes API)
+    Route::get('/family/members/{user}/route', [
+        LocationController::class,
+        'route'
+    ])->middleware('throttle:route');
+
     Route::get('/posts', [
         PostController::class,
         'index'

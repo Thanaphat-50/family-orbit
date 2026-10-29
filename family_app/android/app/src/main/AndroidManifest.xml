@@ -5,6 +5,11 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
+    <!-- แชร์ตำแหน่งแม้ไม่ได้เปิดแอป (ผู้ใช้เปิดเองที่ ตั้งค่า → อนุญาตตลอดเวลา) -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+
     <application
         android:label="ใกล้กัน"
         android:name="${applicationName}"
@@ -73,6 +78,10 @@
             android:name="com.google.firebase.messaging.default_notification_color"
             android:resource="@color/notification_color" />
 
+        <!-- Service ส่งตำแหน่งตอนปิดแอป (flutter_background_service) ต้องประกาศว่าเป็นงานตำแหน่ง -->
+        <service
+            android:name="id.flutter.flutter_background_service.BackgroundService"
+            android:foregroundServiceType="location" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
