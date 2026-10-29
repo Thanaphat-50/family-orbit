@@ -80,8 +80,17 @@ class _MapPageState extends State<MapPage> {
 
   // คำนวณเส้นทางใหม่เมื่อสมาชิกขยับไกลกว่านี้ (และห่างจากครั้งก่อนพอสมควร)
   // กันเรียก Routes API ถี่เกินตอนเขากำลังเดินทาง
-  static const double rerouteAfterMeters = 300;
-  static const Duration rerouteEvery = Duration(minutes: 2);
+  static const double rerouteAfterMeters = 150;
+  static const Duration rerouteEvery = Duration(seconds: 45);
+
+  // เราออกนอกเส้นทางเกินนี้ → คำนวณเส้นทางใหม่
+  static const double offRouteMeters = 120;
+
+  // จุดบนเส้นทางที่เราผ่านมาแล้ว (ตัดส่วนที่ผ่านแล้วออกจากเส้น)
+  int routeProgress = 0;
+
+  // เส้นทางแรก / เปลี่ยนโหมด → ซูมให้เห็นทั้งเส้น
+  bool routeNeedsFit = false;
 
   DateTime? routeFetchedAt;
 
@@ -128,7 +137,10 @@ class _MapPageState extends State<MapPage> {
 
   // ตำแหน่งตั้งต้นของ Map
   // ใช้ก่อน GPS โหลดเสร็จ
-  static const LatLng defaultPosition = LatLng(37.3943833, -121.9658783);
+  static const LatLng defaultPosition = LatLng(13.7563, 100.5018);
+
+  // ยังไม่รู้ตำแหน่งเรา (ปิด GPS / ไม่อนุญาต) → พาไปดูสมาชิกแทนแผนที่ตั้งต้นครั้งเดียว
+  bool shownFamilyFirst = false;
 
   // ชวนเปิด "แชร์แม้ไม่ได้เปิดแอป" (ซ่อนเมื่อเปิดแล้ว / กดปิด)
   bool showBackgroundInvite = false;
@@ -160,7 +172,7 @@ class _MapPageState extends State<MapPage> {
     return Positioned(
       top: 104,
       left: 14,
-      right: 72,
+      right: 14,
 
       child: Material(
         color: AppColors.surface,
@@ -365,6 +377,8 @@ class _MapPageState extends State<MapPage> {
               });
 
               locationsVersion.value++;
+
+              followRoute(position);
             });
   }
 
@@ -410,6 +424,15 @@ class _MapPageState extends State<MapPage> {
         locationsVersion.value++;
 
         prepareStatusBubbles();
+
+        if (!shownFamilyFirst &&
+            currentPosition == null &&
+            mapController != null &&
+            locations.isNotEmpty) {
+          shownFamilyFirst = true;
+
+          showAllMembers();
+        }
 
         // สมาชิกที่กำลังดูขยับไป → หาที่อยู่ใหม่
         final int? focused = focusedUserId;
@@ -466,10 +489,11 @@ class _MapPageState extends State<MapPage> {
   // REFRESH ทุก 10 วินาที
   // =====================================================
 
-  void startRefreshTimer() {
+  // ดูรายละเอียดสมาชิกอยู่ → รีเฟรชถี่ขึ้น ให้หมุดของเขาขยับแบบเรียลไทม์
+  void startRefreshTimer({bool fast = false}) {
     refreshTimer?.cancel();
 
-    refreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+    refreshTimer = Timer.periodic(Duration(seconds: fast ? 5 : 10), (_) {
       loadFamilyLocations();
     });
   }
@@ -1058,18 +1082,20 @@ class _MapPageState extends State<MapPage> {
         current['user_id'] == userId &&
         points is List<LatLng> &&
         points.length >= 2) {
+      final List<LatLng> live = liveRoutePoints(points, me);
+
       return {
         // ขอบสีขาวให้เส้นเด่นบนถนน
         Polyline(
           polylineId: const PolylineId('route_outline'),
-          points: points,
+          points: live,
           color: AppColors.isDark ? const Color(0xFF0F1A2B) : Colors.white,
           width: 9,
           zIndex: 1,
         ),
         Polyline(
           polylineId: const PolylineId('route'),
-          points: points,
+          points: live,
           color: AppColors.primary,
           width: 6,
           zIndex: 2,
@@ -1224,6 +1250,8 @@ class _MapPageState extends State<MapPage> {
 
     loadAddress(location);
 
+    startRefreshTimer(fast: true);
+
     // รอให้แผนที่รับระยะขอบใหม่ก่อน แล้วค่อยเลื่อนกล้อง
     await Future<void>.delayed(const Duration(milliseconds: 150));
 
@@ -1242,6 +1270,8 @@ class _MapPageState extends State<MapPage> {
       routeLoading = false;
       routeRequest++;
     });
+
+    startRefreshTimer();
   }
 
   // =====================================================
@@ -1280,18 +1310,31 @@ class _MapPageState extends State<MapPage> {
         );
 
         setState(() {
+          final bool first = route?['user_id'] != userId;
+
           route = {
             'user_id': userId,
             'mode': mode,
             'distance': toDouble(result['distance_meters']),
             'duration': toDouble(result['duration_seconds']),
             'points': points,
+            'line_meters': pathLength(points),
           };
 
+          routeProgress = 0;
+
           routeFetchedAt = DateTime.now();
+
+          // เส้นทางแรกของคนนี้ → ซูมให้เห็นทั้งเส้น
+          // (คำนวณใหม่ระหว่างทางไม่ย้ายกล้อง ผู้ใช้อาจซูมดูอยู่)
+          if (first) routeNeedsFit = true;
         });
 
-        if (points.length >= 2) showPoints(points);
+        if (routeNeedsFit && points.length >= 2) {
+          routeNeedsFit = false;
+
+          showPoints(points);
+        }
       } else if (result['code'] == 'routes_disabled') {
         setState(() {
           routesDisabled = true;
@@ -1317,6 +1360,134 @@ class _MapPageState extends State<MapPage> {
     }
   }
 
+  // =====================================================
+  // เส้นทางแบบเรียลไทม์
+  // - เราขยับ → ตัดส่วนที่ผ่านแล้วออก ระยะทาง/เวลาที่เหลือลดลงตาม
+  // - ออกนอกเส้นทาง / สมาชิกขยับไกล → คำนวณใหม่ (ไม่ถี่กว่าทุก 45 วินาที)
+  // =====================================================
+
+  bool canReroute() {
+    final DateTime? fetchedAt = routeFetchedAt;
+
+    return !routeLoading &&
+        (fetchedAt == null ||
+            DateTime.now().difference(fetchedAt) >= rerouteEvery);
+  }
+
+  void followRoute(Position me) {
+    final dynamic points = route?['points'];
+
+    if (focusedUserId == null || points is! List<LatLng> || points.length < 2) {
+      return;
+    }
+
+    int nearest = routeProgress;
+
+    double best = double.infinity;
+
+    for (int i = routeProgress; i < points.length; i++) {
+      final double distance = Geolocator.distanceBetween(
+        me.latitude,
+        me.longitude,
+        points[i].latitude,
+        points[i].longitude,
+      );
+
+      if (distance < best) {
+        best = distance;
+        nearest = i;
+      }
+    }
+
+    if (best > offRouteMeters) {
+      if (canReroute()) loadRoute();
+      return;
+    }
+
+    if (nearest != routeProgress) setState(() => routeProgress = nearest);
+  }
+
+  // เส้นที่วาด: จากตำแหน่งเรา → ส่วนที่ยังไม่ผ่าน → ตำแหน่งล่าสุดของสมาชิก
+  List<LatLng> liveRoutePoints(List<LatLng> points, Position me) {
+    final int start = (routeProgress + 1).clamp(0, points.length - 1);
+
+    final List<LatLng> live = [
+      LatLng(me.latitude, me.longitude),
+      ...points.sublist(start),
+    ];
+
+    final int? userId = focusedUserId;
+
+    final Map<String, dynamic>? member = userId == null
+        ? null
+        : locationOf(userId);
+
+    final latitude = member == null ? null : toDouble(member['latitude']);
+
+    final longitude = member == null ? null : toDouble(member['longitude']);
+
+    // สมาชิกขยับไปจากปลายเส้นทาง → ต่อเส้นไปถึงหมุดของเขา
+    if (latitude != null &&
+        longitude != null &&
+        Geolocator.distanceBetween(
+              points.last.latitude,
+              points.last.longitude,
+              latitude,
+              longitude,
+            ) >
+            20) {
+      live.add(LatLng(latitude, longitude));
+    }
+
+    return live;
+  }
+
+  static double pathLength(List<LatLng> points) {
+    double meters = 0;
+
+    for (int i = 1; i < points.length; i++) {
+      meters += Geolocator.distanceBetween(
+        points[i - 1].latitude,
+        points[i - 1].longitude,
+        points[i].latitude,
+        points[i].longitude,
+      );
+    }
+
+    return meters;
+  }
+
+  // ระยะทาง/เวลาที่เหลือ (เทียบสัดส่วนกับเส้นทางที่ Google คำนวณ)
+  ({double? meters, double? seconds}) routeRemaining(
+    Map<String, dynamic> current,
+  ) {
+    final double? distance = toDouble(current['distance']);
+
+    final double? duration = toDouble(current['duration']);
+
+    final double? lineMeters = toDouble(current['line_meters']);
+
+    final dynamic points = current['points'];
+
+    final Position? me = currentPosition;
+
+    if (me == null ||
+        points is! List<LatLng> ||
+        points.length < 2 ||
+        lineMeters == null ||
+        lineMeters <= 0) {
+      return (meters: distance, seconds: duration);
+    }
+
+    final double ratio = (pathLength(liveRoutePoints(points, me)) / lineMeters)
+        .clamp(0.0, 1.5);
+
+    return (
+      meters: distance == null ? null : distance * ratio,
+      seconds: duration == null ? null : duration * ratio,
+    );
+  }
+
   // เส้นทางเดิมไปไม่ถึงตำแหน่งใหม่ของสมาชิกแล้ว?
   bool memberMovedFromRoute(Map<String, dynamic> member) {
     final dynamic points = route?['points'];
@@ -1336,7 +1507,7 @@ class _MapPageState extends State<MapPage> {
       return false;
     }
 
-    if (DateTime.now().difference(fetchedAt) < rerouteEvery) return false;
+    if (!canReroute()) return false;
 
     return Geolocator.distanceBetween(
           points.last.latitude,
@@ -1350,7 +1521,10 @@ class _MapPageState extends State<MapPage> {
   void selectRouteMode(String mode) {
     if (routeLoading && mode == routeMode) return;
 
-    setState(() => routeMode = mode);
+    setState(() {
+      routeMode = mode;
+      routeNeedsFit = true;
+    });
 
     loadRoute();
   }
@@ -1474,27 +1648,59 @@ class _MapPageState extends State<MapPage> {
     return parts.isEmpty ? null : parts.join(' ');
   }
 
-  // เปิด Google Maps เริ่มนำทางไปหาสมาชิกตามโหมดที่เลือก
+  // ส่งต่อให้ Google Maps นำทางแบบบอกทางเลี้ยว
+  // ไปยังตำแหน่งล่าสุดของสมาชิก ณ ตอนที่กด
   Future<void> openDirections(Map<String, dynamic> location) async {
-    final latitude = toDouble(location['latitude']);
+    final int? userId = userIdOf(location);
 
-    final longitude = toDouble(location['longitude']);
+    // ดึงตำแหน่งล่าสุดก่อน (เขาอาจเพิ่งขยับ)
+    await loadFamilyLocations();
+
+    final Map<String, dynamic> latest =
+        (userId == null ? null : locationOf(userId)) ?? location;
+
+    final latitude = toDouble(latest['latitude']);
+
+    final longitude = toDouble(latest['longitude']);
 
     if (latitude == null || longitude == null) return;
 
-    final Uri uri = Uri.https('www.google.com', '/maps/dir/', {
-      'api': '1',
-      'destination': '$latitude,$longitude',
-      'travelmode': travelModes[routeMode]!.googleMode,
-      'dir_action': 'navigate',
-    });
+    const Map<String, String> navigationModes = {
+      'drive': 'd',
+      'motorcycle': 'l',
+      'walk': 'w',
+    };
 
     bool opened = false;
 
+    // แอป Google Maps: เข้าโหมดนำทางทันที
     try {
-      opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      opened = await launchUrl(
+        Uri.parse(
+          'google.navigation:q=$latitude,$longitude'
+          '&mode=${navigationModes[routeMode] ?? 'd'}',
+        ),
+        mode: LaunchMode.externalApplication,
+      );
     } catch (_) {
       opened = false;
+    }
+
+    // ไม่มีแอป Google Maps → เปิดผ่านลิงก์ (เบราว์เซอร์)
+    if (!opened) {
+      try {
+        opened = await launchUrl(
+          Uri.https('www.google.com', '/maps/dir/', {
+            'api': '1',
+            'destination': '$latitude,$longitude',
+            'travelmode': travelModes[routeMode]!.googleMode,
+            'dir_action': 'navigate',
+          }),
+          mode: LaunchMode.externalApplication,
+        );
+      } catch (_) {
+        opened = false;
+      }
     }
 
     if (!opened) showMessage('เปิด Google Maps ไม่ได้');
@@ -1643,13 +1849,13 @@ class _MapPageState extends State<MapPage> {
     final Map<String, dynamic>? current =
         route != null && route!['user_id'] == userId ? route : null;
 
-    final double? roadDistance = current == null
+    final ({double? meters, double? seconds})? remaining = current == null
         ? null
-        : toDouble(current['distance']);
+        : routeRemaining(current);
 
-    final double? duration = current == null
-        ? null
-        : toDouble(current['duration']);
+    final double? roadDistance = remaining?.meters;
+
+    final double? duration = remaining?.seconds;
 
     final double? straight = distanceTo(location);
 
@@ -1896,9 +2102,9 @@ class _MapPageState extends State<MapPage> {
           minimumSize: const Size(double.infinity, 50),
         ),
 
-        icon: const Icon(Icons.navigation_rounded),
+        icon: Icon(travelModes[routeMode]!.icon),
 
-        label: Text('เริ่มนำทาง (${travelModes[routeMode]!.label})'),
+        label: const Text('นำทางด้วย Google Maps'),
       ),
 
       if (stale) ...[
@@ -2347,13 +2553,21 @@ class _MapPageState extends State<MapPage> {
   // MAP ACTION BUTTONS
   // =====================================================
 
-  // ปุ่มซูมเข้า/ออก (มุมขวาบน ใต้การ์ดหัวแผนที่)
-  Widget buildZoomButtons() {
+  // ปุ่มด้านขวา (ซูม / ดูทุกคน / ตำแหน่งของฉัน) อยู่เหนือแผงด้านล่าง
+  // → ไม่บังแถบแจ้งเตือนด้านบน
+  Widget buildMapButtons({required bool detailOpen, required double height}) {
+    final double bottom = (detailOpen ? height * detailSize : 155) + 12;
+
+    // ลากแผ่นรายละเอียดขึ้นสูงมาก → ไม่มีที่วางปุ่ม
+    if (bottom + 110 > height - 96) return const SizedBox.shrink();
+
     return Positioned(
       right: 14,
-      top: 104,
+      bottom: bottom,
 
       child: Column(
+        mainAxisSize: MainAxisSize.min,
+
         children: [
           _FamilyMapButton(
             icon: Icons.add_rounded,
@@ -2368,37 +2582,25 @@ class _MapPageState extends State<MapPage> {
             tooltip: 'ซูมออก',
             onPressed: () => zoomBy(-1),
           ),
-        ],
-      ),
-    );
-  }
 
-  Widget buildMapButtons() {
-    return Positioned(
-      right: 14,
-      bottom: 166,
+          if (!detailOpen) ...[
+            const SizedBox(height: 16),
 
-      child: Column(
-        children: [
-          _FamilyMapButton(
-            icon: Icons.groups_rounded,
+            _FamilyMapButton(
+              icon: Icons.groups_rounded,
+              tooltip: 'ดูสมาชิกทั้งหมด',
+              onPressed: showAllMembers,
+            ),
 
-            tooltip: 'ดูสมาชิกทั้งหมด',
+            const SizedBox(height: 10),
 
-            onPressed: showAllMembers,
-          ),
-
-          const SizedBox(height: 10),
-
-          _FamilyMapButton(
-            icon: Icons.my_location_rounded,
-
-            tooltip: 'ตำแหน่งของฉัน',
-
-            primary: true,
-
-            onPressed: moveToMyLocation,
-          ),
+            _FamilyMapButton(
+              icon: Icons.my_location_rounded,
+              tooltip: 'ตำแหน่งของฉัน',
+              primary: true,
+              onPressed: moveToMyLocation,
+            ),
+          ],
         ],
       ),
     );
@@ -2679,7 +2881,7 @@ class _MapPageState extends State<MapPage> {
 
           initialCameraPosition: const CameraPosition(
             target: defaultPosition,
-            zoom: 15,
+            zoom: 11,
           ),
 
           onMapCreated: (controller) {
@@ -2721,8 +2923,6 @@ class _MapPageState extends State<MapPage> {
 
         buildLocationError(),
 
-        buildZoomButtons(),
-
         if (showBackgroundInvite && !detailOpen && locationError == null)
           ValueListenableBuilder<bool?>(
             valueListenable: SettingsService.locationSharing,
@@ -2731,7 +2931,7 @@ class _MapPageState extends State<MapPage> {
                 : buildBackgroundInvite(),
           ),
 
-        if (!detailOpen) buildMapButtons(),
+        buildMapButtons(detailOpen: detailOpen, height: height),
 
         if (detailOpen) buildMemberDetailPanel() else buildMemberPanel(),
       ],
