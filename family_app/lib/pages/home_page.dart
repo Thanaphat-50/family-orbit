@@ -4,6 +4,7 @@ import 'package:firebase_messaging/firebase_messaging.dart' show RemoteMessage;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../config/app_info.dart';
 import '../services/auth_service.dart';
@@ -17,6 +18,7 @@ import '../services/push_service.dart';
 import '../services/settings_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/account_drawer.dart';
+import '../widgets/family_invitation_cards.dart';
 import '../widgets/section_switch.dart';
 import '../widgets/user_avatar.dart';
 
@@ -97,7 +99,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     loadMyProfile();
 
     setUpPush();
+
+    FamilyService.changes.addListener(onFamilyChanged);
   }
+
+  void onFamilyChanged() => loadFamily(showLoading: false);
 
   // =====================================================
   // APP LIFECYCLE
@@ -150,6 +156,132 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   // FAMILY
   // =====================================================
 
+  // คำเชิญ / คำขอเข้าครอบครัว (โหลดพร้อมข้อมูลครอบครัว)
+  Map<String, dynamic>? invitations;
+
+  final Set<int> invitationBusy = {};
+
+  List<Map<String, dynamic>> invitationList(String key) {
+    final dynamic raw = invitations?[key];
+
+    return raw is List
+        ? raw
+              .whereType<Map>()
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList()
+        : [];
+  }
+
+  Future<void> loadInvitations() async {
+    try {
+      final result = await FamilyService.invitations();
+
+      if (!mounted || result['status'] != true) return;
+
+      setState(() => invitations = result);
+    } catch (_) {
+      // โหลดไม่ได้ → ไม่แสดงส่วนคำเชิญ
+    }
+  }
+
+  // action: accept / decline
+  Future<void> respondInvitation(
+    Map<String, dynamic> invitation,
+    String action,
+  ) async {
+    final dynamic id = invitation['id'];
+
+    if (id is! num || invitationBusy.contains(id.toInt())) return;
+
+    setState(() => invitationBusy.add(id.toInt()));
+
+    try {
+      final result = await FamilyService.respondInvitation(id.toInt(), action);
+
+      if (!mounted) return;
+
+      showMessage(result['message']?.toString() ?? 'ทำรายการไม่สำเร็จ');
+
+      if (result['joined'] == true) {
+        await loadFamily(showLoading: false);
+      } else {
+        await loadInvitations();
+      }
+    } catch (e) {
+      if (mounted) showMessage(e.toString());
+    } finally {
+      if (mounted) setState(() => invitationBusy.remove(id.toInt()));
+    }
+  }
+
+  Future<void> cancelInvitation(Map<String, dynamic> invitation) async {
+    final dynamic id = invitation['id'];
+
+    if (id is! num || invitationBusy.contains(id.toInt())) return;
+
+    setState(() => invitationBusy.add(id.toInt()));
+
+    try {
+      final result = await FamilyService.cancelInvitation(id.toInt());
+
+      if (!mounted) return;
+
+      showMessage(result['message']?.toString() ?? 'ทำรายการไม่สำเร็จ');
+
+      await loadInvitations();
+    } catch (e) {
+      if (mounted) showMessage(e.toString());
+    } finally {
+      if (mounted) setState(() => invitationBusy.remove(id.toInt()));
+    }
+  }
+
+  Future<void> inviteByEmail() async {
+    final String? email = await askInviteEmail(context);
+
+    if (email == null || !mounted) return;
+
+    try {
+      final result = await FamilyService.invite(email: email);
+
+      if (!mounted) return;
+
+      showMessage(result['message']?.toString() ?? 'ส่งคำเชิญไม่สำเร็จ');
+
+      if (result['joined'] == true) {
+        await loadFamily(showLoading: false);
+      } else if (result['status'] == true) {
+        await loadInvitations();
+      }
+    } catch (e) {
+      if (mounted) showMessage(e.toString());
+    }
+  }
+
+  // ส่งรหัสเชิญผ่านแอปอื่น (LINE / Messenger ...)
+  Future<void> shareInviteCode(String familyName, String code) async {
+    try {
+      await SharePlus.instance.share(
+        ShareParams(
+          text:
+              'มาอยู่ครอบครัว "$familyName" ด้วยกันในแอป${AppInfo.name}\n'
+              'เปิดแอป → แท็บครอบครัว → เข้าร่วมครอบครัว แล้วใส่รหัส $code',
+          subject: 'ชวนเข้าครอบครัว $familyName',
+        ),
+      );
+    } catch (_) {
+      showMessage('เปิดหน้าแชร์ไม่ได้');
+    }
+  }
+
+  // ยังไม่มีครอบครัว → ไปแท็บครอบครัว (สร้าง / เข้าร่วม / คำเชิญ)
+  void goToFamilyTab() {
+    setState(() {
+      selectedIndex = tabFamily;
+      bottomBarVisible = true;
+    });
+  }
+
   Future<void> loadFamily({bool showLoading = true}) async {
     if (showLoading && mounted) {
       setState(() {
@@ -167,6 +299,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       });
 
       startLocationSharing();
+
+      loadInvitations();
     } catch (e) {
       if (!mounted) return;
 
@@ -317,6 +451,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         return;
 
       case 'member_joined':
+      case 'family_invite':
+      case 'family_request':
+      case 'family_request_accepted':
         navigator.popUntil((route) => route.isFirst);
 
         setState(() {
@@ -1287,11 +1424,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   // =====================================================
 
   // แท็บที่ต้องใช้ข้อมูลครอบครัว (รอโหลดก่อนแสดง)
+  // หน้าหลัก (ชุมชน) และตลาด ดูได้แม้ยังไม่มีครอบครัว
   bool get tabNeedsFamily =>
-      selectedIndex == tabHome ||
-      selectedIndex == tabMarket ||
-      selectedIndex == tabFamily ||
-      selectedIndex == tabMap;
+      selectedIndex == tabFamily || selectedIndex == tabMap;
 
   Widget getCurrentPage() {
     if (isLoading && tabNeedsFamily) {
@@ -1300,7 +1435,21 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
     switch (selectedIndex) {
       case tabHome:
-        if (!hasFamily) return buildNoFamily();
+        // ยังไม่มีครอบครัว: ดูชุมชนได้ โพสต์ต้องมีครอบครัวก่อน
+        if (!hasFamily && !isLoading) {
+          return Column(
+            children: [
+              buildJoinFamilyBanner(),
+              Expanded(
+                child: FeedPage(
+                  key: const ValueKey('feed-community-guest'),
+                  scope: FeedScope.community,
+                  onJoinFamily: goToFamilyTab,
+                ),
+              ),
+            ],
+          );
+        }
 
         return const FeedPage(
           key: ValueKey('feed-community'),
@@ -1308,8 +1457,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         );
 
       case tabMarket:
-        if (!hasFamily) return buildNoFamily();
-
         return ShopPage(refreshToken: marketRefreshToken);
 
       case tabFamily:
@@ -1704,6 +1851,51 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   // FAMILY REQUIRED
   // =====================================================
 
+  // แถบชวนสร้าง/เข้าร่วมครอบครัว (หน้าหลักตอนยังไม่มีครอบครัว)
+  Widget buildJoinFamilyBanner() {
+    final int invites = invitationList('received').length;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 6),
+      child: Material(
+        color: AppColors.softPrimary,
+        borderRadius: BorderRadius.circular(18),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: goToFamilyTab,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+            child: Row(
+              children: [
+                Icon(
+                  invites > 0
+                      ? Icons.mark_email_unread_rounded
+                      : Icons.family_restroom_rounded,
+                  color: AppColors.primary,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    invites > 0
+                        ? 'คุณได้รับคำเชิญเข้าครอบครัว $invites รายการ'
+                        : 'สร้างหรือเข้าร่วมครอบครัว เพื่อโพสต์ แชท และแชร์ตำแหน่ง',
+                    style: TextStyle(
+                      color: AppColors.navy,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+                Icon(Icons.chevron_right_rounded, color: AppColors.primary),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget buildFamilyRequiredPage({required String message}) {
     return Center(
       child: Padding(
@@ -1934,6 +2126,38 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         ),
 
         const SizedBox(height: 26),
+
+        if (invitationList('received').isNotEmpty) ...[
+          FamilyInvitationSection(
+            title: 'คำเชิญถึงคุณ',
+            children: [
+              for (final invitation in invitationList('received'))
+                InvitationCard(
+                  invitation: invitation,
+                  incoming: true,
+                  busy: invitationBusy.contains(invitation['id']),
+                  onAccept: () => respondInvitation(invitation, 'accept'),
+                  onDecline: () => respondInvitation(invitation, 'decline'),
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
+        ],
+
+        if (invitationList('sent').isNotEmpty) ...[
+          FamilyInvitationSection(
+            title: 'คำขอเข้าครอบครัวของคุณ',
+            children: [
+              for (final invitation in invitationList('sent'))
+                PendingInvitationTile(
+                  invitation: invitation,
+                  busy: invitationBusy.contains(invitation['id']),
+                  onCancel: () => cancelInvitation(invitation),
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
+        ],
 
         Text(
           'เริ่มต้นครอบครัวของคุณ',
@@ -2494,6 +2718,66 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             ),
           ),
 
+          const SizedBox(height: 14),
+
+          // ===============================================
+          // ชวนเข้าครอบครัว
+          // ===============================================
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.tonalIcon(
+                  onPressed: inviteByEmail,
+                  icon: const Icon(Icons.person_add_alt_1_rounded, size: 19),
+                  label: const Text('ชวนด้วยอีเมล'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: inviteCode.isEmpty
+                      ? null
+                      : () => shareInviteCode(familyName, inviteCode),
+                  icon: const Icon(Icons.ios_share_rounded, size: 19),
+                  label: const Text('ส่งรหัสเชิญ'),
+                ),
+              ),
+            ],
+          ),
+
+          if (isOwner && invitationList('requests').isNotEmpty) ...[
+            const SizedBox(height: 22),
+            FamilyInvitationSection(
+              title: 'คำขอเข้าร่วม (${invitationList('requests').length})',
+              subtitle: 'คนที่ขอเข้าครอบครัวจากหน้าโปรไฟล์ในชุมชน',
+              children: [
+                for (final invitation in invitationList('requests'))
+                  InvitationCard(
+                    invitation: invitation,
+                    incoming: false,
+                    busy: invitationBusy.contains(invitation['id']),
+                    onAccept: () => respondInvitation(invitation, 'accept'),
+                    onDecline: () => respondInvitation(invitation, 'decline'),
+                  ),
+              ],
+            ),
+          ],
+
+          if (invitationList('invited').isNotEmpty) ...[
+            const SizedBox(height: 22),
+            FamilyInvitationSection(
+              title: 'รอตอบรับคำเชิญ',
+              children: [
+                for (final invitation in invitationList('invited'))
+                  PendingInvitationTile(
+                    invitation: invitation,
+                    busy: invitationBusy.contains(invitation['id']),
+                    onCancel: () => cancelInvitation(invitation),
+                  ),
+              ],
+            ),
+          ],
+
           const SizedBox(height: 30),
 
           // ===============================================
@@ -2856,6 +3140,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+
+    FamilyService.changes.removeListener(onFamilyChanged);
 
     // ออกจากระบบ / ลบบัญชี → หยุดส่งตำแหน่ง และล้างค่าตั้งค่าของบัญชีนี้
     // (บัญชีถัดไปบนเครื่องนี้ต้องเปิดแชร์ตอนปิดแอปเอง)

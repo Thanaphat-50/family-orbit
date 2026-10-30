@@ -56,7 +56,9 @@ class PostController extends Controller
             $user->id
         )->first();
 
-        if (!$membership) {
+        // ยังไม่มีครอบครัว: ดูฟีดชุมชนและโพสต์ในหน้าโปรไฟล์ได้
+        // (ฟีดครอบครัว / โพสต์ของฉัน ต้องมีครอบครัว)
+        if (!$membership && !in_array($request->query('scope'), ['community', 'user'], true)) {
             return response()->json([
                 'status' => false,
                 'message' => 'คุณยังไม่ได้อยู่ในครอบครัว',
@@ -212,12 +214,12 @@ class PostController extends Controller
     // - คนอื่น: เฉพาะโพสต์ชุมชนที่เราเห็นได้
     // =====================================================
 
-    private function userPosts(User $user, FamilyMember $membership, int $authorId)
+    private function userPosts(User $user, ?FamilyMember $membership, int $authorId)
     {
         $blockedIds = $user->blockedUsers()->pluck('users.id');
 
         $paginator = Post::where('user_id', $authorId)
-            ->visibleOnProfileTo($user, $membership->family_id, $blockedIds)
+            ->visibleOnProfileTo($user, $membership?->family_id, $blockedIds)
             ->with($this->communityRelations($user, $blockedIds))
             ->tap(fn ($query) => $this->withLikeInfo($query, $user))
             ->orderByDesc('created_at')
@@ -291,7 +293,8 @@ class PostController extends Controller
             $user->id
         )->first();
 
-        if (!$membership) {
+        // ยังไม่มีครอบครัว: เปิดดูได้เฉพาะโพสต์ชุมชน
+        if (!$membership && !$post->isCommunity()) {
             return response()->json([
                 'status' => false,
                 'message' => 'คุณยังไม่ได้อยู่ในครอบครัว',
@@ -385,7 +388,8 @@ class PostController extends Controller
         if (!$membership) {
             return response()->json([
                 'status' => false,
-                'message' => 'คุณยังไม่ได้อยู่ในครอบครัว',
+                'code' => 'family_required',
+                'message' => 'สร้างหรือเข้าร่วมครอบครัวก่อน จึงจะโพสต์ได้',
             ], 403);
         }
 
@@ -721,10 +725,12 @@ class PostController extends Controller
 
         $membership = FamilyMember::where('user_id', $user->id)->first();
 
-        if (!$membership) {
+        // ส่งต่อไปแอปอื่นได้เลย / แชร์ในแอป (ชุมชน, ครอบครัว) ต้องมีครอบครัว
+        if (!$membership && $data['channel'] !== 'external') {
             return response()->json([
                 'status' => false,
-                'message' => 'คุณยังไม่ได้อยู่ในครอบครัว',
+                'code' => 'family_required',
+                'message' => 'สร้างหรือเข้าร่วมครอบครัวก่อน จึงจะแชร์ในแอปได้',
             ], 403);
         }
 
@@ -904,18 +910,6 @@ class PostController extends Controller
 
         $user = $request->user();
 
-        $isMember = FamilyMember::where(
-            'user_id',
-            $user->id
-        )->exists();
-
-        if (!$isMember) {
-            return response()->json([
-                'status' => false,
-                'message' => 'คุณยังไม่ได้อยู่ในครอบครัว',
-            ], 403);
-        }
-
         if (!$post->isCommunity()) {
             return response()->json([
                 'status' => false,
@@ -1007,14 +1001,15 @@ class PostController extends Controller
     // ผู้ใช้ถูกใจ/โต้ตอบกับโพสต์นี้ได้หรือไม่
     // - โพสต์ชุมชน: ต้องมีครอบครัว และโพสต์ต้องไม่ถูกซ่อน
     // - โพสต์ครอบครัว: ต้องอยู่ครอบครัวเดียวกับโพสต์
+    // โพสต์ชุมชน: ทุกคน (ยังไม่มีครอบครัวก็ได้) / โพสต์ครอบครัว: คนในครอบครัวนั้น
     private function canInteract(Post $post, ?FamilyMember $membership): bool
     {
-        if (!$membership) {
-            return false;
-        }
-
         if ($post->isCommunity()) {
             return $post->hidden_at === null;
+        }
+
+        if (!$membership) {
+            return false;
         }
 
         return (int) $post->family_id === (int) $membership->family_id;

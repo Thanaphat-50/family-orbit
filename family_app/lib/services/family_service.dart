@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import 'api_helper.dart';
@@ -8,6 +9,10 @@ import '../config/api_config.dart';
 
 class FamilyService {
   static const String baseUrl = ApiConfig.baseUrl;
+
+  // เพิ่มทุกครั้งที่เข้าครอบครัวได้จากหน้าอื่น (เช่น หน้าโปรไฟล์)
+  // → หน้าหลักโหลดข้อมูลครอบครัวใหม่
+  static final ValueNotifier<int> changes = ValueNotifier<int>(0);
 
   // =====================================================
   // Header
@@ -248,6 +253,81 @@ class FamilyService {
         Uri.parse(
           '$baseUrl/families/current',
         ),
+        headers: headers,
+      ),
+    );
+
+    return ApiHelper.decode(response);
+  }
+
+  // =====================================================
+  // ชวนเข้าครอบครัว / ขอเข้าครอบครัว
+  // =====================================================
+
+  // received: คำเชิญถึงเรา / sent: คำขอของเรา
+  // requests: คำขอเข้าครอบครัวเรา (Owner) / invited: คนที่ครอบครัวเราชวนไว้
+  static Future<Map<String, dynamic>> invitations() async {
+    final headers = await _headers();
+
+    final response = await ApiHelper.request(
+      () => http.get(Uri.parse('$baseUrl/family-invitations'), headers: headers),
+    );
+
+    return ApiHelper.decode(response);
+  }
+
+  // ชวนด้วย userId (จากโปรไฟล์) หรืออีเมล
+  static Future<Map<String, dynamic>> invite({int? userId, String? email}) async {
+    final headers = await _headers(json: true);
+
+    final response = await ApiHelper.request(
+      () => http.post(
+        Uri.parse('$baseUrl/family-invitations'),
+        headers: headers,
+        body: jsonEncode({'user_id': ?userId, 'email': ?email}),
+      ),
+    );
+
+    return ApiHelper.decode(response);
+  }
+
+  // ขอเข้าครอบครัวของผู้ใช้คนนี้
+  static Future<Map<String, dynamic>> requestJoin(int userId) async {
+    final headers = await _headers();
+
+    final response = await ApiHelper.request(
+      () => http.post(
+        Uri.parse('$baseUrl/users/$userId/family-request'),
+        headers: headers,
+      ),
+    );
+
+    return ApiHelper.decode(response);
+  }
+
+  // action: accept / decline
+  static Future<Map<String, dynamic>> respondInvitation(
+    int invitationId,
+    String action,
+  ) async {
+    final headers = await _headers();
+
+    final response = await ApiHelper.request(
+      () => http.post(
+        Uri.parse('$baseUrl/family-invitations/$invitationId/$action'),
+        headers: headers,
+      ),
+    );
+
+    return ApiHelper.decode(response);
+  }
+
+  static Future<Map<String, dynamic>> cancelInvitation(int invitationId) async {
+    final headers = await _headers();
+
+    final response = await ApiHelper.request(
+      () => http.delete(
+        Uri.parse('$baseUrl/family-invitations/$invitationId'),
         headers: headers,
       ),
     );

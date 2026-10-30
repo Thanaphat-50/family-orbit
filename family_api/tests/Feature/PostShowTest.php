@@ -123,7 +123,8 @@ class PostShowTest extends TestCase
         $this->getJson("/api/posts/{$post->id}")->assertNotFound();
     }
 
-    public function test_user_without_family_cannot_view_posts(): void
+    // ยังไม่มีครอบครัว: เปิดโพสต์ชุมชนได้ แต่โพสต์ครอบครัวไม่ได้
+    public function test_user_without_family_sees_only_community_posts(): void
     {
         $author = User::factory()->create();
         $family = $this->createFamily($author);
@@ -135,8 +136,16 @@ class PostShowTest extends TestCase
             'content' => 'Hi',
         ]);
 
+        $private = Post::create([
+            'family_id' => $family->id,
+            'user_id' => $author->id,
+            'visibility' => 'family',
+            'content' => 'Home',
+        ]);
+
         Sanctum::actingAs(User::factory()->create());
 
-        $this->getJson("/api/posts/{$post->id}")->assertForbidden();
+        $this->getJson("/api/posts/{$post->id}")->assertOk();
+        $this->getJson("/api/posts/{$private->id}")->assertForbidden();
     }
 }

@@ -34,7 +34,8 @@ class CommentController extends Controller
             $user->id
         )->first();
 
-        if (!$membership) {
+        // ยังไม่มีครอบครัว: แสดงความคิดเห็นได้เฉพาะโพสต์ชุมชน
+        if (!$membership && !$post->isCommunity()) {
             return response()->json([
                 'status' => false,
                 'message' =>
@@ -227,17 +228,6 @@ class CommentController extends Controller
 
         $user = $request->user();
 
-        $isMember = FamilyMember::where(
-            'user_id',
-            $user->id
-        )->exists();
-
-        if (!$isMember) {
-            return response()->json([
-                'status' => false,
-                'message' => 'คุณยังไม่ได้อยู่ในครอบครัว',
-            ], 403);
-        }
 
         if (!$comment->post?->isCommunity()) {
             return response()->json([

@@ -7,9 +7,27 @@ import 'post_detail_page.dart';
 import 'user_profile_page.dart';
 
 // =======================================================
-// ประวัติการใช้งาน: ถูกใจ / ความคิดเห็น / แชร์ / ติดตาม
+// ประวัติการใช้งาน แยกแท็บ: ถูกใจ / ความคิดเห็น / แชร์ / ติดตาม
 // เห็นได้เฉพาะเรา ใช้จัดฟีด "สำหรับคุณ" และแนะนำคนที่ชอบคล้ายกัน
 // =======================================================
+
+class _HistoryTabInfo {
+  final String type;
+  final String label;
+  final IconData icon;
+  final Color color;
+  final String empty;
+
+  const _HistoryTabInfo(
+    this.type,
+    this.label,
+    this.icon,
+    this.color,
+    this.empty,
+  );
+}
+
+const Color _likeColor = Color(0xFFE5486B);
 
 class HistoryPage extends StatefulWidget {
   const HistoryPage({super.key});
@@ -18,7 +36,203 @@ class HistoryPage extends StatefulWidget {
   State<HistoryPage> createState() => _HistoryPageState();
 }
 
-class _HistoryPageState extends State<HistoryPage> {
+class _HistoryPageState extends State<HistoryPage>
+    with SingleTickerProviderStateMixin {
+  static final List<_HistoryTabInfo> tabs = [
+    const _HistoryTabInfo(
+      'like',
+      'ถูกใจ',
+      Icons.favorite_rounded,
+      _likeColor,
+      'โพสต์ที่คุณกดหัวใจจะอยู่ที่นี่',
+    ),
+    _HistoryTabInfo(
+      'comment',
+      'ความคิดเห็น',
+      Icons.chat_bubble_rounded,
+      AppColors.primary,
+      'ความคิดเห็นที่คุณเขียนจะอยู่ที่นี่',
+    ),
+    _HistoryTabInfo(
+      'share',
+      'แชร์',
+      Icons.share_rounded,
+      AppColors.success,
+      'โพสต์ที่คุณแชร์จะอยู่ที่นี่',
+    ),
+    _HistoryTabInfo(
+      'follow',
+      'ติดตาม',
+      Icons.person_add_alt_1_rounded,
+      AppColors.sky,
+      'คนที่คุณติดตามจะอยู่ที่นี่',
+    ),
+  ];
+
+  late final TabController tabController = TabController(
+    length: tabs.length,
+    vsync: this,
+  );
+
+  // จำนวนของแต่ละแท็บ (ได้จาก Server ทุกครั้งที่โหลด)
+  Map<String, int> counts = {};
+
+  // เพิ่มเมื่อล้างประวัติ → แท็บนั้นโหลดใหม่
+  final Map<String, int> versions = {};
+
+  @override
+  void initState() {
+    super.initState();
+
+    tabController.addListener(() {
+      if (!tabController.indexIsChanging) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    tabController.dispose();
+    super.dispose();
+  }
+
+  void updateCounts(dynamic raw) {
+    if (raw is! Map || !mounted) return;
+
+    setState(() {
+      counts = raw.map(
+        (key, value) => MapEntry('$key', value is num ? value.toInt() : 0),
+      );
+    });
+  }
+
+  Future<void> clearCurrentTab() async {
+    final _HistoryTabInfo tab = tabs[tabController.index];
+
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('ล้างประวัติ${tab.label}?'),
+        content: const Text(
+          'ฟีด "สำหรับคุณ" และคนที่แนะนำจะเรียนรู้ความสนใจของคุณใหม่ '
+          '(การถูกใจ ความคิดเห็น และการติดตามจริงยังอยู่)',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('ยกเลิก'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('ล้างประวัติ'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    try {
+      final result = await SocialService.clearHistory(type: tab.type);
+
+      if (!mounted) return;
+
+      if (result['status'] == true) {
+        setState(() {
+          counts = {...counts, tab.type: 0};
+          versions[tab.type] = (versions[tab.type] ?? 0) + 1;
+        });
+      }
+
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(result['message']?.toString() ?? 'ล้างประวัติแล้ว'),
+          ),
+        );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool hasItems = (counts[tabs[tabController.index].type] ?? 0) > 0;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('ประวัติการใช้งาน'),
+        actions: [
+          if (hasItems)
+            TextButton(
+              onPressed: clearCurrentTab,
+              child: Text('ล้าง', style: TextStyle(color: AppColors.danger)),
+            ),
+        ],
+        bottom: TabBar(
+          controller: tabController,
+          isScrollable: true,
+          tabAlignment: TabAlignment.start,
+          labelStyle: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w800,
+          ),
+          unselectedLabelStyle: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+          tabs: [
+            for (final tab in tabs)
+              Tab(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(tab.icon, size: 17, color: tab.color),
+                    const SizedBox(width: 6),
+                    Text(
+                      (counts[tab.type] ?? 0) > 0
+                          ? '${tab.label} ${counts[tab.type]}'
+                          : tab.label,
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+      body: TabBarView(
+        controller: tabController,
+        children: [
+          for (final tab in tabs)
+            _HistoryList(
+              key: ValueKey('${tab.type}-${versions[tab.type] ?? 0}'),
+              tab: tab,
+              onCounts: updateCounts,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// รายการของแท็บเดียว (โหลดทีละหน้า และจำไว้เมื่อสลับแท็บ)
+class _HistoryList extends StatefulWidget {
+  final _HistoryTabInfo tab;
+
+  final ValueChanged<dynamic> onCounts;
+
+  const _HistoryList({super.key, required this.tab, required this.onCounts});
+
+  @override
+  State<_HistoryList> createState() => _HistoryListState();
+}
+
+class _HistoryListState extends State<_HistoryList>
+    with AutomaticKeepAliveClientMixin {
   final List<Map<String, dynamic>> items = [];
 
   final ScrollController scrollController = ScrollController();
@@ -28,6 +242,9 @@ class _HistoryPageState extends State<HistoryPage> {
   bool hasMore = false;
   int page = 1;
   String? loadError;
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -54,7 +271,10 @@ class _HistoryPageState extends State<HistoryPage> {
     if (more) setState(() => isLoadingMore = true);
 
     try {
-      final result = await SocialService.history(page: next);
+      final result = await SocialService.history(
+        page: next,
+        type: widget.tab.type,
+      );
 
       if (!mounted) return;
 
@@ -72,6 +292,8 @@ class _HistoryPageState extends State<HistoryPage> {
           hasMore = result['has_more'] == true;
           loadError = null;
         });
+
+        widget.onCounts(result['counts']);
       } else if (!more) {
         setState(
           () => loadError = result['message']?.toString() ?? 'โหลดไม่สำเร็จ',
@@ -89,86 +311,20 @@ class _HistoryPageState extends State<HistoryPage> {
     }
   }
 
-  Future<void> clearHistory() async {
-    final bool? confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('ล้างประวัติการใช้งาน?'),
-        content: const Text(
-          'ฟีด "สำหรับคุณ" และคนที่แนะนำจะเริ่มเรียนรู้ความสนใจของคุณใหม่ '
-          '(การถูกใจ ความคิดเห็น และการติดตามจริงยังอยู่)',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('ยกเลิก'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('ล้างประวัติ'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true || !mounted) return;
-
-    try {
-      final result = await SocialService.clearHistory();
-
-      if (!mounted) return;
-
-      if (result['status'] == true) {
-        setState(() {
-          items.clear();
-          hasMore = false;
-        });
-      }
-
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          SnackBar(
-            content: Text(result['message']?.toString() ?? 'ล้างประวัติแล้ว'),
-          ),
-        );
-    } catch (e) {
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(e.toString())));
-    }
-  }
-
-  // =====================================================
-  // ข้อความของแต่ละรายการ
-  // =====================================================
-
   static String nameOf(dynamic user) {
     return user is Map ? (user['name']?.toString() ?? 'สมาชิก') : 'สมาชิก';
   }
 
-  ({IconData icon, Color color, String title}) describe(
-    Map<String, dynamic> item,
-  ) {
+  String titleOf(Map<String, dynamic> item) {
     final dynamic post = item['post'];
 
     final String owner = nameOf(post is Map ? post['user'] : null);
 
     switch (item['type']) {
       case 'like':
-        return (
-          icon: Icons.favorite_rounded,
-          color: const Color(0xFFE5486B),
-          title: 'ถูกใจโพสต์ของ $owner',
-        );
+        return 'ถูกใจโพสต์ของ $owner';
       case 'comment':
-        return (
-          icon: Icons.chat_bubble_rounded,
-          color: AppColors.primary,
-          title: 'แสดงความคิดเห็นในโพสต์ของ $owner',
-        );
+        return 'แสดงความคิดเห็นในโพสต์ของ $owner';
       case 'share':
         const Map<String, String> where = {
           'external': 'ส่งต่อไปแอปอื่น',
@@ -176,23 +332,11 @@ class _HistoryPageState extends State<HistoryPage> {
           'family': 'ส่งให้ครอบครัว',
         };
 
-        return (
-          icon: Icons.share_rounded,
-          color: AppColors.success,
-          title: '${where[item['channel']] ?? 'แชร์'}: โพสต์ของ $owner',
-        );
+        return '${where[item['channel']] ?? 'แชร์'} · โพสต์ของ $owner';
       case 'follow':
-        return (
-          icon: Icons.person_add_alt_1_rounded,
-          color: AppColors.sky,
-          title: 'ติดตาม ${nameOf(item['target_user'])}',
-        );
+        return 'ติดตาม ${nameOf(item['target_user'])}';
       default:
-        return (
-          icon: Icons.history_rounded,
-          color: AppColors.muted,
-          title: 'ใช้งาน',
-        );
+        return 'ใช้งาน';
     }
   }
 
@@ -236,8 +380,6 @@ class _HistoryPageState extends State<HistoryPage> {
   }
 
   Widget buildItem(Map<String, dynamic> item) {
-    final info = describe(item);
-
     final dynamic post = item['post'];
 
     final String detail = item['type'] == 'comment'
@@ -250,6 +392,8 @@ class _HistoryPageState extends State<HistoryPage> {
         ? item['target_user']
         : (post is Map ? post['user'] : null);
 
+    final String? imageUrl = post is Map ? post['image_url']?.toString() : null;
+
     return Material(
       color: AppColors.surface,
       borderRadius: BorderRadius.circular(18),
@@ -257,7 +401,7 @@ class _HistoryPageState extends State<HistoryPage> {
         borderRadius: BorderRadius.circular(18),
         onTap: () => openItem(item),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 12, 14, 12),
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -279,11 +423,15 @@ class _HistoryPageState extends State<HistoryPage> {
                     child: Container(
                       padding: const EdgeInsets.all(4),
                       decoration: BoxDecoration(
-                        color: info.color,
+                        color: widget.tab.color,
                         shape: BoxShape.circle,
                         border: Border.all(color: AppColors.surface, width: 2),
                       ),
-                      child: Icon(info.icon, size: 11, color: Colors.white),
+                      child: Icon(
+                        widget.tab.icon,
+                        size: 11,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
                 ],
@@ -294,7 +442,7 @@ class _HistoryPageState extends State<HistoryPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      info.title,
+                      titleOf(item),
                       style: TextStyle(
                         color: AppColors.navy,
                         fontSize: 14,
@@ -323,6 +471,20 @@ class _HistoryPageState extends State<HistoryPage> {
                   ],
                 ),
               ),
+              if (imageUrl != null && imageUrl.isNotEmpty) ...[
+                const SizedBox(width: 10),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.network(
+                    imageUrl,
+                    width: 52,
+                    height: 52,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) =>
+                        const SizedBox.shrink(),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -330,7 +492,10 @@ class _HistoryPageState extends State<HistoryPage> {
     );
   }
 
-  Widget buildBody() {
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+
     if (isLoading) return const Center(child: CircularProgressIndicator());
 
     if (loadError != null) {
@@ -359,56 +524,37 @@ class _HistoryPageState extends State<HistoryPage> {
       );
     }
 
-    if (items.isEmpty) {
-      return ListView(
-        children: [
-          const SizedBox(height: 120),
-          Icon(Icons.history_rounded, size: 48, color: AppColors.muted),
-          const SizedBox(height: 12),
-          Text(
-            'ยังไม่มีประวัติ\nกดถูกใจ แสดงความคิดเห็น แชร์ หรือติดตามแล้วจะขึ้นที่นี่',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: AppColors.muted, height: 1.5),
-          ),
-        ],
-      );
-    }
+    return RefreshIndicator(
+      onRefresh: load,
+      child: items.isEmpty
+          ? ListView(
+              children: [
+                const SizedBox(height: 120),
+                Icon(widget.tab.icon, size: 46, color: widget.tab.color),
+                const SizedBox(height: 12),
+                Text(
+                  widget.tab.empty,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppColors.muted, height: 1.5),
+                ),
+              ],
+            )
+          : ListView.separated(
+              controller: scrollController,
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+              itemCount: items.length + (isLoadingMore ? 1 : 0),
+              separatorBuilder: (context, index) => const SizedBox(height: 10),
+              itemBuilder: (context, index) {
+                if (index >= items.length) {
+                  return const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
 
-    return ListView.separated(
-      controller: scrollController,
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-      itemCount: items.length + (isLoadingMore ? 1 : 0),
-      separatorBuilder: (context, index) => const SizedBox(height: 10),
-      itemBuilder: (context, index) {
-        if (index >= items.length) {
-          return const Padding(
-            padding: EdgeInsets.all(16),
-            child: Center(child: CircularProgressIndicator()),
-          );
-        }
-
-        return buildItem(items[index]);
-      },
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('ประวัติการใช้งาน'),
-        actions: [
-          if (items.isNotEmpty)
-            TextButton(
-              onPressed: clearHistory,
-              child: Text(
-                'ล้างประวัติ',
-                style: TextStyle(color: AppColors.danger),
-              ),
+                return buildItem(items[index]);
+              },
             ),
-        ],
-      ),
-      body: RefreshIndicator(onRefresh: load, child: buildBody()),
     );
   }
 }

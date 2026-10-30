@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AccountDeletionRequestController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\FamilyController;
+use App\Http\Controllers\FamilyInvitationController;
 use App\Http\Controllers\FollowController;
 use App\Http\Controllers\HistoryController;
 use App\Http\Controllers\LocationController;
@@ -65,6 +66,37 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/families/join', [
         FamilyController::class,
         'join'
+    ]);
+
+    // ชวนเข้าครอบครัว / ขอเข้าครอบครัว
+    Route::get('/family-invitations', [
+        FamilyInvitationController::class,
+        'index'
+    ]);
+
+    Route::post('/family-invitations', [
+        FamilyInvitationController::class,
+        'invite'
+    ])->middleware('throttle:ugc');
+
+    Route::post('/users/{user}/family-request', [
+        FamilyInvitationController::class,
+        'request'
+    ])->middleware('throttle:ugc');
+
+    Route::post('/family-invitations/{invitation}/accept', [
+        FamilyInvitationController::class,
+        'accept'
+    ]);
+
+    Route::post('/family-invitations/{invitation}/decline', [
+        FamilyInvitationController::class,
+        'decline'
+    ]);
+
+    Route::delete('/family-invitations/{invitation}', [
+        FamilyInvitationController::class,
+        'cancel'
     ]);
 
     Route::get('/families/current', [

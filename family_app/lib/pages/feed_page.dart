@@ -59,6 +59,9 @@ class FeedPage extends StatefulWidget {
   // บล็อกผู้ใช้จากเมนูโพสต์สำเร็จ (หน้าโปรไฟล์ใช้อัปเดตสถานะ)
   final ValueChanged<int>? onUserBlocked;
 
+  // ยังไม่มีครอบครัว: ดูได้อย่างเดียว กดโพสต์/แชร์ในแอป → ชวนไปสร้าง/เข้าร่วมครอบครัว
+  final VoidCallback? onJoinFamily;
+
   const FeedPage({
     super.key,
     required this.scope,
@@ -66,6 +69,7 @@ class FeedPage extends StatefulWidget {
     this.authorId,
     this.header,
     this.onUserBlocked,
+    this.onJoinFamily,
   });
 
   @override
@@ -299,6 +303,37 @@ class _FeedPageState extends State<FeedPage> {
     }
   }
 
+  // ยังไม่มีครอบครัว → อธิบาย แล้วพาไปแท็บครอบครัว
+  Future<void> askToJoinFamily() async {
+    final bool? go = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: Icon(
+          Icons.family_restroom_rounded,
+          color: AppColors.primary,
+          size: 34,
+        ),
+        title: const Text('ต้องมีครอบครัวก่อน'),
+        content: const Text(
+          'สร้างครอบครัวใหม่ หรือเข้าร่วมด้วยรหัสเชิญ/คำเชิญ '
+          'แล้วจะโพสต์และแชร์ในแอปได้',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('ไว้ทีหลัง'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('ไปที่ครอบครัว'),
+          ),
+        ],
+      ),
+    );
+
+    if (go == true) widget.onJoinFamily?.call();
+  }
+
   Future<void> refreshFeed() async {
     if (showsCommunityTabs && forYou) loadSuggestions();
 
@@ -488,6 +523,11 @@ class _FeedPageState extends State<FeedPage> {
 
     if (channel == 'external') {
       await shareExternally(post, postId);
+      return;
+    }
+
+    if (widget.onJoinFamily != null) {
+      await askToJoinFamily();
       return;
     }
 
@@ -1935,7 +1975,9 @@ class _FeedPageState extends State<FeedPage> {
           backgroundColor: community ? communityColor : AppColors.primary,
           foregroundColor: Colors.white,
           shape: const CircleBorder(),
-          onPressed: openComposer,
+          onPressed: widget.onJoinFamily == null
+              ? openComposer
+              : askToJoinFamily,
           child: Badge(
             isLabelVisible: hasDraft,
             smallSize: 10,

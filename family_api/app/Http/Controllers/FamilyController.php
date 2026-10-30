@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Activity;
 use App\Models\AppNotification;
 use App\Models\Family;
+use App\Models\FamilyInvitation;
 use App\Models\FamilyMember;
 use App\Models\Post;
 use App\Models\PostImage;
@@ -77,6 +78,9 @@ class FamilyController extends Controller
                 'role' =>
                     'owner',
             ]);
+
+            // มีครอบครัวแล้ว → คำเชิญ/คำขอที่ค้างอยู่ไม่ใช้แล้ว
+            FamilyInvitation::closePendingFor($user);
 
             return $family;
         });
@@ -152,6 +156,9 @@ class FamilyController extends Controller
                 'role' =>
                     'member',
             ]);
+
+            // เข้าด้วยรหัสแล้ว → คำเชิญ/คำขอที่ค้างอยู่ไม่ใช้แล้ว
+            FamilyInvitation::closePendingFor($user);
 
             // ---------------------------------------------
             // แจ้ง Owner เมื่อมีสมาชิกใหม่

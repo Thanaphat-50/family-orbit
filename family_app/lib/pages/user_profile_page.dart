@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/chat_service.dart';
+import '../services/family_service.dart';
 import '../services/post_service.dart';
 import '../services/profile_service.dart';
 import '../services/social_service.dart';
@@ -117,6 +118,108 @@ class _UserProfilePageState extends State<UserProfilePage> {
   bool get isFollowing => profile?['is_following'] == true;
 
   bool followBusy = false;
+
+  bool familyBusy = false;
+
+  // คำเชิญ/คำขอที่ค้างอยู่ระหว่างเรากับคนนี้ ({id, type})
+  Map<String, dynamic>? get pendingInvitation {
+    final dynamic raw = profile?['pending_invitation'];
+
+    return raw is Map ? Map<String, dynamic>.from(raw) : null;
+  }
+
+  // ชวนเข้าครอบครัว (เรามีครอบครัว เขาไม่มี) / ขอเข้าครอบครัว (กลับกัน)
+  Future<void> sendFamilyInvitation() async {
+    if (familyBusy) return;
+
+    setState(() => familyBusy = true);
+
+    try {
+      final bool invite = profile?['can_invite'] == true;
+
+      final result = invite
+          ? await FamilyService.invite(userId: widget.userId)
+          : await FamilyService.requestJoin(widget.userId);
+
+      if (!mounted) return;
+
+      showMessage(result['message']?.toString() ?? 'ทำรายการไม่สำเร็จ');
+
+      if (result['joined'] == true) {
+        // อีกฝ่ายชวน/ขอไว้แล้ว → เข้าครอบครัวทันที
+        FamilyService.changes.value++;
+
+        await loadProfile();
+        return;
+      }
+
+      final dynamic invitation = result['invitation'];
+
+      if (result['status'] == true && invitation is Map) {
+        setState(() {
+          profile = {
+            ...?profile,
+            'pending_invitation': {
+              'id': invitation['id'],
+              'type': invitation['type'],
+            },
+          };
+        });
+      }
+    } catch (e) {
+      if (mounted) showMessage(e.toString());
+    } finally {
+      if (mounted) setState(() => familyBusy = false);
+    }
+  }
+
+  Future<void> cancelFamilyInvitation() async {
+    final dynamic id = pendingInvitation?['id'];
+
+    if (id is! num || familyBusy) return;
+
+    setState(() => familyBusy = true);
+
+    try {
+      final result = await FamilyService.cancelInvitation(id.toInt());
+
+      if (!mounted) return;
+
+      showMessage(result['message']?.toString() ?? 'ทำรายการไม่สำเร็จ');
+
+      if (result['status'] == true) {
+        setState(() {
+          profile = {...?profile, 'pending_invitation': null};
+        });
+      }
+    } catch (e) {
+      if (mounted) showMessage(e.toString());
+    } finally {
+      if (mounted) setState(() => familyBusy = false);
+    }
+  }
+
+  Widget? buildFamilyInviteButton() {
+    final bool canInvite = profile?['can_invite'] == true;
+
+    final bool canRequest = profile?['can_request_join'] == true;
+
+    if (!canInvite && !canRequest) return null;
+
+    if (pendingInvitation != null) {
+      return OutlinedButton.icon(
+        onPressed: familyBusy ? null : cancelFamilyInvitation,
+        icon: const Icon(Icons.hourglass_top_rounded, size: 18),
+        label: Text(canInvite ? 'ชวนแล้ว · ยกเลิก' : 'ส่งคำขอแล้ว · ยกเลิก'),
+      );
+    }
+
+    return FilledButton.tonalIcon(
+      onPressed: familyBusy ? null : sendFamilyInvitation,
+      icon: const Icon(Icons.group_add_rounded, size: 18),
+      label: Text(canInvite ? 'ชวนเข้าครอบครัว' : 'ขอเข้าครอบครัว'),
+    );
+  }
 
   // ติดตาม / เลิกติดตาม (ไม่ต้องรออนุมัติ)
   Future<void> toggleFollow() async {
@@ -550,6 +653,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
                         ),
                         label: const Text('ส่งข้อความ'),
                       ),
+                    ?buildFamilyInviteButton(),
                   ],
                 ),
               ],

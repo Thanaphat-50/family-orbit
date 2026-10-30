@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Comment;
+use App\Models\FamilyInvitation;
 use App\Models\FamilyMember;
 use App\Models\Post;
 use App\Models\PostLike;
@@ -127,18 +128,12 @@ class CommunityController extends Controller
     ) {
         $me = $request->user();
 
+        // ยังไม่มีครอบครัวก็ดูโปรไฟล์ในชุมชนได้
         $membership = FamilyMember::where('user_id', $me->id)->first();
-
-        if (!$membership) {
-            return response()->json([
-                'status' => false,
-                'message' => 'คุณยังไม่ได้อยู่ในครอบครัว',
-            ], 403);
-        }
 
         $isMe = (int) $user->id === (int) $me->id;
 
-        $isFamily = !$isMe && FamilyMember::where('family_id', $membership->family_id)
+        $isFamily = !$isMe && $membership && FamilyMember::where('family_id', $membership->family_id)
             ->where('user_id', $user->id)
             ->exists();
 
@@ -150,10 +145,10 @@ class CommunityController extends Controller
 
         // นับเฉพาะโพสต์ที่เราเห็นได้ (ครอบครัวเดียวกัน + ชุมชน)
         $visiblePosts = fn () => Post::where('user_id', $user->id)
-            ->visibleOnProfileTo($me, $membership->family_id, $blockedIds);
+            ->visibleOnProfileTo($me, $membership?->family_id, $blockedIds);
 
         // บทบาทในครอบครัว (แสดงเฉพาะครอบครัวเดียวกัน)
-        $familyRole = $isMe || $isFamily
+        $familyRole = $membership && ($isMe || $isFamily)
             ? FamilyMember::where('family_id', $membership->family_id)
                 ->where('user_id', $user->id)
                 ->value('role')
@@ -177,10 +172,50 @@ class CommunityController extends Controller
                 'family_role' => $familyRole,
                 'blocked' => $blockedIds->contains($user->id),
                 'followers_count' => $user->followers()->count(),
+                ...$this->familyInviteState($me, $user, $membership, $isMe),
                 'following_count' => $user->following()->count(),
                 'is_following' => !$isMe && $me->following()->whereKey($user->id)->exists(),
             ],
         ]);
+    }
+
+    // ปุ่ม "ชวนเข้าครอบครัว" / "ขอเข้าครอบครัว" ในหน้าโปรไฟล์
+    // - can_invite: เรามีครอบครัว และเขายังไม่มี
+    // - can_request_join: เรายังไม่มีครอบครัว และเขามี
+    // - pending_invitation: คำเชิญ/คำขอที่ค้างอยู่ระหว่างกัน (ยกเลิกได้)
+    private function familyInviteState(User $me, User $user, ?FamilyMember $membership, bool $isMe): array
+    {
+        if ($isMe) {
+            return ['can_invite' => false, 'can_request_join' => false, 'pending_invitation' => null];
+        }
+
+        $theirFamilyId = FamilyMember::where('user_id', $user->id)->value('family_id');
+
+        $canInvite = $membership !== null && $theirFamilyId === null;
+
+        $canRequest = $membership === null && $theirFamilyId !== null;
+
+        $pending = null;
+
+        if ($canInvite) {
+            $pending = FamilyInvitation::pending()
+                ->where('type', FamilyInvitation::INVITE)
+                ->where('family_id', $membership->family_id)
+                ->where('user_id', $user->id)
+                ->first(['id', 'type']);
+        } elseif ($canRequest) {
+            $pending = FamilyInvitation::pending()
+                ->where('type', FamilyInvitation::REQUEST)
+                ->where('family_id', $theirFamilyId)
+                ->where('user_id', $me->id)
+                ->first(['id', 'type']);
+        }
+
+        return [
+            'can_invite' => $canInvite,
+            'can_request_join' => $canRequest,
+            'pending_invitation' => $pending?->only(['id', 'type']),
+        ];
     }
 
     // =====================================================
@@ -206,12 +241,6 @@ class CommunityController extends Controller
             ], 422);
         }
 
-        if (!FamilyMember::where('user_id', $me->id)->exists()) {
-            return response()->json([
-                'status' => false,
-                'message' => 'คุณยังไม่ได้อยู่ในครอบครัว',
-            ], 403);
-        }
 
         if (!$this->hasCommunityActivity($user)) {
             return $this->profileNotFound();

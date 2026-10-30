@@ -135,16 +135,21 @@ class UserProfileTest extends TestCase
             ->assertJsonPath('profile.is_family', false);
     }
 
-    public function test_profile_requires_family(): void
+    // ยังไม่มีครอบครัวก็ดูโปรไฟล์ในชุมชนได้
+    public function test_profile_without_family_shows_community_side(): void
     {
         $author = User::factory()->create();
         $family = $this->createFamily($author);
         $this->makePost($author, $family, 'community', 'Hello');
+        $this->makePost($author, $family, 'family', 'Home');
 
         Sanctum::actingAs(User::factory()->create());
 
         $this->getJson('/api/users/' . $author->id . '/profile')
-            ->assertForbidden();
+            ->assertOk()
+            ->assertJsonPath('profile.is_family', false)
+            ->assertJsonPath('profile.family_role', null)
+            ->assertJsonPath('profile.posts', 1);
     }
 
     public function test_blocked_user_profile_shows_blocked_and_hides_posts(): void

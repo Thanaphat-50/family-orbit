@@ -291,6 +291,9 @@ class _NotificationPageState extends State<NotificationPage> {
         return;
 
       case 'member_joined':
+      case 'family_invite':
+      case 'family_request':
+      case 'family_request_accepted':
         Navigator.of(context).pop(NotificationTarget.familyMembers);
         return;
     }
@@ -368,9 +371,16 @@ class _NotificationPageState extends State<NotificationPage> {
   _NotificationStyle styleOf(String type) {
     switch (type) {
       case 'member_joined':
+      case 'family_request_accepted':
         return _NotificationStyle(
           icon: Icons.person_add_alt_1_rounded,
           color: AppColors.sky,
+        );
+      case 'family_invite':
+      case 'family_request':
+        return _NotificationStyle(
+          icon: Icons.mark_email_unread_rounded,
+          color: AppColors.primary,
         );
       case 'new_post':
         return _NotificationStyle(

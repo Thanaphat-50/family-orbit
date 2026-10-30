@@ -197,6 +197,29 @@ class ShareFollowHistoryTest extends TestCase
             ->assertJsonPath('items.3.type', 'like')
             ->assertJsonPath('items.3.post.id', $post->id);
 
+        // แยกตามประเภท (แอปแสดงเป็นแท็บ)
+        $this->getJson('/api/me/history?type=like')
+            ->assertOk()
+            ->assertJsonCount(1, 'items')
+            ->assertJsonPath('items.0.type', 'like')
+            ->assertJsonPath('counts.like', 1)
+            ->assertJsonPath('counts.comment', 1)
+            ->assertJsonPath('counts.share', 1)
+            ->assertJsonPath('counts.follow', 1);
+
+        $this->getJson('/api/me/history?type=comment')
+            ->assertJsonCount(1, 'items')
+            ->assertJsonPath('items.0.excerpt', 'ขอบคุณสูตรค่ะ');
+
+        $this->getJson('/api/me/history?type=view')->assertStatus(422);
+
+        // ล้างเฉพาะแท็บแชร์
+        $this->deleteJson('/api/me/history?type=share')->assertOk();
+
+        $this->getJson('/api/me/history')
+            ->assertJsonCount(3, 'items')
+            ->assertJsonPath('counts.share', 0);
+
         // ยกเลิกถูกใจ / ลบความคิดเห็น → หายจากประวัติ
         $this->postJson("/api/posts/{$post->id}/like")->assertOk();
 
@@ -204,7 +227,7 @@ class ShareFollowHistoryTest extends TestCase
 
         $this->deleteJson("/api/comments/{$comment->id}")->assertOk();
 
-        $this->getJson('/api/me/history')->assertJsonCount(2, 'items');
+        $this->getJson('/api/me/history')->assertJsonCount(1, 'items');
 
         // คนอื่นไม่เห็นประวัติของเรา
         Sanctum::actingAs($author);
