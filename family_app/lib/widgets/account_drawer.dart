@@ -290,7 +290,7 @@ class AccountDrawer extends StatelessWidget {
                   item: AccountMenuItem.profile,
                   icon: Icons.person_outline_rounded,
                   title: 'โปรไฟล์',
-                  subtitle: 'รูป ชื่อที่แสดง และบัญชีผู้ขาย',
+                  subtitle: 'รูป ชื่อ แนะนำตัว และโพสต์ของคุณ',
                 ),
                 buildItem(
                   context,

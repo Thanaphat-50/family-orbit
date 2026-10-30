@@ -62,6 +62,14 @@ class FeedPage extends StatefulWidget {
   // ยังไม่มีครอบครัว: ดูได้อย่างเดียว กดโพสต์/แชร์ในแอป → ชวนไปสร้าง/เข้าร่วมครอบครัว
   final VoidCallback? onJoinFamily;
 
+  // ฟีดชุมชนแยกหน้า สำหรับคุณ / ล่าสุด (หน้าหลักเลื่อนซ้าย-ขวาได้)
+  // กดแท็บ → แจ้งหน้าหลักให้เลื่อนไปอีกหน้า แทนการสลับในหน้านี้
+  final bool? forYou;
+  final ValueChanged<bool>? onCommunityTabSelected;
+
+  // ดึงลงเพื่อรีเฟรช → ให้หน้าที่ใช้ header โหลดข้อมูลของตัวเองใหม่ด้วย
+  final Future<void> Function()? onRefresh;
+
   const FeedPage({
     super.key,
     required this.scope,
@@ -70,6 +78,9 @@ class FeedPage extends StatefulWidget {
     this.header,
     this.onUserBlocked,
     this.onJoinFamily,
+    this.forYou,
+    this.onCommunityTabSelected,
+    this.onRefresh,
   });
 
   @override
@@ -202,10 +213,11 @@ class _FeedPageState extends State<FeedPage> {
   @override
   void initState() {
     super.initState();
+    forYou = widget.forYou ?? true;
     scrollController.addListener(onScroll);
     loadPosts();
 
-    if (showsCommunityTabs) loadSuggestions();
+    if (showsCommunityTabs && forYou) loadSuggestions();
   }
 
   String apiScope(FeedScope value) {
@@ -337,7 +349,21 @@ class _FeedPageState extends State<FeedPage> {
   Future<void> refreshFeed() async {
     if (showsCommunityTabs && forYou) loadSuggestions();
 
+    final Future<void>? headerRefresh = widget.onRefresh?.call();
+
     await loadPosts();
+    await headerRefresh;
+  }
+
+  void selectCommunityTab(bool toForYou) {
+    final ValueChanged<bool>? onSelected = widget.onCommunityTabSelected;
+
+    if (onSelected != null) {
+      if (toForYou != forYou) onSelected(toForYou);
+      return;
+    }
+
+    switchCommunityTab(toForYou);
   }
 
   // สลับแท็บ สำหรับคุณ / ล่าสุด → ล้างฟีดแล้วโหลดใหม่
@@ -2726,9 +2752,9 @@ class _FeedPageState extends State<FeedPage> {
           // ผู้ใช้ที่บล็อก: ตั้งค่า → ความเป็นส่วนตัว
           Row(
             children: [
-              buildFeedTab('สำหรับคุณ', forYou, () => switchCommunityTab(true)),
+              buildFeedTab('สำหรับคุณ', forYou, () => selectCommunityTab(true)),
               const SizedBox(width: 20),
-              buildFeedTab('ล่าสุด', !forYou, () => switchCommunityTab(false)),
+              buildFeedTab('ล่าสุด', !forYou, () => selectCommunityTab(false)),
             ],
           ),
           const SizedBox(height: 8),

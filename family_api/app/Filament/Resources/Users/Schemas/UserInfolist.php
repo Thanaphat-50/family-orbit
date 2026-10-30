@@ -34,6 +34,28 @@ class UserInfolist
                     ->label('สมัครเมื่อ')
                     ->dateTime(),
 
+                // ข้อมูลแนะนำตัวที่คนในชุมชนเห็น (ตรวจเมื่อมีคนรายงาน)
+                TextEntry::make('bio')
+                    ->label('แนะนำตัว')
+                    ->placeholder('-')
+                    ->columnSpanFull(),
+
+                TextEntry::make('occupation')
+                    ->label('งาน/อาชีพ')
+                    ->placeholder('-'),
+
+                TextEntry::make('education')
+                    ->label('การศึกษา')
+                    ->placeholder('-'),
+
+                TextEntry::make('province')
+                    ->label('จังหวัด')
+                    ->placeholder('-'),
+
+                TextEntry::make('interests')
+                    ->label('ความสนใจ')
+                    ->placeholder('-'),
+
                 TextEntry::make('socialAccounts.provider')
                     ->label('เข้าสู่ระบบด้วย')
                     ->badge()

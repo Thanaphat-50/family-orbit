@@ -4,7 +4,9 @@ import 'package:image_picker/image_picker.dart';
 import '../data/market_data.dart';
 import '../services/profile_service.dart';
 import '../theme/app_theme.dart';
-import 'my_posts_page.dart';
+import '../widgets/profile_intro.dart';
+import 'edit_profile_page.dart';
+import 'feed_page.dart';
 import 'my_shop_page.dart';
 import 'settings_page.dart';
 import 'user_profile_page.dart';
@@ -152,12 +154,20 @@ class _ProfilePageState extends State<ProfilePage> {
   // เปิดหน้าอื่น
   // =====================================================
 
-  Future<void> openMyPosts() async {
-    await Navigator.of(context)
-        .push(MaterialPageRoute(builder: (context) => const MyPostsPage()));
+  Map<String, String> get intro => introFrom(user['intro']);
 
-    // อาจลบโพสต์ไปแล้ว → โหลดตัวเลขใหม่
-    if (mounted) loadProfile();
+  Future<void> openEditProfile() async {
+    final bool? saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (context) => EditProfilePage(name: userName, intro: intro),
+      ),
+    );
+
+    if (saved == true && mounted) loadProfile();
+  }
+
+  void openPage(Widget page) {
+    Navigator.of(context).push(MaterialPageRoute(builder: (context) => page));
   }
 
   void openPublicProfile() {
@@ -408,88 +418,6 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   // =====================================================
-  // EDIT NAME
-  // =====================================================
-
-  Future<void> editName() async {
-    String name = userName;
-
-    final result = await showDialog<String>(
-      context: context,
-
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('แก้ไขชื่อ'),
-
-          content: TextFormField(
-            initialValue: userName,
-
-            autofocus: true,
-
-            textInputAction: TextInputAction.done,
-
-            onChanged: (value) {
-              name = value;
-            },
-
-            decoration: const InputDecoration(labelText: 'ชื่อที่แสดง'),
-          ),
-
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop();
-              },
-
-              child: const Text('ยกเลิก'),
-            ),
-
-            FilledButton(
-              onPressed: () {
-                final clean = name.trim();
-
-                if (clean.isEmpty) {
-                  return;
-                }
-
-                Navigator.of(dialogContext).pop(clean);
-              },
-
-              child: const Text('บันทึก'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (result == null || !mounted) {
-      return;
-    }
-
-    await Future<void>.delayed(const Duration(milliseconds: 250));
-
-    try {
-      final response = await ProfileService.updateProfile(name: result);
-
-      if (!mounted) return;
-
-      if (response['status'] == true) {
-        await loadProfile();
-
-        if (!mounted) return;
-
-        showMessage('แก้ไขชื่อเรียบร้อยแล้ว');
-      } else {
-        showMessage(response['message'] ?? 'แก้ไขชื่อไม่สำเร็จ');
-      }
-    } catch (e) {
-      if (!mounted) return;
-
-      showMessage('แก้ไขชื่อไม่สำเร็จ');
-    }
-  }
-
-  // =====================================================
   // AVATAR
   // =====================================================
 
@@ -718,8 +646,6 @@ class _ProfilePageState extends State<ProfilePage> {
                   value: stat('posts'),
 
                   label: 'โพสต์',
-
-                  onTap: openMyPosts,
                 ),
               ),
 
@@ -730,8 +656,6 @@ class _ProfilePageState extends State<ProfilePage> {
                   value: stat('likes_received'),
 
                   label: 'ถูกใจที่ได้รับ',
-
-                  onTap: openMyPosts,
                 ),
               ),
             ],
@@ -741,12 +665,8 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  // กล่องตัวเลขในหัวโปรไฟล์ กดแล้วเปิดโพสต์ของฉัน
-  Widget buildHeaderStat({
-    required int value,
-    required String label,
-    required VoidCallback onTap,
-  }) {
+  // กล่องตัวเลขในหัวโปรไฟล์
+  Widget buildHeaderStat({required int value, required String label}) {
     return Material(
       color: Colors.white.withValues(alpha: 0.12),
 
@@ -754,8 +674,6 @@ class _ProfilePageState extends State<ProfilePage> {
 
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-
-        onTap: onTap,
 
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 10),
@@ -793,86 +711,121 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   // =====================================================
-  // SETTING CARD
+  // ทางลัด (บัญชีผู้ขาย / ตั้งค่า)
   // =====================================================
 
-  Widget buildSettingTile({
+  Widget buildShortcut({
     required IconData icon,
-    required String title,
-    required String subtitle,
+    required String label,
+    required Color color,
     required VoidCallback onTap,
-    Color? color,
-    bool danger = false,
   }) {
-    color ??= AppColors.primary;
-
     return Material(
       color: AppColors.surface,
-
-      borderRadius: BorderRadius.circular(18),
-
+      borderRadius: BorderRadius.circular(16),
       child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-
+        borderRadius: BorderRadius.circular(16),
         onTap: onTap,
-
         child: Padding(
-          padding: const EdgeInsets.all(14),
-
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
           child: Row(
             children: [
-              Container(
-                width: 44,
-                height: 44,
-
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.09),
-
-                  borderRadius: BorderRadius.circular(14),
-                ),
-
-                child: Icon(icon, color: color, size: 21),
-              ),
-
-              const SizedBox(width: 13),
-
+              Icon(icon, color: color, size: 20),
+              const SizedBox(width: 9),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-
-                  children: [
-                    Text(
-                      title,
-
-                      style: TextStyle(
-                        color: danger ? AppColors.danger : AppColors.navy,
-
-                        fontWeight: FontWeight.w700,
-
-                        fontSize: 13,
-                      ),
-                    ),
-
-                    const SizedBox(height: 3),
-
-                    Text(
-                      subtitle,
-
-                      style: TextStyle(
-                        color: AppColors.muted,
-
-                        fontSize: 10,
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: AppColors.navy,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
-
-              Icon(Icons.chevron_right_rounded, color: AppColors.muted),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: AppColors.muted,
+                size: 20,
+              ),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  // ส่วนบนของหน้า (ต่อด้วยรายการโพสต์ของฉัน)
+  Widget buildPageHeader() {
+    if (isLoading) {
+      return const SizedBox(
+        height: 260,
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        buildProfileHeader(),
+        const SizedBox(height: 14),
+        ProfileIntroCard(intro: intro, onEdit: openEditProfile),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: FilledButton.tonalIcon(
+                onPressed: openEditProfile,
+                icon: const Icon(Icons.edit_outlined, size: 18),
+                label: const Text('แก้ไขโปรไฟล์'),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: openPublicProfile,
+                icon: const Icon(Icons.visibility_outlined, size: 18),
+                label: const Text('มุมมองคนอื่น'),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: buildShortcut(
+                icon: Icons.storefront_outlined,
+                label: 'บัญชีผู้ขาย',
+                color: marketColor,
+                onTap: () => openPage(const MyShopPage()),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: buildShortcut(
+                icon: Icons.settings_outlined,
+                label: 'ตั้งค่า',
+                color: AppColors.muted,
+                onTap: () => openPage(const SettingsPage()),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 24),
+        Padding(
+          padding: const EdgeInsets.only(left: 4),
+          child: Text(
+            'โพสต์ของฉัน',
+            style: TextStyle(
+              color: AppColors.navy,
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -889,160 +842,15 @@ class _ProfilePageState extends State<ProfilePage> {
 
   // =====================================================
   // UI
+  // โปรไฟล์ + แนะนำตัว แล้วต่อด้วยโพสต์ทั้งหมดของเรา (ครอบครัว + ชุมชน)
   // =====================================================
 
   @override
   Widget build(BuildContext context) {
-    if (isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    return RefreshIndicator(
+    return FeedPage(
+      scope: FeedScope.mine,
+      header: buildPageHeader(),
       onRefresh: loadProfile,
-
-      child: ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-
-        padding: const EdgeInsets.fromLTRB(17, 12, 17, 110),
-
-        children: [
-          buildProfileHeader(),
-
-          const SizedBox(height: 25),
-
-          Text(
-            'บัญชี',
-
-            style: TextStyle(
-              color: AppColors.navy,
-
-              fontSize: 17,
-
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-
-          const SizedBox(height: 10),
-
-          buildSettingTile(
-            icon: Icons.photo_camera_outlined,
-
-            title: 'รูปโปรไฟล์',
-
-            subtitle: hasPhoto
-                ? 'เปลี่ยนหรือลบรูปปัจจุบัน'
-                : 'เพิ่มรูปให้บัญชีของคุณ',
-
-            onTap: showPhotoMenu,
-          ),
-
-          const SizedBox(height: 9),
-
-          buildSettingTile(
-            icon: Icons.edit_outlined,
-
-            title: 'ชื่อที่แสดง',
-
-            subtitle: userName,
-
-            onTap: editName,
-          ),
-
-          const SizedBox(height: 23),
-
-          Text(
-            'กิจกรรมของฉัน',
-
-            style: TextStyle(
-              color: AppColors.navy,
-
-              fontSize: 17,
-
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-
-          const SizedBox(height: 10),
-
-          buildSettingTile(
-            icon: Icons.article_outlined,
-
-            title: 'โพสต์ของฉัน',
-
-            subtitle: '${stat('posts')} โพสต์ ในครอบครัวและชุมชน',
-
-            onTap: openMyPosts,
-          ),
-
-          // ชุมชนใช้ได้เมื่อมีครอบครัวแล้ว
-          if (family != null) ...[
-            const SizedBox(height: 9),
-
-            buildSettingTile(
-              icon: Icons.public_rounded,
-
-              title: 'โปรไฟล์ในชุมชน',
-
-              subtitle: 'ดูว่าคนในชุมชนเห็นคุณแบบไหน',
-
-              color: const Color(0xFF0B7FA6),
-
-              onTap: openPublicProfile,
-            ),
-          ],
-
-          const SizedBox(height: 23),
-
-          Text(
-            'ตลาด',
-
-            style: TextStyle(
-              color: AppColors.navy,
-
-              fontSize: 17,
-
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-
-          const SizedBox(height: 10),
-
-          buildSettingTile(
-            icon: Icons.storefront_outlined,
-
-            title: 'บัญชีผู้ขาย',
-
-            subtitle: 'เปิดร้าน จัดการสินค้า และดูสถานะร้าน',
-
-            color: marketColor,
-
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (context) => const MyShopPage()),
-              );
-            },
-          ),
-
-          const SizedBox(height: 23),
-
-          // แจ้งเตือน ตำแหน่ง ความเป็นส่วนตัว รหัสผ่าน ออกจากระบบ ลบบัญชี
-          buildSettingTile(
-            icon: Icons.settings_outlined,
-
-            title: 'ตั้งค่า',
-
-            subtitle: 'การแจ้งเตือน ตำแหน่ง บัญชี และความเป็นส่วนตัว',
-
-            color: AppColors.muted,
-
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (context) => const SettingsPage()),
-              );
-            },
-          ),
-        ],
-      ),
     );
   }
 }

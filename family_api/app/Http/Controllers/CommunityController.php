@@ -161,6 +161,7 @@ class CommunityController extends Controller
                 'name' => $user->name,
                 'profile_image_url' => $user->profile_image_url,
                 'joined_at' => $user->created_at?->toIso8601String(),
+                'intro' => $user->introPayload(),
                 'posts' => $visiblePosts()->count(),
                 // แอปเวอร์ชันเก่าใช้ชื่อนี้
                 'community_posts' => Post::where('user_id', $user->id)

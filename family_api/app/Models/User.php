@@ -27,7 +27,16 @@ class User extends Authenticatable implements FilamentUser
         'is_admin',
         // ส่งผ่าน /api/settings ของเจ้าของบัญชีเท่านั้น
         'notification_settings',
+        // ส่งผ่าน introPayload() เท่านั้น
+        'bio',
+        'occupation',
+        'education',
+        'province',
+        'interests',
     ];
+
+    // ข้อมูลแนะนำตัวบนหน้าโปรไฟล์ (คนในชุมชนเห็นได้)
+    public const INTRO_FIELDS = ['bio', 'occupation', 'education', 'province', 'interests'];
 
     protected function casts(): array
     {
@@ -110,6 +119,13 @@ class User extends Authenticatable implements FilamentUser
     public function deviceTokens()
     {
         return $this->hasMany(DeviceToken::class);
+    }
+
+    public function introPayload(): array
+    {
+        return collect(self::INTRO_FIELDS)
+            ->mapWithKeys(fn (string $field) => [$field => $this->getAttribute($field)])
+            ->all();
     }
 
     // รายงานที่ผู้ใช้คนนี้ถูกรายงาน (Admin ดูในหน้าผู้ใช้)

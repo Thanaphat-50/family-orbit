@@ -56,18 +56,20 @@ class ProfileService {
   }
 
   // =====================================================
-  // UPDATE NAME
+  // UPDATE NAME / ข้อมูลแนะนำตัว
+  // ส่งเฉพาะช่องที่แก้ (ค่าว่าง = ลบช่องนั้น)
   // =====================================================
 
   static Future<Map<String, dynamic>> updateProfile({
-    required String name,
+    String? name,
+    Map<String, String>? intro,
   }) async {
     final response = await http.put(
       Uri.parse('$baseUrl/profile'),
 
       headers: await _headers(),
 
-      body: jsonEncode({'name': name}),
+      body: jsonEncode({'name': ?name, ...?intro}),
     );
 
     return ApiHelper.decode(response);

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:firebase_messaging/firebase_messaging.dart' show RemoteMessage;
+import 'package:flutter/gestures.dart' show Drag;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -72,10 +73,18 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   // ข้อมูลจาก /api/profile ใช้กับรูปมุมซ้ายบนและหัวเมนูบัญชี
   Map<String, dynamic>? myProfile;
 
-  // หน้าหลัก: ชุมชน | ตลาด
+  // หน้าหลัก: สำหรับคุณ | ล่าสุด
+  bool homeForYou = true;
 
   // ครอบครัว: โพสต์ | สมาชิก
   FamilySection familySection = FamilySection.posts;
+
+  // เลื่อนซ้าย-ขวาเพื่อเปลี่ยนหน้า (ดู swipePages)
+  final PageController pageController = PageController();
+
+  // แท็บที่เลื่อนไปหยุดแล้ว: หยุดที่แผนที่ → ปิดการปัดเปลี่ยนหน้า
+  // (ใช้ selectedIndex ไม่ได้ เพราะเปลี่ยนตั้งแต่ปัดได้ครึ่งทาง)
+  int settledTab = tabHome;
 
   // แถบเมนูล่าง: ในแท็บหน้าหลัก เลื่อนลงแล้วซ่อน เลื่อนขึ้นแล้วแสดง
   bool bottomBarVisible = true;
@@ -1421,46 +1430,169 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   // =====================================================
   // PAGE SELECTOR
+  // เลื่อนซ้าย-ขวาได้ทุกหน้า เรียงตามแถบล่าง
+  // หน้าหลักมี 2 หน้าย่อย (สำหรับคุณ / ล่าสุด)
+  // ครอบครัวมี 2 หน้าย่อย (โพสต์ / สมาชิก) เมื่อมีครอบครัวแล้ว
+  // แผนที่: ปัดแล้วเลื่อนแผนที่แทน → เปลี่ยนหน้าด้วยแถบล่าง
   // =====================================================
 
-  // แท็บที่ต้องใช้ข้อมูลครอบครัว (รอโหลดก่อนแสดง)
-  // หน้าหลัก (ชุมชน) และตลาด ดูได้แม้ยังไม่มีครอบครัว
-  bool get tabNeedsFamily =>
-      selectedIndex == tabFamily || selectedIndex == tabMap;
+  // (แท็บ, หน้าย่อย)
+  List<(int, int)> get swipePages => [
+    (tabHome, 0),
+    (tabHome, 1),
+    (tabMarket, 0),
+    (tabFamily, 0),
+    if (hasFamily) (tabFamily, 1),
+    (tabMap, 0),
+    (tabActivity, 0),
+  ];
 
-  Widget getCurrentPage() {
-    if (isLoading && tabNeedsFamily) {
+  int sectionOf(int tab) {
+    switch (tab) {
+      case tabHome:
+        return homeForYou ? 0 : 1;
+
+      case tabFamily:
+        return hasFamily && familySection == FamilySection.members ? 1 : 0;
+    }
+
+    return 0;
+  }
+
+  int get currentPageIndex {
+    final List<(int, int)> pages = swipePages;
+
+    final int index = pages.indexOf((selectedIndex, sectionOf(selectedIndex)));
+
+    return index >= 0 ? index : pages.indexOf((selectedIndex, 0));
+  }
+
+  bool get swipeLocked => settledTab == tabMap && hasFamily;
+
+  // ปัดจนเปลี่ยนหน้า (หรือกดแถบล่าง / กดแท็บย่อย)
+  void onSwipePageChanged(int index) {
+    final List<(int, int)> pages = swipePages;
+
+    if (index < 0 || index >= pages.length) return;
+
+    final (int tab, int section) = pages[index];
+
+    final bool tabChanged = tab != selectedIndex;
+
+    setState(() {
+      selectedIndex = tab;
+
+      if (tab == tabHome) homeForYou = section == 0;
+
+      if (tab == tabFamily && hasFamily) {
+        familySection = section == 1
+            ? FamilySection.members
+            : FamilySection.posts;
+      }
+
+      bottomBarVisible = true;
+    });
+
+    if (tabChanged) onTabShown(tab);
+  }
+
+  // สไลด์/แถบเลื่อนแนวนอนในหน้า (เช่น ร้านแนะนำ) ปัดจนสุดขอบแล้ว → ลากหน้าต่อ
+  Drag? nestedSwipeDrag;
+
+  bool handlePageScroll(ScrollNotification notification) {
+    if (notification.metrics.axis != Axis.horizontal) return false;
+
+    // เลื่อนหน้าเสร็จ → จำแท็บที่หยุด (ล็อกการปัดในหน้าแผนที่)
+    if (notification.depth == 0) {
+      if (notification is ScrollEndNotification &&
+          settledTab != selectedIndex) {
+        setState(() => settledTab = selectedIndex);
+      }
+
+      return false;
+    }
+
+    if (notification is OverscrollNotification) {
+      final DragUpdateDetails? details = notification.dragDetails;
+
+      if (details == null || swipeLocked || !pageController.hasClients) {
+        return false;
+      }
+
+      nestedSwipeDrag ??= pageController.position.drag(
+        DragStartDetails(
+          globalPosition: details.globalPosition,
+          localPosition: details.localPosition,
+          sourceTimeStamp: details.sourceTimeStamp,
+        ),
+        () => nestedSwipeDrag = null,
+      );
+
+      nestedSwipeDrag?.update(details);
+    } else if (notification is ScrollUpdateNotification) {
+      final DragUpdateDetails? details = notification.dragDetails;
+
+      if (details != null) nestedSwipeDrag?.update(details);
+    } else if (notification is ScrollEndNotification) {
+      nestedSwipeDrag?.end(
+        notification.dragDetails ?? DragEndDetails(primaryVelocity: 0),
+      );
+
+      nestedSwipeDrag = null;
+    }
+
+    return false;
+  }
+
+  // กดแท็บย่อย → เลื่อนไปหน้านั้นแบบมีแอนิเมชัน
+  void showSection(int tab, int section) {
+    final int index = swipePages.indexOf((tab, section));
+
+    if (index < 0 || !pageController.hasClients) return;
+
+    pageController.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  // แท็บถูกเปลี่ยนจากที่อื่น (แจ้งเตือน / ออกจากครอบครัว)
+  // หรือจำนวนหน้าเปลี่ยน (เข้า/ออกครอบครัว) → เลื่อนไปหน้าที่ถูกต้อง
+  void schedulePageSync() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !pageController.hasClients) return;
+
+      if (pageController.position.isScrollingNotifier.value) return;
+
+      final int target = currentPageIndex;
+
+      final double? page = pageController.page;
+
+      if (target >= 0 && page != null && (page - target).abs() > 0.01) {
+        pageController.jumpToPage(target);
+      }
+    });
+  }
+
+  Widget buildSwipePage(int tab, int section) {
+    if (isLoading && (tab == tabFamily || tab == tabMap)) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    switch (selectedIndex) {
+    switch (tab) {
       case tabHome:
-        // ยังไม่มีครอบครัว: ดูชุมชนได้ โพสต์ต้องมีครอบครัวก่อน
-        if (!hasFamily && !isLoading) {
-          return Column(
-            children: [
-              buildJoinFamilyBanner(),
-              Expanded(
-                child: FeedPage(
-                  key: const ValueKey('feed-community-guest'),
-                  scope: FeedScope.community,
-                  onJoinFamily: goToFamilyTab,
-                ),
-              ),
-            ],
-          );
-        }
-
-        return const FeedPage(
-          key: ValueKey('feed-community'),
-          scope: FeedScope.community,
-        );
+        return buildHomeFeed(forYou: section == 0);
 
       case tabMarket:
         return ShopPage(refreshToken: marketRefreshToken);
 
       case tabFamily:
-        return buildFamilyContent();
+        if (!hasFamily) return buildNoFamily();
+
+        return buildFamilyPage(
+          section == 1 ? FamilySection.members : FamilySection.posts,
+        );
 
       case tabMap:
         if (!hasFamily) {
@@ -1477,6 +1609,30 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       default:
         return buildNoFamily();
     }
+  }
+
+  Widget buildHomeFeed({required bool forYou}) {
+    // ยังไม่มีครอบครัว: ดูชุมชนได้ โพสต์ต้องมีครอบครัวก่อน
+    final bool guest = !hasFamily && !isLoading;
+
+    final String mode = forYou ? 'for-you' : 'latest';
+
+    final Widget feed = FeedPage(
+      key: ValueKey('feed-community-$mode${guest ? '-guest' : ''}'),
+      scope: FeedScope.community,
+      forYou: forYou,
+      onCommunityTabSelected: (value) => showSection(tabHome, value ? 0 : 1),
+      onJoinFamily: guest ? goToFamilyTab : null,
+    );
+
+    if (!guest) return feed;
+
+    return Column(
+      children: [
+        buildJoinFamilyBanner(),
+        Expanded(child: feed),
+      ],
+    );
   }
 
   // =====================================================
@@ -1638,6 +1794,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final bool showBottomBar = bottomBarVisible || !hidesBarOnScroll;
 
+    final List<(int, int)> pages = swipePages;
+
+    schedulePageSync();
+
     return Scaffold(
       key: scaffoldKey,
 
@@ -1718,7 +1878,21 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
       body: NotificationListener<UserScrollNotification>(
         onNotification: handleUserScroll,
-        child: getCurrentPage(),
+        child: NotificationListener<ScrollNotification>(
+          onNotification: handlePageScroll,
+          child: PageView(
+            controller: pageController,
+            physics: swipeLocked ? const NeverScrollableScrollPhysics() : null,
+            onPageChanged: onSwipePageChanged,
+            children: [
+              for (final (int tab, int section) in pages)
+                KeyedSubtree(
+                  key: ValueKey('page-$tab-$section'),
+                  child: buildSwipePage(tab, section),
+                ),
+            ],
+          ),
+        ),
       ),
 
       bottomNavigationBar: buildBottomBar(showBottomBar),
@@ -1742,11 +1916,27 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   ];
 
   void selectTab(int index) {
+    final bool tabChanged = index != selectedIndex;
+
     setState(() {
       selectedIndex = index;
+      settledTab = index;
       bottomBarVisible = true;
     });
 
+    // กดแถบล่าง = กระโดดไปเลย ไม่เลื่อนผ่านหน้าระหว่างทาง
+    if (pageController.hasClients) {
+      pageController.jumpToPage(currentPageIndex);
+    }
+
+    if (tabChanged) {
+      onTabShown(index);
+    } else {
+      loadUnreadNotificationCount();
+    }
+  }
+
+  void onTabShown(int index) {
     loadUnreadNotificationCount();
 
     if (index != tabActivity) {
@@ -1974,25 +2164,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   // FAMILY CONTENT
   // =====================================================
 
-  Widget buildFamilyContent() {
-    if (!hasFamily) {
-      return buildNoFamily();
-    }
-
-    return buildFamilyTab();
-  }
-
   // =====================================================
-  // ครอบครัว: โพสต์ | สมาชิก
+  // ครอบครัว: โพสต์ | สมาชิก (แยกหน้า เลื่อนซ้าย-ขวาได้)
   // =====================================================
 
-  Widget buildFamilyTab() {
+  Widget buildFamilyPage(FamilySection section) {
     return Column(
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
           child: SectionSwitch<FamilySection>(
-            value: familySection,
+            value: section,
             options: const [
               SectionOption(
                 value: FamilySection.posts,
@@ -2005,15 +2187,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 label: 'สมาชิก',
               ),
             ],
-            onChanged: (value) {
-              setState(() {
-                familySection = value;
-              });
-            },
+            onChanged: (value) => showSection(
+              tabFamily,
+              value == FamilySection.members ? 1 : 0,
+            ),
           ),
         ),
         Expanded(
-          child: familySection == FamilySection.members
+          child: section == FamilySection.members
               ? buildFamily()
               : const FeedPage(
                   key: ValueKey('feed-family'),
@@ -3140,6 +3321,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+
+    nestedSwipeDrag?.cancel();
+    pageController.dispose();
 
     FamilyService.changes.removeListener(onFamilyChanged);
 

@@ -11,6 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use RuntimeException;
 use Throwable;
 
@@ -66,20 +67,47 @@ class ProfileController extends Controller
     }
 
     // PUT /api/profile
+    // ส่งเฉพาะช่องที่จะแก้ (แอปเวอร์ชันเก่าส่งแค่ name)
+    // ข้อมูลแนะนำตัว: ส่งค่าว่าง = ลบช่องนั้น
     public function update(Request $request)
     {
         $user = $request->user();
 
         $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
+            'name' => ['sometimes', 'required', 'string', 'max:255'],
+            'bio' => ['sometimes', 'nullable', 'string', 'max:300'],
+            'occupation' => ['sometimes', 'nullable', 'string', 'max:80'],
+            'education' => ['sometimes', 'nullable', 'string', 'max:80'],
+            'province' => ['sometimes', 'nullable', Rule::in(config('market.provinces'))],
+            'interests' => ['sometimes', 'nullable', 'string', 'max:150'],
+        ], [
+            'bio.max' => 'แนะนำตัวได้ไม่เกิน 300 ตัวอักษร',
+            'occupation.max' => 'งาน/อาชีพยาวได้ไม่เกิน 80 ตัวอักษร',
+            'education.max' => 'การศึกษายาวได้ไม่เกิน 80 ตัวอักษร',
+            'province.in' => 'กรุณาเลือกจังหวัดจากรายการ',
+            'interests.max' => 'ความสนใจยาวได้ไม่เกิน 150 ตัวอักษร',
         ]);
 
-        $user->name = trim($validated['name']);
+        if (array_key_exists('name', $validated)) {
+            $user->name = trim($validated['name']);
+        }
+
+        foreach (User::INTRO_FIELDS as $field) {
+            if (array_key_exists($field, $validated)) {
+                // ตัดบรรทัดว่างที่ติดกันเกิน 2 บรรทัด
+                $value = trim(preg_replace("/\n{3,}/", "\n\n", str_replace("\r", '', (string) $validated[$field])));
+
+                $user->{$field} = $value === '' ? null : $value;
+            }
+        }
+
         $user->save();
+
+        $onlyName = array_keys($validated) === ['name'];
 
         return response()->json([
             'status' => true,
-            'message' => 'แก้ไขชื่อเรียบร้อยแล้ว',
+            'message' => $onlyName ? 'แก้ไขชื่อเรียบร้อยแล้ว' : 'บันทึกโปรไฟล์แล้ว',
             'user' => $this->userPayload($request, $user),
         ]);
     }
@@ -255,6 +283,7 @@ class ProfileController extends Controller
             'email' => $user->email,
             'profile_photo' => $user->profile_photo,
             'has_password' => $user->hasPassword(),
+            'intro' => $user->introPayload(),
             'profile_photo_url' => $this->getPhotoUrl(
                 $request,
                 $user->profile_photo

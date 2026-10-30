@@ -7,13 +7,15 @@ import '../services/profile_service.dart';
 import '../services/social_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/community_sheets.dart';
+import '../widgets/profile_intro.dart';
 import '../widgets/user_avatar.dart';
 import 'chat_room_page.dart';
+import 'edit_profile_page.dart';
 import 'feed_page.dart';
 
 // =======================================================
 // โปรไฟล์ในชุมชน (กดชื่อ/รูปในโพสต์หรือความคิดเห็นชุมชน)
-// - รูป ชื่อ วันที่เข้าร่วม และตัวเลข
+// - รูป ชื่อ วันที่เข้าร่วม ตัวเลข และข้อมูลแนะนำตัว
 // - โพสต์ชุมชนของคนนี้ (ถูกใจ/แสดงความคิดเห็นได้เหมือนฟีด)
 // - รายงาน / บล็อก / เลิกบล็อก
 // ไม่แสดงอีเมลหรือครอบครัวของเขา
@@ -116,6 +118,19 @@ class _UserProfilePageState extends State<UserProfilePage> {
   bool get isBlocked => profile?['blocked'] == true;
 
   bool get isFollowing => profile?['is_following'] == true;
+
+  Map<String, String> get intro => introFrom(profile?['intro']);
+
+  // โปรไฟล์ของเราเอง → แก้ไขข้อมูลแนะนำตัวได้จากหน้านี้
+  Future<void> openEditProfile() async {
+    final bool? saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => EditProfilePage(name: name, intro: intro),
+      ),
+    );
+
+    if (saved == true && mounted) loadProfile();
+  }
 
   bool followBusy = false;
 
@@ -698,6 +713,13 @@ class _UserProfilePageState extends State<UserProfilePage> {
           ),
         ),
         if (!isBlocked) ...[
+          if (isMe || intro.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            ProfileIntroCard(
+              intro: intro,
+              onEdit: isMe ? openEditProfile : null,
+            ),
+          ],
           const SizedBox(height: 20),
           Padding(
             padding: EdgeInsets.only(left: 4),
