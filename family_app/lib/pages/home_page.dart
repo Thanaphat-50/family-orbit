@@ -37,6 +37,7 @@ import 'profile_page.dart';
 import 'settings_page.dart';
 import 'shop_page.dart';
 import 'user_profile_page.dart';
+import 'video_feed_page.dart';
 
 // หน้าย่อยของแท็บ "หน้าหลัก"
 
@@ -1473,42 +1474,40 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
     return Column(
       children: [
-        if (guest) buildJoinFamilyBanner(),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-          child: SectionSwitch<CommunityFeedMode>(
-            value: homeMode,
-            options: const [
-              SectionOption(
-                value: CommunityFeedMode.forYou,
-                icon: Icons.auto_awesome_rounded,
-                label: 'สำหรับคุณ',
-              ),
-              SectionOption(
-                value: CommunityFeedMode.latest,
-                icon: Icons.schedule_rounded,
-                label: 'ล่าสุด',
-              ),
-              SectionOption(
-                value: CommunityFeedMode.videos,
-                icon: Icons.smart_display_rounded,
-                label: 'วิดีโอ',
-              ),
-            ],
-            onChanged: (value) {
-              setState(() {
-                homeMode = value;
-              });
-            },
+        if (guest)
+          buildCollapsible(visible: !immersive, child: buildJoinFamilyBanner()),
+        buildCollapsible(
+          visible: !immersive,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: SectionSwitch<CommunityFeedMode>(
+              value: homeMode,
+              options: const [
+                SectionOption(
+                  value: CommunityFeedMode.forYou,
+                  icon: Icons.auto_awesome_rounded,
+                  label: 'สำหรับคุณ',
+                ),
+                SectionOption(
+                  value: CommunityFeedMode.latest,
+                  icon: Icons.schedule_rounded,
+                  label: 'ล่าสุด',
+                ),
+                SectionOption(
+                  value: CommunityFeedMode.videos,
+                  icon: Icons.smart_display_rounded,
+                  label: 'วิดีโอ',
+                ),
+              ],
+              onChanged: showHomeMode,
+            ),
           ),
         ),
         Expanded(
           child: SwipeSections(
             index: homeMode.index,
             onChanged: (index) {
-              setState(() {
-                homeMode = CommunityFeedMode.values[index];
-              });
+              showHomeMode(CommunityFeedMode.values[index]);
             },
             children: [
               for (final mode in CommunityFeedMode.values)
@@ -1521,11 +1520,22 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   Widget buildHomeFeed({required CommunityFeedMode mode, required bool guest}) {
-    return FeedPage(
-      key: ValueKey('feed-community-${mode.name}${guest ? '-guest' : ''}'),
-      scope: FeedScope.community,
-      communityMode: mode,
-      onJoinFamily: guest ? goToFamilyTab : null,
+    // วิดีโอ: เต็มจอ ปัดขึ้น-ลงทีละคลิป
+    if (mode == CommunityFeedMode.videos) {
+      return VideoFeedPage(
+        onExit: () => showHomeMode(CommunityFeedMode.latest),
+      );
+    }
+
+    // พื้นหลังของตัวเอง (ระหว่างปัดไปหน้าวิดีโอ พื้นหลังของจอเป็นสีดำ)
+    return ColoredBox(
+      color: AppColors.background,
+      child: FeedPage(
+        key: ValueKey('feed-community-${mode.name}${guest ? '-guest' : ''}'),
+        scope: FeedScope.community,
+        communityMode: mode,
+        onJoinFamily: guest ? goToFamilyTab : null,
+      ),
     );
   }
 
@@ -1684,12 +1694,57 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   // MAIN
   // =====================================================
 
+  // หน้าวิดีโอเต็มจอ: แถบด้านบนเลื่อนหายขึ้นไป แถบล่างเลื่อนหายลงไป
+  bool get immersive =>
+      selectedIndex == tabHome && homeMode == CommunityFeedMode.videos;
+
+  void showHomeMode(CommunityFeedMode mode) {
+    setState(() {
+      homeMode = mode;
+      bottomBarVisible = true;
+    });
+  }
+
+  // ย่อความสูงจนเหลือ 0 = เลื่อนหายขึ้นไปด้านบน
+  Widget buildCollapsible({required bool visible, required Widget child}) {
+    return ClipRect(
+      child: TweenAnimationBuilder<double>(
+        tween: Tween<double>(end: visible ? 1 : 0),
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        builder: (context, factor, child) {
+          return Align(
+            alignment: Alignment.bottomCenter,
+            heightFactor: factor,
+            child: child,
+          );
+        },
+        child: child,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final bool showBottomBar = bottomBarVisible || !hidesBarOnScroll;
+    final bool showBottomBar =
+        (bottomBarVisible || !hidesBarOnScroll) && !immersive;
 
+    // หน้าวิดีโอ: กดย้อนกลับ = กลับไปแท็บ "ล่าสุด"
+    return PopScope(
+      canPop: !immersive,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && immersive) showHomeMode(CommunityFeedMode.latest);
+      },
+      child: buildScaffold(showBottomBar),
+    );
+  }
+
+  Widget buildScaffold(bool showBottomBar) {
     return Scaffold(
       key: scaffoldKey,
+
+      // หน้าวิดีโอ: ขอบล่างใต้แถบนำทางของมือถือเป็นสีดำ
+      backgroundColor: immersive ? Colors.black : null,
 
       // เปิดจากรูปโปรไฟล์เท่านั้น (ปัดขอบจอจะไปชนกับการเลื่อนแผนที่)
       drawerEnableOpenDragGesture: false,
@@ -1701,77 +1756,92 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         onSelected: handleAccountMenu,
       ),
 
-      appBar: AppBar(
-        toolbarHeight: 64,
-
-        // มุมซ้ายบน: รูปโปรไฟล์ → เมนูบัญชี
-        leadingWidth: 64,
-        leading: Padding(
-          padding: const EdgeInsets.only(left: 12),
-          child: buildAccountButton(),
-        ),
-
-        titleSpacing: 8,
-
-        // หน้าหลัก: ชื่อแอป (แท็บอยู่ด้านล่าง) / หน้าอื่น: ชื่อแอป + ชื่อหน้า
-        title: showAppTitle
-            ? Text(
-                AppInfo.name,
-                style: TextStyle(
-                  color: AppColors.primary,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                ),
-              )
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    AppInfo.name,
-                    style: TextStyle(
-                      color: AppColors.primary,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-
-                  const SizedBox(height: 1),
-
-                  Text(
-                    getPageTitle(),
-                    style: TextStyle(
-                      color: AppColors.navy,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ],
+      // แถบด้านบนอยู่ในเนื้อหา เพื่อเลื่อนหายได้ในหน้าวิดีโอ
+      body: Column(
+        children: [
+          buildCollapsible(visible: !immersive, child: buildAppBar()),
+          Expanded(
+            // แถบด้านบนจัดระยะใต้แถบสถานะไว้แล้ว (เหมือน Scaffold.appBar)
+            child: MediaQuery.removePadding(
+              context: context,
+              removeTop: true,
+              child: NotificationListener<UserScrollNotification>(
+                onNotification: handleUserScroll,
+                child: getCurrentPage(),
               ),
-
-
-        actions: [
-          if (selectedIndex == tabMarket && hasFamily)
-            IconButton(
-              tooltip: 'บัญชีผู้ขาย',
-              onPressed: openSellerAccount,
-              icon: const Icon(Icons.storefront_outlined, size: 26),
             ),
-
-          // แชทใช้ได้เมื่อมีครอบครัวแล้ว
-          if (hasFamily) buildChatButton(),
-
-          buildNotificationButton(),
-
-          const SizedBox(width: 8),
+          ),
         ],
       ),
 
-      body: NotificationListener<UserScrollNotification>(
-        onNotification: handleUserScroll,
-        child: getCurrentPage(),
+      bottomNavigationBar: buildBottomBar(showBottomBar),
+    );
+  }
+
+  AppBar buildAppBar() {
+    return AppBar(
+      toolbarHeight: 64,
+
+      // มุมซ้ายบน: รูปโปรไฟล์ → เมนูบัญชี
+      leadingWidth: 64,
+      leading: Padding(
+        padding: const EdgeInsets.only(left: 12),
+        child: buildAccountButton(),
       ),
 
-      bottomNavigationBar: buildBottomBar(showBottomBar),
+      titleSpacing: 8,
+
+      // หน้าหลัก: ชื่อแอป (แท็บอยู่ด้านล่าง) / หน้าอื่น: ชื่อแอป + ชื่อหน้า
+      title: showAppTitle
+          ? Text(
+              AppInfo.name,
+              style: TextStyle(
+                color: AppColors.primary,
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+              ),
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  AppInfo.name,
+                  style: TextStyle(
+                    color: AppColors.primary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+
+                const SizedBox(height: 1),
+
+                Text(
+                  getPageTitle(),
+                  style: TextStyle(
+                    color: AppColors.navy,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+
+
+      actions: [
+        if (selectedIndex == tabMarket && hasFamily)
+          IconButton(
+            tooltip: 'บัญชีผู้ขาย',
+            onPressed: openSellerAccount,
+            icon: const Icon(Icons.storefront_outlined, size: 26),
+          ),
+
+        // แชทใช้ได้เมื่อมีครอบครัวแล้ว
+        if (hasFamily) buildChatButton(),
+
+        buildNotificationButton(),
+
+        const SizedBox(width: 8),
+      ],
     );
   }
 
