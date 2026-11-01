@@ -207,9 +207,42 @@ class _HistoryPageState extends State<HistoryPage>
     }
   }
 
+  // รวม ถูกใจ + ความคิดเห็น + แชร์ ของโพสต์ หรือ วิดีโอ
+  int mediaTotal(String kind) =>
+      mediaCounts.values.fold(0, (sum, item) => sum + (item[kind] ?? 0));
+
   @override
   Widget build(BuildContext context) {
     final bool hasItems = shownCount(currentTab) > 0;
+
+    final TabBar tabBar = TabBar(
+      controller: tabController,
+      isScrollable: true,
+      tabAlignment: TabAlignment.start,
+      labelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+      unselectedLabelStyle: const TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+      ),
+      tabs: [
+        for (final tab in tabs)
+          Tab(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(tab.icon, size: 17, color: tab.color),
+                const SizedBox(width: 6),
+                // ตัวเลขตามที่เลือกด้านบน (โพสต์ / วิดีโอ)
+                Text(
+                  shownCount(tab) > 0
+                      ? '${tab.label} ${shownCount(tab)}'
+                      : tab.label,
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
 
     return Scaffold(
       appBar: AppBar(
@@ -221,78 +254,48 @@ class _HistoryPageState extends State<HistoryPage>
               child: Text('ล้าง', style: TextStyle(color: AppColors.danger)),
             ),
         ],
-        bottom: TabBar(
-          controller: tabController,
-          isScrollable: true,
-          tabAlignment: TabAlignment.start,
-          labelStyle: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w800,
-          ),
-          unselectedLabelStyle: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-          ),
-          tabs: [
-            for (final tab in tabs)
-              Tab(
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(tab.icon, size: 17, color: tab.color),
-                    const SizedBox(width: 6),
-                    Text(
-                      (counts[tab.type] ?? 0) > 0
-                          ? '${tab.label} ${counts[tab.type]}'
-                          : tab.label,
+        // บน: โพสต์ | วิดีโอ / ล่าง: ถูกใจ ความคิดเห็น แชร์ ติดตาม
+        bottom: PreferredSize(
+          preferredSize: Size.fromHeight(66 + tabBar.preferredSize.height),
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                child: SectionSwitch<String>(
+                  value: media,
+                  options: [
+                    SectionOption(
+                      value: 'post',
+                      icon: Icons.article_outlined,
+                      label: 'โพสต์ ${mediaTotal('post')}',
+                    ),
+                    SectionOption(
+                      value: 'video',
+                      icon: Icons.smart_display_rounded,
+                      label: 'วิดีโอ ${mediaTotal('video')}',
                     ),
                   ],
+                  onChanged: (value) => setState(() => media = value),
                 ),
               ),
-          ],
+              tabBar,
+            ],
+          ),
         ),
       ),
-      body: Column(
+      body: TabBarView(
+        controller: tabController,
         children: [
-          if (currentTab.splitsMedia)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-              child: SectionSwitch<String>(
-                value: media,
-                options: [
-                  SectionOption(
-                    value: 'post',
-                    icon: Icons.article_outlined,
-                    label:
-                        'โพสต์ ${mediaCounts[currentTab.type]?['post'] ?? 0}',
-                  ),
-                  SectionOption(
-                    value: 'video',
-                    icon: Icons.smart_display_rounded,
-                    label:
-                        'วิดีโอ ${mediaCounts[currentTab.type]?['video'] ?? 0}',
-                  ),
-                ],
-                onChanged: (value) => setState(() => media = value),
+          for (final tab in tabs)
+            _HistoryList(
+              key: ValueKey(
+                '${tab.type}-${tab.splitsMedia ? media : ''}'
+                '-${versions[tab.type] ?? 0}',
               ),
+              tab: tab,
+              media: tab.splitsMedia ? media : null,
+              onCounts: updateCounts,
             ),
-          Expanded(
-            child: TabBarView(
-              controller: tabController,
-              children: [
-                for (final tab in tabs)
-                  _HistoryList(
-                    key: ValueKey(
-                      '${tab.type}-${tab.splitsMedia ? media : ''}'
-                      '-${versions[tab.type] ?? 0}',
-                    ),
-                    tab: tab,
-                    media: tab.splitsMedia ? media : null,
-                    onCounts: updateCounts,
-                  ),
-              ],
-            ),
-          ),
         ],
       ),
     );
