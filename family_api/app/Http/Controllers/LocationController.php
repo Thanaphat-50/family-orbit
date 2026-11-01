@@ -6,6 +6,7 @@ use App\Models\FamilyMember;
 use App\Models\Post;
 use App\Models\User;
 use App\Models\UserLocation;
+use App\Services\PlaceFinder;
 use App\Services\RouteFinder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -183,18 +184,7 @@ class LocationController extends Controller
             'mode' => ['nullable', Rule::in(array_keys(RouteFinder::MODES))],
         ]);
 
-        $familyId = FamilyMember::where('user_id', $request->user()->id)
-            ->value('family_id');
-
-        $sameFamily = $familyId !== null
-            && FamilyMember::where('family_id', $familyId)
-                ->where('user_id', $user->id)
-                ->exists();
-
-        // ดูเส้นทางได้เฉพาะสมาชิกครอบครัวเดียวกันที่เปิดแชร์ตำแหน่งอยู่
-        $location = $sameFamily && $user->location_sharing !== false
-            ? UserLocation::where('user_id', $user->id)->first()
-            : null;
+        $location = $this->sharedLocationOf($request, $user);
 
         if (!$location) {
             return response()->json([
@@ -243,5 +233,53 @@ class LocationController extends Controller
             'mode' => $mode,
             ...$route,
         ]);
+    }
+
+    // =====================================================
+    // รายละเอียดของตำแหน่งสมาชิก
+    // GET /api/family/members/{user}/place
+    // - area:   หมู่บ้าน/ชุมชน ตำบล อำเภอ จังหวัด (null = หาไม่ได้)
+    // - places: สถานที่ใกล้เคียง (null = ยังไม่ได้เปิด Google Places)
+    // =====================================================
+
+    public function place(Request $request, User $user, PlaceFinder $places)
+    {
+        $location = $this->sharedLocationOf($request, $user);
+
+        if (!$location) {
+            return response()->json([
+                'status' => false,
+                'message' => 'ไม่พบตำแหน่งของสมาชิกคนนี้',
+            ], 404);
+        }
+
+        $latitude = (float) $location->latitude;
+        $longitude = (float) $location->longitude;
+
+        return response()->json([
+            'status' => true,
+            'latitude' => $latitude,
+            'longitude' => $longitude,
+            'area' => $places->area($latitude, $longitude),
+            'places' => $places->nearby($latitude, $longitude),
+        ]);
+    }
+
+    // ตำแหน่งล่าสุดของสมาชิกครอบครัวเดียวกันที่เปิดแชร์ตำแหน่งอยู่ (null = ดูไม่ได้)
+    private function sharedLocationOf(Request $request, User $user): ?UserLocation
+    {
+        $familyId = FamilyMember::where('user_id', $request->user()->id)
+            ->value('family_id');
+
+        $sameFamily = $familyId !== null
+            && FamilyMember::where('family_id', $familyId)
+                ->where('user_id', $user->id)
+                ->exists();
+
+        if (!$sameFamily || $user->location_sharing === false) {
+            return null;
+        }
+
+        return UserLocation::where('user_id', $user->id)->first();
     }
 }

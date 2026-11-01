@@ -120,6 +120,12 @@ Route::middleware('auth:sanctum')->group(function () {
         'route'
     ])->middleware('throttle:route');
 
+    // รายละเอียดตำแหน่งสมาชิก: หมู่บ้าน/ชุมชน + สถานที่ใกล้เคียง
+    Route::get('/family/members/{user}/place', [
+        LocationController::class,
+        'place'
+    ])->middleware('throttle:place');
+
     Route::get('/posts', [
         PostController::class,
         'index'

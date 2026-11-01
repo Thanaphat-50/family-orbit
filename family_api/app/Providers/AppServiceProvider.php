@@ -89,6 +89,14 @@ class AppServiceProvider extends ServiceProvider
                 Limit::perDay(200)->by('route-day:' . ($request->user()?->id ?? $request->ip())),
             ];
         });
+
+        // รายละเอียดตำแหน่ง: OpenStreetMap + Google Places (มีค่าใช้จ่ายเมื่อเกินโควตาฟรี)
+        RateLimiter::for('place', function (Request $request) {
+            return [
+                Limit::perMinute(10)->by('place-min:' . ($request->user()?->id ?? $request->ip())),
+                Limit::perDay(150)->by('place-day:' . ($request->user()?->id ?? $request->ip())),
+            ];
+        });
     }
 
     // =====================================================

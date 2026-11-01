@@ -66,6 +66,25 @@ class LocationService {
     return ApiHelper.decode(response);
   }
 
+  // รายละเอียดตำแหน่งสมาชิก
+  // area:   หมู่บ้าน/ชุมชน ตำบล อำเภอ จังหวัด (OpenStreetMap)
+  // places: สถานที่ใกล้เคียง (null = Server ยังไม่เปิด Google Places)
+  static Future<Map<String, dynamic>> getMemberPlace(int userId) async {
+    final token = await AuthService.getToken();
+
+    final response = await ApiHelper.request(
+      () => http.get(
+        Uri.parse('$baseUrl/family/members/$userId/place'),
+        headers: {
+          'Accept': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      ),
+    );
+
+    return ApiHelper.decode(response);
+  }
+
   static Future<Map<String, dynamic>> getFamilyLocations() async {
     final token = await AuthService.getToken();
 

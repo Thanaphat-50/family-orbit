@@ -104,6 +104,12 @@ class _MapPageState extends State<MapPage> {
 
   final Set<String> loadingAddresses = {};
 
+  // หมู่บ้าน/ชุมชน + สถานที่ใกล้เคียง (จาก Server) แยกตามสมาชิก
+  // เก็บพิกัดและเวลาที่หาไว้ → ขยับไม่ไกลก็ใช้ข้อมูลเดิม
+  final Map<int, Map<String, dynamic>> placeDetails = {};
+
+  final Set<int> loadingPlaceDetails = {};
+
   // โหมดเดินทาง → ชื่อ / ไอคอน / travelmode ของ Google Maps
   static const Map<String, ({String label, IconData icon, String googleMode})>
   travelModes = {
@@ -443,6 +449,8 @@ class _MapPageState extends State<MapPage> {
 
         if (member != null) {
           loadAddress(member);
+
+          loadPlaceDetails(member);
 
           if (memberMovedFromRoute(member)) loadRoute();
         }
@@ -1250,6 +1258,8 @@ class _MapPageState extends State<MapPage> {
 
     loadAddress(location);
 
+    loadPlaceDetails(location);
+
     startRefreshTimer(fast: true);
 
     // รอให้แผนที่รับระยะขอบใหม่ก่อน แล้วค่อยเลื่อนกล้อง
@@ -1622,6 +1632,76 @@ class _MapPageState extends State<MapPage> {
     setState(() => addresses[key] = address);
   }
 
+  // หาใหม่เมื่อขยับเกินระยะนี้ และห่างจากครั้งก่อนเกินเวลานี้
+  static const double placeRefreshMeters = 300;
+  static const Duration placeRefreshAfter = Duration(minutes: 1);
+
+  Future<void> loadPlaceDetails(Map<String, dynamic> location) async {
+    final int? userId = userIdOf(location);
+
+    final double? latitude = toDouble(location['latitude']);
+
+    final double? longitude = toDouble(location['longitude']);
+
+    if (userId == null || latitude == null || longitude == null) return;
+
+    final Map<String, dynamic>? known = placeDetails[userId];
+
+    if (known != null) {
+      final DateTime fetchedAt = known['fetched_at'] as DateTime;
+
+      if (DateTime.now().difference(fetchedAt) < placeRefreshAfter) return;
+
+      // หาไม่สำเร็จครั้งก่อน → ลองใหม่ได้เลย / สำเร็จ → รอให้ขยับไกลพอ
+      if (known['failed'] != true) {
+        final double moved = Geolocator.distanceBetween(
+          latitude,
+          longitude,
+          known['latitude'] as double,
+          known['longitude'] as double,
+        );
+
+        if (moved < placeRefreshMeters) return;
+      }
+    }
+
+    if (!loadingPlaceDetails.add(userId)) return;
+
+    Map<String, dynamic>? result;
+
+    try {
+      result = await LocationService.getMemberPlace(userId);
+    } catch (_) {
+      // ไม่มีเน็ต / เกินจำนวนครั้ง → แสดงเฉพาะที่อยู่จากมือถือ
+    } finally {
+      loadingPlaceDetails.remove(userId);
+    }
+
+    if (!mounted) return;
+
+    final bool ok = result != null && result['status'] == true;
+
+    final dynamic area = ok ? result['area'] : null;
+
+    final dynamic places = ok ? result['places'] : null;
+
+    setState(() {
+      placeDetails[userId] = {
+        'latitude': latitude,
+        'longitude': longitude,
+        'fetched_at': DateTime.now(),
+        'failed': !ok,
+        'area': area is Map ? Map<String, dynamic>.from(area) : null,
+        'places': places is List
+            ? places
+                  .whereType<Map>()
+                  .map((place) => Map<String, dynamic>.from(place))
+                  .toList()
+            : <Map<String, dynamic>>[],
+      };
+    });
+  }
+
   // ถนน ตำบล อำเภอ จังหวัด (ตัดค่าซ้ำและ Plus Code)
   static String? formatPlacemark(Placemark place) {
     final List<String> parts = [];
@@ -1831,6 +1911,193 @@ class _MapPageState extends State<MapPage> {
     );
   }
 
+  // หมู่บ้าน/ชุมชน + สถานที่ใกล้เคียง (null = ไม่มีข้อมูล)
+  Widget? buildPlaceDetails(int? userId) {
+    if (userId == null) return null;
+
+    final Map<String, dynamic>? details = placeDetails[userId];
+
+    if (details == null) {
+      if (!loadingPlaceDetails.contains(userId)) return null;
+
+      return Padding(
+        padding: const EdgeInsets.only(top: 14),
+        child: Row(
+          children: [
+            const SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              'กำลังหารายละเอียดสถานที่…',
+              style: TextStyle(color: AppColors.muted, fontSize: 12.5),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final Map<String, dynamic>? area = details['area'];
+
+    final List<Map<String, dynamic>> places = details['places'];
+
+    String? text(String key) {
+      final String value = area?[key]?.toString().trim() ?? '';
+
+      return value.isEmpty ? null : value;
+    }
+
+    final String? community = text('community');
+
+    final String region = [
+      text('subdistrict'),
+      text('district'),
+      text('province'),
+    ].whereType<String>().join(' · ');
+
+    if (community == null && region.isEmpty && places.isEmpty) return null;
+
+    return Container(
+      margin: const EdgeInsets.only(top: 14),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+      decoration: BoxDecoration(
+        color: AppColors.fill,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (community != null || region.isNotEmpty)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 1),
+                  child: Icon(
+                    Icons.holiday_village_rounded,
+                    size: 19,
+                    color: AppColors.primary,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        community ?? region,
+                        style: TextStyle(
+                          color: AppColors.navy,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      if (community != null && region.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          region,
+                          style: TextStyle(
+                            color: AppColors.muted,
+                            fontSize: 12,
+                            height: 1.35,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          if (places.isNotEmpty) ...[
+            if (community != null || region.isNotEmpty)
+              const SizedBox(height: 12),
+            Text(
+              'สถานที่ใกล้เคียง',
+              style: TextStyle(
+                color: AppColors.muted,
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 4),
+            for (final place in places.take(4)) buildNearbyPlace(place),
+          ],
+          if (area != null)
+            Align(
+              alignment: Alignment.centerRight,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  'ข้อมูลพื้นที่ © OpenStreetMap',
+                  style: TextStyle(color: AppColors.muted, fontSize: 10.5),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildNearbyPlace(Map<String, dynamic> place) {
+    final bool tourist = place['tourist'] == true;
+
+    final double? meters = toDouble(place['distance_meters']);
+
+    final String type = place['type']?.toString() ?? '';
+
+    final bool here = meters != null && meters <= 50;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Icon(
+            tourist ? Icons.attractions_rounded : Icons.place_outlined,
+            size: 17,
+            color: tourist ? AppColors.warm : AppColors.muted,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: place['name']?.toString() ?? '',
+                    style: TextStyle(
+                      color: AppColors.navy,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  if (type.isNotEmpty)
+                    TextSpan(
+                      text: '  $type',
+                      style: TextStyle(color: AppColors.muted, fontSize: 12),
+                    ),
+                ],
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (meters != null) ...[
+            const SizedBox(width: 8),
+            Text(
+              here ? 'อยู่ตรงนี้' : formatDistance(meters),
+              style: TextStyle(
+                color: here ? AppColors.success : AppColors.muted,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   List<Widget> buildMemberDetails(Map<String, dynamic> location) {
     final String name = getMemberName(location);
 
@@ -2005,6 +2272,8 @@ class _MapPageState extends State<MapPage> {
 
         buildStatusQuote(statusOf(location)!),
       ],
+
+      ?buildPlaceDetails(userId),
 
       const SizedBox(height: 14),
 
