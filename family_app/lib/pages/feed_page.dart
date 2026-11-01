@@ -9,6 +9,7 @@ import '../config/app_info.dart';
 import '../services/post_service.dart';
 import '../services/social_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/comment_media.dart';
 import '../widgets/community_sheets.dart';
 import '../widgets/hashtag_text.dart';
 import '../widgets/photo_viewer.dart';
@@ -111,6 +112,11 @@ class _FeedPageState extends State<FeedPage> {
   static const Color likeColor = Color(0xFFE5486B);
 
   final TextEditingController postController = TextEditingController();
+
+  // แฮชแท็กของโพสต์ชุมชน (ช่องแยกจากข้อความ)
+  final TextEditingController hashtagController = TextEditingController();
+
+  final List<String> composeHashtags = [];
 
   final ScrollController scrollController = ScrollController();
 
@@ -935,7 +941,21 @@ class _FeedPageState extends State<FeedPage> {
   }
 
   Future<void> createPost() async {
-    final content = postController.text.trim();
+    // ช่องแฮชแท็กยังพิมพ์ค้างอยู่ → นับด้วย
+    if (hashtagController.text.trim().isNotEmpty) {
+      addHashtags(hashtagController.text);
+      hashtagController.clear();
+    }
+
+    // แฮชแท็กต่อท้ายข้อความ เช่น "แกงเขียวหวาน #ทำอาหาร #อร่อย"
+    final String tags = scope == FeedScope.community
+        ? composeHashtags.map((tag) => '#$tag').join(' ')
+        : '';
+
+    final String content = [
+      postController.text.trim(),
+      tags,
+    ].where((part) => part.isNotEmpty).join(' ');
 
     final List<String> imagePaths = pickedImages
         .map((image) => image.path)
@@ -991,6 +1011,10 @@ class _FeedPageState extends State<FeedPage> {
 
       if (result['status'] == true) {
         postController.clear();
+
+        hashtagController.clear();
+
+        composeHashtags.clear();
 
         dismissKeyboard();
 
@@ -2044,89 +2068,197 @@ class _FeedPageState extends State<FeedPage> {
     }
   }
 
-  // แท็กที่กำลังพิมพ์อยู่หน้าเคอร์เซอร์ (null = ไม่ได้พิมพ์แท็ก)
-  RegExpMatch? typingHashtag(TextEditingValue value) {
-    final int cursor = value.selection.isValid
-        ? value.selection.baseOffset
-        : value.text.length;
+  // ใส่ได้ตรงกับ Laravel (Hashtag::MAX_PER_POST)
+  static const int maxPostHashtags = 10;
 
-    return typingHashtagPattern.firstMatch(value.text.substring(0, cursor));
+  // คำที่พิมพ์ → แท็ก (ตัด # ออก) / null = ใช้ไม่ได้ เช่น มีเครื่องหมายอื่นปน
+  String? cleanHashtag(String raw) {
+    final String tag = raw.trim().replaceFirst(RegExp(r'^#+'), '');
+
+    if (tag.isEmpty) return null;
+
+    final RegExpMatch? match = hashtagPattern.firstMatch('#$tag');
+
+    if (match == null || match.group(1) != tag || !isCountedHashtag(tag)) {
+      return null;
+    }
+
+    return tag;
   }
 
-  // ใส่แท็ก: แทนแท็กที่พิมพ์ค้างไว้ / ต่อท้ายตำแหน่งเคอร์เซอร์
-  void insertHashtag(String tag) {
-    final TextEditingValue value = postController.value;
+  // เพิ่มหลายคำได้ในครั้งเดียว (คั่นด้วยเว้นวรรค / จุลภาค)
+  void addHashtags(String raw) {
+    final List<String> words = raw
+        .split(RegExp(r'[\s,]+'))
+        .where((word) => word.isNotEmpty)
+        .toList();
 
-    final String text = value.text;
+    if (words.isEmpty) return;
 
-    final int cursor = value.selection.isValid
-        ? value.selection.baseOffset
-        : text.length;
+    updateComposer(() {
+      composerError = null;
 
-    final int start = typingHashtag(value)?.start ?? cursor;
+      for (final word in words) {
+        final String? tag = cleanHashtag(word);
 
-    final bool needsSpace = start > 0 && text[start - 1].trim().isNotEmpty;
+        if (tag == null) {
+          composerError = 'แฮชแท็กใช้ได้เฉพาะตัวอักษร ตัวเลข และ _';
+          continue;
+        }
 
-    final String insert = '${needsSpace ? ' ' : ''}#$tag ';
+        final bool exists = composeHashtags.any(
+          (item) => item.toLowerCase() == tag.toLowerCase(),
+        );
 
-    postController.value = TextEditingValue(
-      text: text.replaceRange(start, cursor, insert),
-      selection: TextSelection.collapsed(offset: start + insert.length),
+        if (exists) continue;
+
+        if (composeHashtags.length >= maxPostHashtags) {
+          composerError = 'ใส่แฮชแท็กได้สูงสุด $maxPostHashtags แท็ก';
+          break;
+        }
+
+        composeHashtags.add(tag);
+      }
+    });
+  }
+
+  // พิมพ์เว้นวรรค / จุลภาค → คำก่อนหน้ากลายเป็นป้ายแท็ก
+  void onHashtagTyping(String value) {
+    if (!value.contains(RegExp(r'[\s,]'))) return;
+
+    final List<String> parts = value.split(RegExp(r'[\s,]+'));
+
+    // คำสุดท้ายที่ยังพิมพ์ไม่จบ เก็บไว้ในช่องต่อ
+    final String rest = RegExp(r'[\s,]$').hasMatch(value)
+        ? ''
+        : parts.removeLast();
+
+    addHashtags(parts.join(' '));
+
+    hashtagController.value = TextEditingValue(
+      text: rest,
+      selection: TextSelection.collapsed(offset: rest.length),
     );
   }
 
-  Widget buildHashtagSuggestions() {
+  // =====================================================
+  // ช่องแฮชแท็ก (โพสต์ชุมชน) แยกจากข้อความ
+  // ตอนโพสต์นำไปต่อท้ายข้อความ (createPost)
+  // =====================================================
+
+  Widget buildHashtagField() {
+    final inputBorder = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(14),
+      borderSide: BorderSide.none,
+    );
+
     return ValueListenableBuilder<TextEditingValue>(
-      valueListenable: postController,
+      valueListenable: hashtagController,
       builder: (context, value, child) {
-        final RegExpMatch? typing = typingHashtag(value);
+        final String typed = value.text
+            .trim()
+            .replaceFirst(RegExp(r'^#+'), '')
+            .toLowerCase();
 
-        final String prefix = typing?.group(1)?.toLowerCase() ?? '';
-
-        final Set<String> used = hashtagPattern
-            .allMatches(value.text)
-            .map((match) => match.group(1)!.toLowerCase())
-            .toSet();
-
-        final List<String> tags = (popularHashtags ?? const <String>[])
+        // แท็กยอดนิยมที่ยังไม่ได้ใส่ (พิมพ์อยู่ → เฉพาะที่ขึ้นต้นตรงกัน)
+        final List<String> suggestions = (popularHashtags ?? const <String>[])
             .where(
-              (tag) => typing != null
-                  ? tag.startsWith(prefix) && tag != prefix
-                  : !used.contains(tag),
+              (tag) => !composeHashtags.any((item) => item.toLowerCase() == tag),
             )
+            .where((tag) => typed.isEmpty || tag.startsWith(typed))
             .take(8)
             .toList();
 
-        if (tags.isEmpty) return const SizedBox.shrink();
-
-        return Padding(
-          padding: const EdgeInsets.only(top: 10),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                Icon(Icons.tag_rounded, size: 18, color: communityColor),
-                const SizedBox(width: 6),
-                for (final tag in tags) ...[
-                  ActionChip(
-                    label: Text('#$tag'),
-                    onPressed: () => insertHashtag(tag),
-                    labelStyle: TextStyle(
-                      color: communityColor,
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w700,
-                    ),
-                    side: BorderSide(
-                      color: communityColor.withValues(alpha: 0.25),
-                    ),
-                    backgroundColor: communityColor.withValues(alpha: 0.06),
-                    visualDensity: VisualDensity.compact,
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 12),
+            TextField(
+              controller: hashtagController,
+              textInputAction: TextInputAction.done,
+              onChanged: onHashtagTyping,
+              onSubmitted: (text) {
+                addHashtags(text);
+                hashtagController.clear();
+              },
+              decoration: InputDecoration(
+                hintText: 'แฮชแท็ก เช่น ทำอาหาร แล้วกดเว้นวรรค',
+                prefixIcon: Icon(Icons.tag_rounded, color: communityColor),
+                isDense: true,
+                filled: true,
+                fillColor: AppColors.fill,
+                border: inputBorder,
+                enabledBorder: inputBorder,
+                focusedBorder: inputBorder.copyWith(
+                  borderSide: BorderSide(
+                    color: communityColor.withValues(alpha: 0.45),
+                    width: 1.4,
                   ),
-                  const SizedBox(width: 6),
-                ],
-              ],
+                ),
+              ),
             ),
-          ),
+            if (composeHashtags.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final tag in composeHashtags)
+                    InputChip(
+                      label: Text('#$tag'),
+                      onDeleted: () =>
+                          updateComposer(() => composeHashtags.remove(tag)),
+                      labelStyle: TextStyle(
+                        color: communityColor,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      deleteIconColor: communityColor,
+                      backgroundColor: communityColor.withValues(alpha: 0.10),
+                      side: BorderSide.none,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                ],
+              ),
+            ],
+            if (suggestions.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    Text(
+                      'ยอดนิยม',
+                      style: TextStyle(color: AppColors.muted, fontSize: 12),
+                    ),
+                    const SizedBox(width: 6),
+                    for (final tag in suggestions) ...[
+                      ActionChip(
+                        label: Text('#$tag'),
+                        onPressed: () {
+                          addHashtags(tag);
+                          hashtagController.clear();
+                        },
+                        labelStyle: TextStyle(
+                          color: communityColor,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                        side: BorderSide(
+                          color: communityColor.withValues(alpha: 0.25),
+                        ),
+                        backgroundColor: communityColor.withValues(
+                          alpha: 0.06,
+                        ),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      const SizedBox(width: 6),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ],
         );
       },
     );
@@ -2193,7 +2325,7 @@ class _FeedPageState extends State<FeedPage> {
 
                 decoration: InputDecoration(
                   hintText: scope == FeedScope.community
-                      ? 'แชร์เรื่องราวให้ทุกครอบครัวในชุมชน... ใส่ #แฮชแท็ก ได้'
+                      ? 'แชร์เรื่องราวให้ทุกครอบครัวในชุมชน...'
                       : 'มีอะไรอยากเล่าให้ครอบครัวฟังไหม?',
                   filled: true,
                   fillColor: AppColors.fill,
@@ -2211,7 +2343,7 @@ class _FeedPageState extends State<FeedPage> {
             ),
           ],
         ),
-        if (community) buildHashtagSuggestions(),
+        if (community) buildHashtagField(),
         if (pickedImages.isNotEmpty) ...[
           const SizedBox(height: 12),
           buildPickedImages(),
@@ -2252,6 +2384,7 @@ class _FeedPageState extends State<FeedPage> {
               builder: (context, value, child) {
                 final bool canPost =
                     (value.text.trim().isNotEmpty ||
+                        composeHashtags.isNotEmpty ||
                         pickedImages.isNotEmpty ||
                         pickedVideo != null) &&
                     !isPosting;
@@ -3937,19 +4070,31 @@ class _FeedPageState extends State<FeedPage> {
                             ),
                           ),
                         ),
-                        const SizedBox(height: 2),
-                        HashtagText(
-                          content,
-                          onTagTap: openHashtag,
-                          style: TextStyle(
-                            color: AppColors.navy,
-                            fontSize: 14.5,
-                            height: 1.4,
+                        if (content.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          HashtagText(
+                            content,
+                            onTagTap: openHashtag,
+                            style: TextStyle(
+                              color: AppColors.navy,
+                              fontSize: 14.5,
+                              height: 1.4,
+                            ),
                           ),
-                        ),
+                        ],
                       ],
                     ),
                   ),
+                  // รูป / GIF / วิดีโอที่แนบ (ย่อ แตะเพื่อดูเต็มจอ)
+                  if (comment is Map && comment['media'] is Map)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6, left: 4),
+                      child: CommentMediaThumb(
+                        media: Map<String, dynamic>.from(
+                          comment['media'] as Map,
+                        ),
+                      ),
+                    ),
                   // เวลา + ⋯ ใต้ฟอง
                   Padding(
                     padding: const EdgeInsets.fromLTRB(12, 3, 0, 0),
@@ -4222,6 +4367,8 @@ class _FeedPageState extends State<FeedPage> {
     composerVersion.dispose();
 
     postController.dispose();
+
+    hashtagController.dispose();
 
     scrollController.dispose();
 

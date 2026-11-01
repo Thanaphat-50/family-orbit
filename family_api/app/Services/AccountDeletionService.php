@@ -4,9 +4,11 @@ namespace App\Services;
 
 use App\Models\AccountDeletionRequest;
 use App\Models\AppNotification;
+use App\Models\Comment;
 use App\Models\Family;
 use App\Models\FamilyMember;
 use App\Models\Conversation;
+use App\Models\Post;
 use App\Models\PostImage;
 use App\Models\PostVideo;
 use App\Models\Shop;
@@ -85,6 +87,18 @@ class AccountDeletionService
                 );
         })->get()->flatMap(fn (PostVideo $video) => $video->filePaths())->all();
 
+        // ไฟล์แนบในความคิดเห็นของผู้ใช้ + ความคิดเห็นในโพสต์ที่จะถูกลบ
+        $commentMediaPaths = Comment::whereNotNull('media_path')
+            ->where(function ($comments) use ($user) {
+                $comments->where('user_id', $user->id)
+                    ->orWhereIn('post_id', Post::where('user_id', $user->id)
+                        ->orWhereIn('family_id', Family::where('owner_id', $user->id)->select('id'))
+                        ->select('id'));
+            })
+            ->get()
+            ->flatMap(fn (Comment $comment) => $comment->mediaPaths())
+            ->all();
+
         // โลโก้ร้านและรูปสินค้าของผู้ใช้ (ร้านถูกลบตาม cascade)
         $shopMediaPaths = Shop::mediaPathsOfOwner($user->id);
 
@@ -102,7 +116,13 @@ class AccountDeletionService
         });
 
         // ลบไฟล์รูปในโพสต์และไฟล์ของร้านหลังลบข้อมูลสำเร็จแล้ว
-        MediaStorage::delete([...$imagePaths, ...$videoPaths, ...$shopMediaPaths, ...$chatMediaPaths]);
+        MediaStorage::delete([
+            ...$imagePaths,
+            ...$videoPaths,
+            ...$commentMediaPaths,
+            ...$shopMediaPaths,
+            ...$chatMediaPaths,
+        ]);
 
         // ลบรูปโปรไฟล์หลังลบข้อมูลสำเร็จแล้ว
         if ($photoPath) {

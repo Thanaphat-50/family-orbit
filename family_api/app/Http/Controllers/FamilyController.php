@@ -8,7 +8,6 @@ use App\Models\Family;
 use App\Models\FamilyInvitation;
 use App\Models\FamilyMember;
 use App\Models\Post;
-use App\Models\PostImage;
 use App\Models\UserLocation;
 use App\Support\MediaStorage;
 use Illuminate\Http\Request;
@@ -732,11 +731,11 @@ class FamilyController extends Controller
             ], 403);
         }
 
-        // เก็บที่อยู่ไฟล์รูปในโพสต์ของครอบครัวไว้ลบหลังลบข้อมูลสำเร็จ
-        $imagePaths = PostImage::whereIn(
-            'post_id',
+        // เก็บที่อยู่ไฟล์ในโพสต์ของครอบครัว (รูป วิดีโอ ไฟล์ในความคิดเห็น)
+        // ไว้ลบหลังลบข้อมูลสำเร็จ
+        $imagePaths = Post::mediaPathsOf(
             Post::where('family_id', $family->id)->select('id')
-        )->pluck('path')->all();
+        );
 
         DB::transaction(function () use (
             $family
@@ -860,8 +859,8 @@ class FamilyController extends Controller
             $family->delete();
         });
 
-        // ลบไฟล์รูปของโพสต์ที่ถูกลบไปแล้ว
-        // (แถวใน post_images ถูกลบตาม cascade แต่ไฟล์ต้องลบเอง)
+        // ลบไฟล์ของโพสต์ที่ถูกลบไปแล้ว
+        // (แถวในตารางถูกลบตาม cascade แต่ไฟล์ต้องลบเอง)
         MediaStorage::delete($imagePaths);
 
         return response()->json([

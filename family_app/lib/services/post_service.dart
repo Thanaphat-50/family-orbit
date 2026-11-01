@@ -434,10 +434,16 @@ class PostService {
   // CREATE COMMENT
   // =====================================================
 
+  // ความคิดเห็น: ข้อความ และ/หรือ ไฟล์แนบ 1 ไฟล์ (รูป / GIF / วิดีโอ)
   static Future<Map<String, dynamic>> createComment({
     required int postId,
     required String content,
+    CommentMediaFile? media,
   }) async {
+    if (media != null) {
+      return _createCommentWithMedia(postId, content, media);
+    }
+
     final headers = await _headers();
 
     final response = await ApiHelper.request(
@@ -450,6 +456,83 @@ class PostService {
 
     return ApiHelper.decode(response);
   }
+
+  static Future<Map<String, dynamic>> _createCommentWithMedia(
+    int postId,
+    String content,
+    CommentMediaFile media,
+  ) async {
+    final token = await AuthService.getToken();
+
+    // ไม่ใส่ Content-Type เพราะ MultipartRequest สร้างให้เอง
+    final request =
+        http.MultipartRequest(
+            'POST',
+            Uri.parse('$baseUrl/posts/$postId/comments'),
+          )
+          ..headers.addAll({
+            'Accept': 'application/json',
+            if (token != null) 'Authorization': 'Bearer $token',
+          })
+          ..fields['content'] = content;
+
+    request.files.add(
+      await http.MultipartFile.fromPath(
+        'media',
+        media.path,
+        contentType: MediaType.parse(media.mimeType),
+      ),
+    );
+
+    if (media.thumbnailPath != null) {
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'media_thumbnail',
+          media.thumbnailPath!,
+        ),
+      );
+    }
+
+    if (media.width != null) request.fields['media_width'] = '${media.width}';
+
+    if (media.height != null) {
+      request.fields['media_height'] = '${media.height}';
+    }
+
+    final response = await ApiHelper.request(
+      () async => http.Response.fromStream(await request.send()),
+      timeLimit: _uploadTimeLimit,
+    );
+
+    if (response.statusCode == 413) {
+      return {
+        'status': false,
+        'message': 'ไฟล์ใหญ่เกินไป กรุณาเลือกไฟล์ที่เล็กลง',
+      };
+    }
+
+    return ApiHelper.decode(response);
+  }
+}
+
+// ไฟล์แนบในความคิดเห็น
+// type: image / gif / video (ใช้แสดงตัวอย่างในแอป Server ตรวจชนิดจากไฟล์เอง)
+class CommentMediaFile {
+  final String path;
+  final String type;
+  final String mimeType;
+  final String? thumbnailPath;
+  final int? width;
+  final int? height;
+
+  const CommentMediaFile({
+    required this.path,
+    required this.type,
+    required this.mimeType,
+    this.thumbnailPath,
+    this.width,
+    this.height,
+  });
 }
 
 // วิดีโอที่จะแนบกับโพสต์

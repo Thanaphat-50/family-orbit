@@ -8,6 +8,7 @@ use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Support\Icons\Heroicon;
+use Filament\Tables\Columns\ImageColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\TernaryFilter;
@@ -31,6 +32,18 @@ class CommentsTable
                     ->limit(200)
                     ->wrap()
                     ->searchable(),
+
+                // รูป / GIF / วิดีโอที่แนบ (กดเพื่อเปิดไฟล์เต็ม)
+                ImageColumn::make('media_preview_url')
+                    ->label('ไฟล์แนบ')
+                    ->imageHeight(56)
+                    ->url(fn (Comment $record) => $record->media['url'] ?? null, shouldOpenInNewTab: true)
+                    ->tooltip(fn (Comment $record) => match ($record->media_type) {
+                        Comment::MEDIA_GIF => 'GIF',
+                        Comment::MEDIA_VIDEO => 'วิดีโอ',
+                        Comment::MEDIA_IMAGE => 'รูป',
+                        default => null,
+                    }),
 
                 TextColumn::make('post.content')
                     ->label('ในโพสต์')

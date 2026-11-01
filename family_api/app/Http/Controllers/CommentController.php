@@ -9,12 +9,17 @@ use App\Models\FamilyMember;
 use App\Models\Interaction;
 use App\Models\Post;
 use App\Models\UserBlock;
+use App\Support\MediaStorage;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
+use Throwable;
 
 class CommentController extends Controller
 {
+    // ไฟล์แนบในความคิดเห็น
+    private const MAX_IMAGE_KB = 10240;
+    private const MAX_VIDEO_KB = 20480;
+
     // =====================================================
     // สร้าง Comment
     // =====================================================
@@ -24,8 +29,39 @@ class CommentController extends Controller
         Post $post
     ) {
         $request->validate([
-            'content' => 'required|string|max:2000',
+            'content' => 'required_without:media|nullable|string|max:2000',
+            // รูป / GIF (≤ 10 MB) หรือวิดีโอ (≤ 20 MB) 1 ไฟล์
+            'media' => 'nullable|file|max:' . self::MAX_VIDEO_KB
+                . '|mimetypes:image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime,video/3gpp',
+            'media_thumbnail' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
+            'media_width' => 'nullable|integer|min:0|max:10000',
+            'media_height' => 'nullable|integer|min:0|max:10000',
+        ], [
+            'content.required_without' => 'กรุณาพิมพ์ความคิดเห็น หรือแนบรูป/วิดีโอ',
+            'media.mimetypes' => 'แนบได้เฉพาะรูป JPG, PNG, WEBP, GIF หรือวิดีโอ MP4',
+            'media.max' => 'ไฟล์ใหญ่เกินไป (รูปไม่เกิน 10 MB วิดีโอไม่เกิน 20 MB)',
+            'media.uploaded' => 'อัปโหลดไฟล์ไม่สำเร็จ กรุณาลองอีกครั้ง',
         ]);
+
+        $media = $request->file('media');
+
+        $mediaType = null;
+
+        if ($media) {
+            $mime = (string) $media->getMimeType();
+
+            $mediaType = str_starts_with($mime, 'video/')
+                ? Comment::MEDIA_VIDEO
+                : ($mime === 'image/gif' ? Comment::MEDIA_GIF : Comment::MEDIA_IMAGE);
+
+            if ($mediaType !== Comment::MEDIA_VIDEO && $media->getSize() > self::MAX_IMAGE_KB * 1024) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'รูปหรือ GIF ต้องมีขนาดไม่เกิน 10 MB',
+                    'errors' => ['media' => ['รูปหรือ GIF ต้องมีขนาดไม่เกิน 10 MB']],
+                ], 422);
+            }
+        }
 
         $user = $request->user();
 
@@ -75,60 +111,95 @@ class CommentController extends Controller
             )
             ->exists();
 
-        $comment = DB::transaction(
-            function () use (
-                $request,
-                $post,
-                $user,
-                $membership,
-                $blockedByOwner
-            ) {
-                $comment = Comment::create([
-                    'post_id' => $post->id,
-                    'user_id' => $user->id,
-                    'content' =>
-                        $request->content,
-                ]);
+        // เก็บไฟล์ก่อน ถ้าบันทึกความคิดเห็นไม่สำเร็จค่อยลบทิ้ง
+        $mediaPaths = [];
 
-                Interaction::record($user, Interaction::COMMENT, $post, meta: [
-                    'comment_id' => $comment->id,
-                    'excerpt' => Str::limit($comment->content, 80),
-                ]);
+        if ($media) {
+            $disk = MediaStorage::disk();
 
-                // ไม่แจ้งตัวเอง
-                if (
-                    $post->user_id !==
-                    $user->id
-                    && !$blockedByOwner
-                ) {
-                    AppNotification::create([
-                        'user_id' =>
-                            $post->user_id,
+            $mediaPaths['media_path'] = $media->store('comment_media/' . $user->id, $disk);
 
-                        // โพสต์ชุมชนไม่ผูกกับครอบครัวของผู้แสดงความคิดเห็น
-                        'family_id' =>
-                            $post->isCommunity()
-                                ? null
-                                : $membership->family_id,
-                        'type' => 'new_comment',
-                        'title' =>
-                            'ความคิดเห็นใหม่',
-                        'message' =>
-                            $user->name .
-                            ' แสดงความคิดเห็นในโพสต์ของคุณ',
-                        'data' => [
-                            'post_id' =>
-                                $post->id,
-                            'comment_id' =>
-                                $comment->id,
-                        ],
-                        'is_read' => false,
-                    ]);
-                }
-
-                return $comment;
+            if ($mediaType === Comment::MEDIA_VIDEO && $request->hasFile('media_thumbnail')) {
+                $mediaPaths['media_thumbnail_path'] = $request->file('media_thumbnail')
+                    ->store('comment_media/' . $user->id . '/thumbnails', $disk);
             }
-        );
+
+            if (in_array(false, $mediaPaths, true)) {
+                MediaStorage::delete(array_filter($mediaPaths));
+
+                return response()->json([
+                    'status' => false,
+                    'message' => 'อัปโหลดไฟล์ไม่สำเร็จ กรุณาลองอีกครั้ง',
+                ], 422);
+            }
+        }
+
+        try {
+            $comment = DB::transaction(
+                function () use (
+                    $request,
+                    $post,
+                    $user,
+                    $membership,
+                    $blockedByOwner,
+                    $mediaType,
+                    $mediaPaths
+                ) {
+                    $comment = Comment::create([
+                        'post_id' => $post->id,
+                        'user_id' => $user->id,
+                        'content' => filled($request->content) ? trim($request->content) : null,
+                        'media_type' => $mediaType,
+                        'media_path' => $mediaPaths['media_path'] ?? null,
+                        'media_thumbnail_path' => $mediaPaths['media_thumbnail_path'] ?? null,
+                        'media_width' => $mediaType ? $request->integer('media_width') ?: null : null,
+                        'media_height' => $mediaType ? $request->integer('media_height') ?: null : null,
+                    ]);
+
+                    Interaction::record($user, Interaction::COMMENT, $post, meta: [
+                        'comment_id' => $comment->id,
+                        'excerpt' => $comment->excerpt(),
+                    ]);
+
+                    // ไม่แจ้งตัวเอง
+                    if (
+                        $post->user_id !==
+                        $user->id
+                        && !$blockedByOwner
+                    ) {
+                        AppNotification::create([
+                            'user_id' =>
+                                $post->user_id,
+
+                            // โพสต์ชุมชนไม่ผูกกับครอบครัวของผู้แสดงความคิดเห็น
+                            'family_id' =>
+                                $post->isCommunity()
+                                    ? null
+                                    : $membership->family_id,
+                            'type' => 'new_comment',
+                            'title' =>
+                                'ความคิดเห็นใหม่',
+                            'message' =>
+                                $user->name .
+                                ' แสดงความคิดเห็นในโพสต์ของคุณ',
+                            'data' => [
+                                'post_id' =>
+                                    $post->id,
+                                'comment_id' =>
+                                    $comment->id,
+                            ],
+                            'is_read' => false,
+                        ]);
+                    }
+
+                    return $comment;
+                }
+            );
+        } catch (Throwable $e) {
+            MediaStorage::delete(array_values($mediaPaths));
+
+            throw $e;
+        }
 
         $comment->load(
             'user:id,name,profile_photo'

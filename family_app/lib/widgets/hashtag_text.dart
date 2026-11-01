@@ -15,12 +15,6 @@ final RegExp hashtagPattern = RegExp(
   unicode: true,
 );
 
-// กำลังพิมพ์แท็กอยู่ท้ายข้อความ เช่น "วันนี้ #ทำอา"
-final RegExp typingHashtagPattern = RegExp(
-  r'(?<!\S)#([\p{L}\p{M}\p{N}_]*)$',
-  unicode: true,
-);
-
 const int hashtagMaxLength = 50;
 
 // แท็กที่ระบบนับ (ไม่ยาวเกิน และไม่ใช่ตัวเลขล้วน เช่น #1)

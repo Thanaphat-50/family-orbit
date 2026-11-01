@@ -7,6 +7,7 @@ import '../config/app_info.dart';
 import '../services/post_service.dart';
 import '../services/social_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/comment_media.dart';
 import '../widgets/community_sheets.dart';
 import '../widgets/hashtag_text.dart';
 import '../widgets/user_avatar.dart';
@@ -829,6 +830,7 @@ class _VideoClipState extends State<_VideoClip> {
 // =======================================================
 // ความคิดเห็นของวิดีโอ (แผ่นที่เลื่อนขึ้นมาทับวิดีโอ)
 // - เขียนความคิดเห็นได้ทันที (#แฮชแท็กกดได้)
+// - แนบรูป / GIF / วิดีโอได้ 1 ไฟล์ แสดงย่อ แตะเพื่อดูเต็มจอ
 // - แตะชื่อ/รูป = เปิดโปรไฟล์, กดค้างความคิดเห็นของคนอื่น = รายงาน
 // =======================================================
 
@@ -860,6 +862,37 @@ class _CommentsSheetState extends State<_CommentsSheet> {
 
   bool sending = false;
 
+  // ไฟล์ที่แนบไว้ (ยังไม่ส่ง) / กำลังเตรียมวิดีโอ (บีบอัด)
+  CommentMediaFile? attachment;
+
+  bool preparing = false;
+
+  bool get canSend =>
+      !sending &&
+      !preparing &&
+      (input.text.trim().isNotEmpty || attachment != null);
+
+  Future<void> attachMedia() async {
+    final CommentMediaFile? picked = await pickCommentMedia(
+      context,
+      onBusy: (busy) {
+        if (mounted) setState(() => preparing = busy);
+      },
+    );
+
+    if (picked != null && mounted) setState(() => attachment = picked);
+  }
+
+  // GIF / สติกเกอร์ที่กดจากคีย์บอร์ด
+  Future<void> attachFromKeyboard(KeyboardInsertedContent content) async {
+    final CommentMediaFile? picked = await commentMediaFromKeyboard(
+      context,
+      content,
+    );
+
+    if (picked != null && mounted) setState(() => attachment = picked);
+  }
+
   List<dynamic> get comments => (widget.post['comments'] as List?) ?? [];
 
   void showMessage(String message) {
@@ -873,7 +906,7 @@ class _CommentsSheetState extends State<_CommentsSheet> {
 
     final int? postId = (widget.post['id'] as num?)?.toInt();
 
-    if (text.isEmpty || sending || postId == null) return;
+    if (!canSend || postId == null) return;
 
     setState(() => sending = true);
 
@@ -881,6 +914,7 @@ class _CommentsSheetState extends State<_CommentsSheet> {
       final result = await PostService.createComment(
         postId: postId,
         content: text,
+        media: attachment,
       );
 
       if (!mounted) return;
@@ -895,6 +929,8 @@ class _CommentsSheetState extends State<_CommentsSheet> {
           ];
 
           input.clear();
+
+          attachment = null;
         });
 
         widget.onChanged();
@@ -1036,15 +1072,23 @@ class _CommentsSheetState extends State<_CommentsSheet> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 2),
-                  HashtagText(
-                    comment['content']?.toString() ?? '',
-                    style: TextStyle(
-                      color: AppColors.navy,
-                      fontSize: 14,
-                      height: 1.4,
+                  if ((comment['content']?.toString() ?? '').isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    HashtagText(
+                      comment['content'].toString(),
+                      style: TextStyle(
+                        color: AppColors.navy,
+                        fontSize: 14,
+                        height: 1.4,
+                      ),
                     ),
-                  ),
+                  ],
+                  if (comment['media'] is Map) ...[
+                    const SizedBox(height: 6),
+                    CommentMediaThumb(
+                      media: Map<String, dynamic>.from(comment['media'] as Map),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -1096,16 +1140,59 @@ class _CommentsSheetState extends State<_CommentsSheet> {
                     ),
             ),
             Divider(height: 1, color: AppColors.border),
+            if (preparing)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                child: Row(
+                  children: [
+                    const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      'กำลังเตรียมวิดีโอ…',
+                      style: TextStyle(color: AppColors.muted, fontSize: 13),
+                    ),
+                  ],
+                ),
+              )
+            else if (attachment != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: CommentMediaPreview(
+                    media: attachment!,
+                    onRemove: () => setState(() => attachment = null),
+                  ),
+                ),
+              ),
             SafeArea(
               top: false,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
+                padding: const EdgeInsets.fromLTRB(4, 8, 6, 8),
                 child: Row(
                   children: [
+                    IconButton(
+                      tooltip: 'แนบรูป GIF หรือวิดีโอ',
+                      onPressed: sending || preparing ? null : attachMedia,
+                      icon: Icon(
+                        Icons.add_photo_alternate_outlined,
+                        color: AppColors.primary,
+                      ),
+                    ),
                     Expanded(
                       child: TextField(
                         controller: input,
                         enabled: !sending,
+                        // กด GIF / สติกเกอร์บนคีย์บอร์ด → แนบเป็นไฟล์
+                        contentInsertionConfiguration:
+                            ContentInsertionConfiguration(
+                              allowedMimeTypes: commentKeyboardMimeTypes,
+                              onContentInserted: attachFromKeyboard,
+                            ),
                         minLines: 1,
                         maxLines: 4,
                         maxLength: maxCommentLength,
@@ -1132,9 +1219,7 @@ class _CommentsSheetState extends State<_CommentsSheet> {
                       valueListenable: input,
                       builder: (context, value, child) => IconButton(
                         tooltip: 'ส่ง',
-                        onPressed: sending || value.text.trim().isEmpty
-                            ? null
-                            : send,
+                        onPressed: canSend ? send : null,
                         icon: sending
                             ? const SizedBox(
                                 width: 20,
@@ -1145,9 +1230,9 @@ class _CommentsSheetState extends State<_CommentsSheet> {
                               )
                             : Icon(
                                 Icons.send_rounded,
-                                color: value.text.trim().isEmpty
-                                    ? AppColors.muted
-                                    : AppColors.primary,
+                                color: canSend
+                                    ? AppColors.primary
+                                    : AppColors.muted,
                               ),
                       ),
                     ),

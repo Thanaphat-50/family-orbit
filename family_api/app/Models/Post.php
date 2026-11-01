@@ -161,17 +161,31 @@ class Post extends Model
         });
 
         static::deleting(function (Post $post) {
-            $post->loadMissing(['images', 'video']);
+            $post->loadMissing(['images', 'video', 'comments']);
         });
 
         static::deleted(function (Post $post) {
             $paths = [
                 ...$post->images->pluck('path')->all(),
                 ...($post->video?->filePaths() ?? []),
+                ...$post->comments->flatMap->mediaPaths()->all(),
             ];
 
             DB::afterCommit(fn () => MediaStorage::delete($paths));
         });
+    }
+
+    // ไฟล์ทั้งหมดของโพสต์ที่จะถูกลบแบบ cascade (ลบครอบครัว / ลบบัญชี)
+    // รูป วิดีโอ และไฟล์แนบในความคิดเห็น — เก็บไว้ลบหลังลบข้อมูลสำเร็จ
+    public static function mediaPathsOf($postIds): array
+    {
+        return [
+            ...PostImage::whereIn('post_id', $postIds)->pluck('path')->all(),
+            ...PostVideo::whereIn('post_id', $postIds)->get()
+                ->flatMap(fn (PostVideo $video) => $video->filePaths())->all(),
+            ...Comment::whereIn('post_id', $postIds)->whereNotNull('media_path')->get()
+                ->flatMap(fn (Comment $comment) => $comment->mediaPaths())->all(),
+        ];
     }
 
     // โพสต์ที่ผู้ใช้ทุกคนในแอปเห็นได้
