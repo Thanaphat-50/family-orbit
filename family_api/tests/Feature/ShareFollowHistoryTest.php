@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Comment;
 use App\Models\Interaction;
 use App\Models\Post;
+use App\Models\PostVideo;
 use App\Models\User;
 use App\Services\AccountDeletionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -242,6 +243,60 @@ class ShareFollowHistoryTest extends TestCase
 
         // ล้างประวัติแล้ว การติดตามจริงยังอยู่
         $this->assertTrue($me->following()->whereKey($author->id)->exists());
+    }
+
+    public function test_history_separates_posts_and_videos(): void
+    {
+        $author = $this->member();
+        $me = $this->member();
+
+        $post = $this->communityPost($author, 'Text post');
+
+        $clip = $this->communityPost($author, 'Video post');
+
+        PostVideo::create([
+            'post_id' => $clip->id,
+            'path' => "post_videos/{$author->id}/clip.mp4",
+            'thumbnail_path' => "post_videos/{$author->id}/clip.jpg",
+        ]);
+
+        Sanctum::actingAs($me);
+
+        $this->postJson("/api/posts/{$post->id}/like")->assertOk();
+        $this->postJson("/api/posts/{$clip->id}/like")->assertOk();
+        $this->postJson("/api/posts/{$clip->id}/comments", ['content' => 'สวยมาก'])->assertCreated();
+        $this->postJson("/api/users/{$author->id}/follow")->assertOk();
+
+        $this->getJson('/api/me/history?type=like&media=video')
+            ->assertOk()
+            ->assertJsonCount(1, 'items')
+            ->assertJsonPath('items.0.post.id', $clip->id)
+            ->assertJsonPath('items.0.post.has_video', true)
+            ->assertJsonPath('counts.like', 2)
+            ->assertJsonPath('media_counts.like.post', 1)
+            ->assertJsonPath('media_counts.like.video', 1)
+            ->assertJsonPath('media_counts.comment.post', 0)
+            ->assertJsonPath('media_counts.comment.video', 1);
+
+        $this->assertNotNull($this->getJson('/api/me/history?type=like&media=video')->json('items.0.post.video_thumbnail_url'));
+
+        $this->getJson('/api/me/history?type=like&media=post')
+            ->assertJsonCount(1, 'items')
+            ->assertJsonPath('items.0.post.id', $post->id)
+            ->assertJsonPath('items.0.post.has_video', false);
+
+        // การติดตามไม่ใช่ทั้งโพสต์และวิดีโอ
+        $this->getJson('/api/me/history?type=follow&media=post')->assertJsonCount(0, 'items');
+
+        $this->getJson('/api/me/history?media=photo')->assertStatus(422);
+
+        // ล้างเฉพาะถูกใจวิดีโอ
+        $this->deleteJson('/api/me/history?type=like&media=video')->assertOk();
+
+        $this->getJson('/api/me/history?type=like')
+            ->assertJsonCount(1, 'items')
+            ->assertJsonPath('items.0.post.id', $post->id)
+            ->assertJsonPath('media_counts.comment.video', 1);
     }
 
     // =====================================================

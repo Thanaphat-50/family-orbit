@@ -79,16 +79,19 @@ class SocialService {
   // items: [{id, type, channel, excerpt, created_at, post, target_user}]
   // counts: {like, comment, share, follow}
   // type: like / comment / share / follow (ไม่ส่ง = ทุกประเภท)
+  // media: post = โพสต์ทั่วไป / video = วิดีโอ (ไม่ส่ง = ทั้งหมด)
   static Future<Map<String, dynamic>> history({
     int page = 1,
     String? type,
+    String? media,
   }) async {
     final headers = await _headers();
 
     final response = await ApiHelper.request(
       () => http.get(
-        Uri.parse('$baseUrl/me/history')
-            .replace(queryParameters: {'page': '$page', 'type': ?type}),
+        Uri.parse('$baseUrl/me/history').replace(
+          queryParameters: {'page': '$page', 'type': ?type, 'media': ?media},
+        ),
         headers: headers,
       ),
     );
@@ -96,13 +99,16 @@ class SocialService {
     return ApiHelper.decode(response);
   }
 
-  static Future<Map<String, dynamic>> clearHistory({String? type}) async {
+  static Future<Map<String, dynamic>> clearHistory({
+    String? type,
+    String? media,
+  }) async {
     final headers = await _headers();
 
     final response = await ApiHelper.request(
       () => http.delete(
         Uri.parse('$baseUrl/me/history')
-            .replace(queryParameters: {'type': ?type}),
+            .replace(queryParameters: {'type': ?type, 'media': ?media}),
         headers: headers,
       ),
     );

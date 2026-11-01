@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 
 import '../services/social_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/section_switch.dart';
 import '../widgets/user_avatar.dart';
 import 'post_detail_page.dart';
 import 'user_profile_page.dart';
 
 // =======================================================
 // ประวัติการใช้งาน แยกแท็บ: ถูกใจ / ความคิดเห็น / แชร์ / ติดตาม
+// ถูกใจ / ความคิดเห็น / แชร์ แยกอีกชั้น: โพสต์ | วิดีโอ
 // เห็นได้เฉพาะเรา ใช้จัดฟีด "สำหรับคุณ" และแนะนำคนที่ชอบคล้ายกัน
 // =======================================================
 
@@ -18,13 +20,19 @@ class _HistoryTabInfo {
   final Color color;
   final String empty;
 
+  // ข้อความตอนยังไม่มีวิดีโอ (null = แท็บนี้ไม่แยกโพสต์/วิดีโอ)
+  final String? emptyVideo;
+
   const _HistoryTabInfo(
     this.type,
     this.label,
     this.icon,
     this.color,
-    this.empty,
-  );
+    this.empty, [
+    this.emptyVideo,
+  ]);
+
+  bool get splitsMedia => emptyVideo != null;
 }
 
 const Color _likeColor = Color(0xFFE5486B);
@@ -45,13 +53,15 @@ class _HistoryPageState extends State<HistoryPage>
       Icons.favorite_rounded,
       _likeColor,
       'โพสต์ที่คุณกดหัวใจจะอยู่ที่นี่',
+      'วิดีโอที่คุณกดหัวใจจะอยู่ที่นี่',
     ),
     _HistoryTabInfo(
       'comment',
       'ความคิดเห็น',
       Icons.chat_bubble_rounded,
       AppColors.primary,
-      'ความคิดเห็นที่คุณเขียนจะอยู่ที่นี่',
+      'ความคิดเห็นที่คุณเขียนในโพสต์จะอยู่ที่นี่',
+      'ความคิดเห็นที่คุณเขียนในวิดีโอจะอยู่ที่นี่',
     ),
     _HistoryTabInfo(
       'share',
@@ -59,6 +69,7 @@ class _HistoryPageState extends State<HistoryPage>
       Icons.share_rounded,
       AppColors.success,
       'โพสต์ที่คุณแชร์จะอยู่ที่นี่',
+      'วิดีโอที่คุณแชร์จะอยู่ที่นี่',
     ),
     _HistoryTabInfo(
       'follow',
@@ -76,6 +87,12 @@ class _HistoryPageState extends State<HistoryPage>
 
   // จำนวนของแต่ละแท็บ (ได้จาก Server ทุกครั้งที่โหลด)
   Map<String, int> counts = {};
+
+  // จำนวนโพสต์ / วิดีโอ ของแต่ละแท็บ เช่น {'like': {'post': 2, 'video': 1}}
+  Map<String, Map<String, int>> mediaCounts = {};
+
+  // แสดงโพสต์ หรือ วิดีโอ (ใช้ร่วมกันทุกแท็บที่แยกได้)
+  String media = 'post';
 
   // เพิ่มเมื่อล้างประวัติ → แท็บนั้นโหลดใหม่
   final Map<String, int> versions = {};
@@ -95,23 +112,51 @@ class _HistoryPageState extends State<HistoryPage>
     super.dispose();
   }
 
-  void updateCounts(dynamic raw) {
+  static int toInt(dynamic value) => value is num ? value.toInt() : 0;
+
+  void updateCounts(Map<String, dynamic> result) {
+    final dynamic raw = result['counts'];
+
+    final dynamic rawMedia = result['media_counts'];
+
     if (raw is! Map || !mounted) return;
 
     setState(() {
-      counts = raw.map(
-        (key, value) => MapEntry('$key', value is num ? value.toInt() : 0),
-      );
+      counts = raw.map((key, value) => MapEntry('$key', toInt(value)));
+
+      if (rawMedia is Map) {
+        mediaCounts = rawMedia.map(
+          (key, value) => MapEntry(
+            '$key',
+            value is Map
+                ? value.map((kind, count) => MapEntry('$kind', toInt(count)))
+                : <String, int>{},
+          ),
+        );
+      }
     });
   }
 
+  _HistoryTabInfo get currentTab => tabs[tabController.index];
+
+  // จำนวนของสิ่งที่แสดงอยู่ (แท็บนี้ + โพสต์/วิดีโอ)
+  int shownCount(_HistoryTabInfo tab) => tab.splitsMedia
+      ? (mediaCounts[tab.type]?[media] ?? 0)
+      : (counts[tab.type] ?? 0);
+
   Future<void> clearCurrentTab() async {
-    final _HistoryTabInfo tab = tabs[tabController.index];
+    final _HistoryTabInfo tab = currentTab;
+
+    final String? clearMedia = tab.splitsMedia ? media : null;
+
+    final String what = clearMedia == null
+        ? tab.label
+        : '${tab.label}${clearMedia == 'video' ? 'วิดีโอ' : 'โพสต์'}';
 
     final bool? confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text('ล้างประวัติ${tab.label}?'),
+        title: Text('ล้างประวัติ$what?'),
         content: const Text(
           'ฟีด "สำหรับคุณ" และคนที่แนะนำจะเรียนรู้ความสนใจของคุณใหม่ '
           '(การถูกใจ ความคิดเห็น และการติดตามจริงยังอยู่)',
@@ -133,13 +178,16 @@ class _HistoryPageState extends State<HistoryPage>
     if (confirmed != true || !mounted) return;
 
     try {
-      final result = await SocialService.clearHistory(type: tab.type);
+      final result = await SocialService.clearHistory(
+        type: tab.type,
+        media: clearMedia,
+      );
 
       if (!mounted) return;
 
+      // โหลดแท็บนั้นใหม่ → ได้จำนวนล่าสุดจาก Server
       if (result['status'] == true) {
         setState(() {
-          counts = {...counts, tab.type: 0};
           versions[tab.type] = (versions[tab.type] ?? 0) + 1;
         });
       }
@@ -161,7 +209,7 @@ class _HistoryPageState extends State<HistoryPage>
 
   @override
   Widget build(BuildContext context) {
-    final bool hasItems = (counts[tabs[tabController.index].type] ?? 0) > 0;
+    final bool hasItems = shownCount(currentTab) > 0;
 
     return Scaffold(
       appBar: AppBar(
@@ -204,15 +252,47 @@ class _HistoryPageState extends State<HistoryPage>
           ],
         ),
       ),
-      body: TabBarView(
-        controller: tabController,
+      body: Column(
         children: [
-          for (final tab in tabs)
-            _HistoryList(
-              key: ValueKey('${tab.type}-${versions[tab.type] ?? 0}'),
-              tab: tab,
-              onCounts: updateCounts,
+          if (currentTab.splitsMedia)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: SectionSwitch<String>(
+                value: media,
+                options: [
+                  SectionOption(
+                    value: 'post',
+                    icon: Icons.article_outlined,
+                    label:
+                        'โพสต์ ${mediaCounts[currentTab.type]?['post'] ?? 0}',
+                  ),
+                  SectionOption(
+                    value: 'video',
+                    icon: Icons.smart_display_rounded,
+                    label:
+                        'วิดีโอ ${mediaCounts[currentTab.type]?['video'] ?? 0}',
+                  ),
+                ],
+                onChanged: (value) => setState(() => media = value),
+              ),
             ),
+          Expanded(
+            child: TabBarView(
+              controller: tabController,
+              children: [
+                for (final tab in tabs)
+                  _HistoryList(
+                    key: ValueKey(
+                      '${tab.type}-${tab.splitsMedia ? media : ''}'
+                      '-${versions[tab.type] ?? 0}',
+                    ),
+                    tab: tab,
+                    media: tab.splitsMedia ? media : null,
+                    onCounts: updateCounts,
+                  ),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -223,9 +303,17 @@ class _HistoryPageState extends State<HistoryPage>
 class _HistoryList extends StatefulWidget {
   final _HistoryTabInfo tab;
 
-  final ValueChanged<dynamic> onCounts;
+  // post / video (null = ไม่แยก)
+  final String? media;
 
-  const _HistoryList({super.key, required this.tab, required this.onCounts});
+  final ValueChanged<Map<String, dynamic>> onCounts;
+
+  const _HistoryList({
+    super.key,
+    required this.tab,
+    this.media,
+    required this.onCounts,
+  });
 
   @override
   State<_HistoryList> createState() => _HistoryListState();
@@ -274,6 +362,7 @@ class _HistoryListState extends State<_HistoryList>
       final result = await SocialService.history(
         page: next,
         type: widget.tab.type,
+        media: widget.media,
       );
 
       if (!mounted) return;
@@ -293,7 +382,7 @@ class _HistoryListState extends State<_HistoryList>
           loadError = null;
         });
 
-        widget.onCounts(result['counts']);
+        widget.onCounts(result);
       } else if (!more) {
         setState(
           () => loadError = result['message']?.toString() ?? 'โหลดไม่สำเร็จ',
@@ -320,11 +409,15 @@ class _HistoryListState extends State<_HistoryList>
 
     final String owner = nameOf(post is Map ? post['user'] : null);
 
+    final String thing = post is Map && post['has_video'] == true
+        ? 'วิดีโอ'
+        : 'โพสต์';
+
     switch (item['type']) {
       case 'like':
-        return 'ถูกใจโพสต์ของ $owner';
+        return 'ถูกใจ$thingของ $owner';
       case 'comment':
-        return 'แสดงความคิดเห็นในโพสต์ของ $owner';
+        return 'แสดงความคิดเห็นใน$thingของ $owner';
       case 'share':
         const Map<String, String> where = {
           'external': 'ส่งต่อไปแอปอื่น',
@@ -332,7 +425,7 @@ class _HistoryListState extends State<_HistoryList>
           'family': 'ส่งให้ครอบครัว',
         };
 
-        return '${where[item['channel']] ?? 'แชร์'} · โพสต์ของ $owner';
+        return '${where[item['channel']] ?? 'แชร์'} · $thingของ $owner';
       case 'follow':
         return 'ติดตาม ${nameOf(item['target_user'])}';
       default:
@@ -392,7 +485,13 @@ class _HistoryListState extends State<_HistoryList>
         ? item['target_user']
         : (post is Map ? post['user'] : null);
 
-    final String? imageUrl = post is Map ? post['image_url']?.toString() : null;
+    final bool isVideo = post is Map && post['has_video'] == true;
+
+    // วิดีโอ: รูปตัวอย่างของวิดีโอ + ไอคอนเล่น
+    final String? imageUrl = post is Map
+        ? (isVideo ? post['video_thumbnail_url'] : post['image_url'])
+              ?.toString()
+        : null;
 
     return Material(
       color: AppColors.surface,
@@ -471,17 +570,34 @@ class _HistoryListState extends State<_HistoryList>
                   ],
                 ),
               ),
-              if (imageUrl != null && imageUrl.isNotEmpty) ...[
+              if ((imageUrl != null && imageUrl.isNotEmpty) || isVideo) ...[
                 const SizedBox(width: 10),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(10),
-                  child: Image.network(
-                    imageUrl,
+                  child: Container(
                     width: 52,
                     height: 52,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) =>
-                        const SizedBox.shrink(),
+                    color: isVideo ? Colors.black : AppColors.fill,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        if (imageUrl != null && imageUrl.isNotEmpty)
+                          Image.network(
+                            imageUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) =>
+                                const SizedBox.shrink(),
+                          ),
+                        if (isVideo)
+                          const Center(
+                            child: Icon(
+                              Icons.play_circle_fill_rounded,
+                              color: Colors.white,
+                              size: 24,
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -530,10 +646,18 @@ class _HistoryListState extends State<_HistoryList>
           ? ListView(
               children: [
                 const SizedBox(height: 120),
-                Icon(widget.tab.icon, size: 46, color: widget.tab.color),
+                Icon(
+                  widget.media == 'video'
+                      ? Icons.smart_display_rounded
+                      : widget.tab.icon,
+                  size: 46,
+                  color: widget.tab.color,
+                ),
                 const SizedBox(height: 12),
                 Text(
-                  widget.tab.empty,
+                  widget.media == 'video'
+                      ? widget.tab.emptyVideo!
+                      : widget.tab.empty,
                   textAlign: TextAlign.center,
                   style: TextStyle(color: AppColors.muted, height: 1.5),
                 ),
