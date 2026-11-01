@@ -32,8 +32,22 @@ class SectionSwitch<T> extends StatelessWidget {
     required this.onChanged,
   });
 
+  // ช่องแคบกว่านี้ → ไม่แสดงไอคอน (เช่น 3 ช่องบนจอเล็ก)
+  static const double compactSegmentWidth = 125;
+
   @override
   Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final bool compact =
+            constraints.maxWidth / options.length < compactSegmentWidth;
+
+        return buildButton(compact);
+      },
+    );
+  }
+
+  Widget buildButton(bool compact) {
     return SizedBox(
       width: double.infinity,
       child: SegmentedButton<T>(
@@ -42,7 +56,7 @@ class SectionSwitch<T> extends StatelessWidget {
           for (final option in options)
             ButtonSegment<T>(
               value: option.value,
-              icon: Icon(option.icon, size: 18),
+              icon: compact ? null : Icon(option.icon, size: 18),
               label: Text(
                 option.label,
                 maxLines: 1,

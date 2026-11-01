@@ -10,10 +10,12 @@ import '../services/post_service.dart';
 import '../services/social_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/comment_media.dart';
+import '../widgets/comment_sheet.dart';
 import '../widgets/community_sheets.dart';
 import '../widgets/hashtag_text.dart';
 import '../widgets/photo_viewer.dart';
 import '../widgets/post_categories.dart';
+import '../widgets/share_sheet.dart';
 import 'post_detail_page.dart';
 import 'user_profile_page.dart';
 import 'video_player_page.dart';
@@ -105,8 +107,9 @@ class _FeedPageState extends State<FeedPage> {
   // จำนวนความคิดเห็นที่แสดงก่อนกด "ดูก่อนหน้า"
   static const int collapsedCommentCount = 2;
 
-  // สีของป้าย/ปุ่มฝั่งชุมชน
-  static const Color communityColor = Color(0xFF0B7FA6);
+  // สีของป้าย/ปุ่มฝั่งชุมชน (โหมดมืดใช้โทนสว่างกว่าให้อ่านง่าย)
+  static Color get communityColor =>
+      AppColors.isDark ? const Color(0xFF2A9CC4) : const Color(0xFF0B7FA6);
 
   // สีปุ่มถูกใจ
   static const Color likeColor = Color(0xFFE5486B);
@@ -117,6 +120,11 @@ class _FeedPageState extends State<FeedPage> {
   final TextEditingController hashtagController = TextEditingController();
 
   final List<String> composeHashtags = [];
+
+  // ช่องแฮชแท็กเปิดอยู่ (กดปุ่ม # ในแถบเครื่องมือ)
+  bool showHashtagField = false;
+
+  final FocusNode hashtagFocus = FocusNode();
 
   final ScrollController scrollController = ScrollController();
 
@@ -449,92 +457,7 @@ class _FeedPageState extends State<FeedPage> {
 
     if (postId == null || sharingPostIds.contains(postId)) return;
 
-    dismissKeyboard();
-
-    Widget option(
-      BuildContext sheetContext, {
-      required String channel,
-      required IconData icon,
-      required String title,
-      required String subtitle,
-      required Color color,
-    }) {
-      return ListTile(
-        onTap: () => Navigator.of(sheetContext).pop(channel),
-        leading: Container(
-          width: 42,
-          height: 42,
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Icon(icon, color: color, size: 22),
-        ),
-        title: Text(
-          title,
-          style: TextStyle(
-            color: AppColors.navy,
-            fontSize: 15,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        subtitle: Text(
-          subtitle,
-          style: TextStyle(color: AppColors.muted, fontSize: 12),
-        ),
-      );
-    }
-
-    final String? channel = await showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: Text(
-                  'แชร์โพสต์',
-                  style: TextStyle(
-                    color: AppColors.navy,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-              option(
-                sheetContext,
-                channel: 'external',
-                icon: Icons.ios_share_rounded,
-                title: 'ส่งต่อไปแอปอื่น',
-                subtitle: 'LINE, Facebook, Messenger และอื่น ๆ',
-                color: AppColors.success,
-              ),
-              option(
-                sheetContext,
-                channel: 'community',
-                icon: Icons.repeat_rounded,
-                title: 'แชร์ในชุมชน',
-                subtitle: 'โพสต์ซ้ำในฟีดชุมชน เขียนข้อความเพิ่มได้',
-                color: communityColor,
-              ),
-              option(
-                sheetContext,
-                channel: 'family',
-                icon: Icons.family_restroom_rounded,
-                title: 'ส่งให้ครอบครัว',
-                subtitle: 'แชร์เข้าไปในหน้าครอบครัว',
-                color: AppColors.primary,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    final String? channel = await showShareChannelSheet(context);
 
     if (channel == null || !mounted) return;
 
@@ -554,7 +477,7 @@ class _FeedPageState extends State<FeedPage> {
       if (!ok || !mounted) return;
     }
 
-    final String? note = await askShareNote(channel);
+    final String? note = await askShareNote(context, channel);
 
     if (note == null || !mounted) return;
 
@@ -594,44 +517,6 @@ class _FeedPageState extends State<FeedPage> {
     } catch (_) {
       if (mounted) showMessage('เปิดหน้าแชร์ไม่ได้');
     }
-  }
-
-  // ข้อความเพิ่มเติมตอนแชร์ในแอป (null = ยกเลิก)
-  Future<String?> askShareNote(String channel) async {
-    final TextEditingController controller = TextEditingController();
-
-    final String? note = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(channel == 'community' ? 'แชร์ในชุมชน' : 'ส่งให้ครอบครัว'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          minLines: 2,
-          maxLines: 5,
-          maxLength: maxPostLength,
-          decoration: const InputDecoration(
-            hintText: 'เขียนอะไรสักหน่อย (ไม่บังคับ)',
-            counterText: '',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('ยกเลิก'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(controller.text),
-            child: const Text('แชร์'),
-          ),
-        ],
-      ),
-    );
-
-    // รอหน้าต่างปิดเสร็จก่อนค่อยทิ้ง Controller
-    Future<void>.delayed(const Duration(milliseconds: 400), controller.dispose);
-
-    return note;
   }
 
   Future<void> sendShare(
@@ -1015,6 +900,8 @@ class _FeedPageState extends State<FeedPage> {
         hashtagController.clear();
 
         composeHashtags.clear();
+
+        showHashtagField = false;
 
         dismissKeyboard();
 
@@ -1583,103 +1470,26 @@ class _FeedPageState extends State<FeedPage> {
   // เพื่อป้องกัน Dialog lifecycle error เดิม
   // =====================================================
 
-  Future<void> showCommentDialog(int postId) async {
+  // ความคิดเห็น: แผ่นเลื่อนขึ้นแบบเดียวกับหน้าวิดีโอ (แนบรูป/GIF/วิดีโอได้)
+  Future<void> openComments(int postId) async {
     dismissKeyboard();
 
-    String commentText = '';
+    Map<String, dynamic>? post;
 
-    final String? content = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
-          contentPadding: const EdgeInsets.fromLTRB(24, 18, 24, 10),
-          actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          title: Row(
-            children: [
-              CircleAvatar(
-                backgroundColor: AppColors.softPrimary,
-                child: Icon(
-                  Icons.chat_bubble_outline_rounded,
-                  color: AppColors.primary,
-                ),
-              ),
-              SizedBox(width: 12),
-              Text('แสดงความคิดเห็น'),
-            ],
-          ),
-          content: TextField(
-            autofocus: true,
-            maxLines: 4,
-            minLines: 3,
-            maxLength: 2000,
-            onChanged: (value) {
-              commentText = value;
-            },
-            decoration: const InputDecoration(
-              hintText: 'เขียนความคิดเห็นของคุณ...',
-              alignLabelWithHint: true,
-              counterText: '',
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop();
-              },
-              child: const Text('ยกเลิก'),
-            ),
-            FilledButton.icon(
-              onPressed: () {
-                final text = commentText.trim();
+    for (final item in feed.posts) {
+      if (postIdOf(item) == postId) post = item;
+    }
 
-                if (text.isEmpty) {
-                  return;
-                }
+    if (post == null) return;
 
-                Navigator.of(dialogContext).pop(text);
-              },
-              icon: const Icon(Icons.send_rounded, size: 18),
-              label: const Text('ส่ง'),
-            ),
-          ],
-        );
+    await showCommentsSheet(
+      context,
+      post: post,
+      myId: (currentUser?['id'] as num?)?.toInt(),
+      onChanged: () {
+        if (mounted) setState(() {});
       },
     );
-
-    if (!mounted || content == null || content.isEmpty) {
-      return;
-    }
-
-    // รอ Dialog ปิดสนิทก่อนเรียก API
-    await Future<void>.delayed(const Duration(milliseconds: 300));
-
-    if (!mounted) return;
-
-    try {
-      final result = await PostService.createComment(
-        postId: postId,
-        content: content,
-      );
-
-      if (!mounted) return;
-
-      if (result['status'] == true) {
-        await loadPosts();
-
-        if (!mounted) return;
-
-        showMessage('แสดงความคิดเห็นแล้ว');
-      } else {
-        showMessage(
-          result['message']?.toString() ?? 'แสดงความคิดเห็นไม่สำเร็จ',
-        );
-      }
-    } catch (e) {
-      if (!mounted) return;
-
-      showMessage(e.toString());
-    }
   }
 
   // ปิดคีย์บอร์ดของกล่องเขียนโพสต์
@@ -2175,6 +1985,7 @@ class _FeedPageState extends State<FeedPage> {
             const SizedBox(height: 12),
             TextField(
               controller: hashtagController,
+              focusNode: hashtagFocus,
               textInputAction: TextInputAction.done,
               onChanged: onHashtagTyping,
               onSubmitted: (text) {
@@ -2275,24 +2086,53 @@ class _FeedPageState extends State<FeedPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          community ? 'โพสต์ในชุมชน' : 'โพสต์ถึงครอบครัว',
-          style: TextStyle(
-            color: AppColors.navy,
-            fontSize: 18,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        const SizedBox(height: 14),
+        // หัว: รูป + โพสต์ไปที่ไหน ใครเห็น / ชุมชน: ปุ่มเลือกหมวด
         Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             buildAvatar(
               name: currentUser?['name']?.toString() ?? 'F',
               imageUrl: getProfileImage(currentUser),
-              radius: 21,
+              radius: 19,
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    community ? 'โพสต์ในชุมชน' : 'โพสต์ถึงครอบครัว',
+                    style: TextStyle(
+                      color: AppColors.navy,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  Row(
+                    children: [
+                      Icon(
+                        community
+                            ? Icons.public_rounded
+                            : Icons.lock_outline_rounded,
+                        size: 13,
+                        color: AppColors.muted,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        community ? 'ทุกคนในชุมชนเห็น' : 'เฉพาะครอบครัว',
+                        style: TextStyle(color: AppColors.muted, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            if (community) buildCategoryButton(),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
             Expanded(
               child: TextField(
                 controller: postController,
@@ -2343,7 +2183,8 @@ class _FeedPageState extends State<FeedPage> {
             ),
           ],
         ),
-        if (community) buildHashtagField(),
+        if (community && (showHashtagField || composeHashtags.isNotEmpty))
+          buildHashtagField(),
         if (pickedImages.isNotEmpty) ...[
           const SizedBox(height: 12),
           buildPickedImages(),
@@ -2352,10 +2193,6 @@ class _FeedPageState extends State<FeedPage> {
           const SizedBox(height: 12),
           buildPickedVideo(),
         ],
-        if (scope == FeedScope.community) ...[
-          const SizedBox(height: 12),
-          buildCategoryPicker(),
-        ],
         if (scope == FeedScope.family) ...[
           const SizedBox(height: 12),
           buildMapStatusOption(),
@@ -2363,16 +2200,17 @@ class _FeedPageState extends State<FeedPage> {
         const SizedBox(height: 12),
         Row(
           children: [
-            // ป้ายผู้เห็น + ปุ่มรูป ใช้พื้นที่ที่เหลือ
-            // (ย่อป้ายเฉพาะตอนจอแคบจริง ๆ)
+            // แถบเครื่องมือ: รูป / วิดีโอ / แฮชแท็ก
             Expanded(
               child: Row(
                 children: [
-                  Flexible(child: buildAudienceChip()),
-                  const SizedBox(width: 8),
                   buildAddPhotoButton(),
                   const SizedBox(width: 8),
                   buildAddVideoButton(),
+                  if (community) ...[
+                    const SizedBox(width: 8),
+                    buildHashtagButton(),
+                  ],
                 ],
               ),
             ),
@@ -2636,6 +2474,142 @@ class _FeedPageState extends State<FeedPage> {
   }
 
   // ปุ่ม 🎬 เพิ่มวิดีโอ (โพสต์ละ 1 วิดีโอ ใช้แทนรูป)
+  // ปุ่ม # : เปิด/ปิดช่องแฮชแท็ก (มีแท็กแล้ว → แสดงจำนวน ช่องเปิดค้าง)
+  Widget buildHashtagButton() {
+    final int count = composeHashtags.length;
+
+    final bool active = showHashtagField || count > 0;
+
+    return Tooltip(
+      message: 'เพิ่มแฮชแท็ก',
+      child: Material(
+        color: active
+            ? communityColor.withValues(alpha: 0.14)
+            : AppColors.softPrimary,
+        borderRadius: BorderRadius.circular(999),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(999),
+          onTap: isPosting
+              ? null
+              : () {
+                  final bool open = !showHashtagField || count > 0;
+
+                  updateComposer(() => showHashtagField = open);
+
+                  if (open) {
+                    WidgetsBinding.instance.addPostFrameCallback(
+                      (_) => hashtagFocus.requestFocus(),
+                    );
+                  }
+                },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.tag_rounded,
+                  size: 18,
+                  color: active ? communityColor : AppColors.primary,
+                ),
+                if (count > 0) ...[
+                  const SizedBox(width: 4),
+                  Text(
+                    '$count',
+                    style: TextStyle(
+                      color: communityColor,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ปุ่มหมวดของโพสต์ชุมชน (กดแล้วเลือกจากรายการ)
+  Widget buildCategoryButton() {
+    final PostCategory category =
+        findPostCategory(composeCategory) ?? postCategories.first;
+
+    return Material(
+      color: category.color.withValues(alpha: 0.10),
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: isPosting ? null : pickCategory,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 6, 6, 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(category.icon, size: 16, color: category.color),
+              const SizedBox(width: 5),
+              Text(
+                category.label,
+                style: TextStyle(
+                  color: category.color,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              Icon(Icons.expand_more_rounded, size: 18, color: category.color),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> pickCategory() async {
+    final String? key = await showModalBottomSheet<String>(
+      context: composerContext ?? context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheetContext) => SafeArea(
+        // จอเล็กเลื่อนดูได้
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+                child: Text(
+                  'หมวดของโพสต์',
+                  style: TextStyle(
+                    color: AppColors.navy,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              for (final category in postCategories)
+                ListTile(
+                  visualDensity: VisualDensity.compact,
+                  leading: Icon(category.icon, color: category.color),
+                  title: Text(category.label),
+                  trailing: category.key == composeCategory
+                      ? Icon(Icons.check_rounded, color: AppColors.primary)
+                      : null,
+                  onTap: () => Navigator.of(sheetContext).pop(category.key),
+                ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (key != null && mounted) {
+      updateComposer(() => composeCategory = key);
+    }
+  }
+
   Widget buildAddVideoButton() {
     final bool enabled =
         !isPosting && pickedImages.isEmpty && pickedVideo == null;
@@ -2876,23 +2850,6 @@ class _FeedPageState extends State<FeedPage> {
   }
 
   // เลือกหมวดของโพสต์ชุมชนที่กำลังเขียน
-  Widget buildCategoryPicker() {
-    return buildChipStrip([
-      for (final category in postCategories)
-        CategoryChoiceChip(
-          label: category.label,
-          icon: category.icon,
-          color: category.color,
-          selected: composeCategory == category.key,
-          onTap: () {
-            updateComposer(() {
-              composeCategory = category.key;
-            });
-          },
-        ),
-    ]);
-  }
-
   // กรองฟีดชุมชนตามหมวด ("ทั้งหมด" + 5 หมวด)
   Widget buildCategoryFilter() {
     return buildChipStrip([
@@ -2934,18 +2891,6 @@ class _FeedPageState extends State<FeedPage> {
   }
 
   // บอกว่าโพสต์นี้ใครจะเห็น (ตามหน้าที่เปิดอยู่)
-  Widget buildAudienceChip() {
-    if (scope == FeedScope.community) {
-      return buildChip(
-        icon: Icons.public_rounded,
-        label: 'ชุมชน · ทุกคนเห็น',
-        color: communityColor,
-      );
-    }
-
-    return buildChip(icon: Icons.lock_outline_rounded, label: 'เฉพาะครอบครัว');
-  }
-
   Widget buildChip({
     required IconData icon,
     required String label,
@@ -3851,7 +3796,7 @@ class _FeedPageState extends State<FeedPage> {
       borderRadius: BorderRadius.circular(999),
       child: InkWell(
         borderRadius: BorderRadius.circular(999),
-        onTap: () => showCommentDialog(postId),
+        onTap: () => openComments(postId),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
           child: Row(
@@ -3907,7 +3852,7 @@ class _FeedPageState extends State<FeedPage> {
                 customBorder: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(999),
                 ),
-                onTap: () => showCommentDialog(postId),
+                onTap: () => openComments(postId),
                 child: Padding(
                   padding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   child: Text(
@@ -4369,6 +4314,8 @@ class _FeedPageState extends State<FeedPage> {
     postController.dispose();
 
     hashtagController.dispose();
+
+    hashtagFocus.dispose();
 
     scrollController.dispose();
 
