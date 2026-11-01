@@ -6,6 +6,9 @@ import 'package:video_player/video_player.dart';
 import '../config/app_info.dart';
 import '../services/post_service.dart';
 import '../services/social_service.dart';
+import '../theme/app_theme.dart';
+import '../widgets/community_sheets.dart';
+import '../widgets/hashtag_text.dart';
 import '../widgets/user_avatar.dart';
 import 'post_detail_page.dart';
 import 'user_profile_page.dart';
@@ -13,8 +16,8 @@ import 'user_profile_page.dart';
 // =======================================================
 // วิดีโอในชุมชนแบบเต็มจอ (แท็บ "วิดีโอ" ในหน้าหลัก)
 // - ปัดขึ้น-ลง = คลิปถัดไป/ก่อนหน้า, แตะจอ = หยุด/เล่น
-// - ด้านขวา: คนโพสต์ ถูกใจ ความคิดเห็น แชร์
-// - ด้านล่างซ้าย: ชื่อคนโพสต์ + ข้อความ
+// - ด้านขวา: คนโพสต์ ถูกใจ ความคิดเห็น (เลื่อนขึ้นมาทับวิดีโอ) แชร์
+// - ด้านล่างซ้าย: ชื่อคนโพสต์ + ข้อความ (#แฮชแท็กกดได้)
 // - ปุ่มย้อนกลับ / ปัดไปทางขวา → กลับแท็บ "ล่าสุด" (onExit)
 // - เล่นเฉพาะคลิปที่อยู่บนจอ หยุดเมื่อเปิดหน้าอื่นทับหรือออกจากแอป
 // =======================================================
@@ -43,6 +46,9 @@ class _VideoFeedPageState extends State<VideoFeedPage> {
   int current = 0;
 
   final Set<int> busyPostIds = {};
+
+  // ผู้ใช้ที่ล็อกอินอยู่ (ความคิดเห็นของเรารายงานไม่ได้)
+  Map<String, dynamic>? currentUser;
 
   @override
   void initState() {
@@ -82,7 +88,11 @@ class _VideoFeedPageState extends State<VideoFeedPage> {
             .where((post) => post['video'] is Map)
             .toList();
 
+        final dynamic me = result['current_user'];
+
         setState(() {
+          if (me is Map) currentUser = Map<String, dynamic>.from(me);
+
           posts = more ? [...posts, ...items] : items;
           page = nextPage;
           hasMore = result['has_more'] == true;
@@ -207,6 +217,26 @@ class _VideoFeedPageState extends State<VideoFeedPage> {
     } catch (_) {
       // ตัวเลขเดิมยังใช้ได้
     }
+  }
+
+  // ความคิดเห็น: เลื่อนขึ้นมาทับวิดีโอ อ่านและเขียนได้ในหน้านี้
+  Future<void> openComments(Map<String, dynamic> post) async {
+    if (postIdOf(post) == null) return;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      backgroundColor: AppColors.surface,
+      builder: (_) => _CommentsSheet(
+        post: post,
+        myId: (currentUser?['id'] as num?)?.toInt(),
+        onChanged: () {
+          if (mounted) setState(() {});
+        },
+      ),
+    );
   }
 
   // ส่งต่อไปแอปอื่น (LINE, Facebook ฯลฯ)
@@ -377,7 +407,7 @@ class _VideoFeedPageState extends State<VideoFeedPage> {
               buildAction(
                 icon: Icons.chat_bubble_rounded,
                 label: '${(post['comments'] as List?)?.length ?? 0}',
-                onTap: () => openPost(post),
+                onTap: () => openComments(post),
               ),
               buildAction(
                 icon: Icons.reply_rounded,
@@ -413,8 +443,9 @@ class _VideoFeedPageState extends State<VideoFeedPage> {
                 const SizedBox(height: 6),
                 GestureDetector(
                   onTap: () => openPost(post),
-                  child: Text(
+                  child: HashtagText(
                     content,
+                    tagColor: const Color(0xFFB9C7FF),
                     maxLines: 3,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -743,9 +774,7 @@ class _VideoClipState extends State<_VideoClip> {
               ),
             )
           else if (!ready)
-            const Center(
-              child: CircularProgressIndicator(color: Colors.white),
-            ),
+            const Center(child: CircularProgressIndicator(color: Colors.white)),
 
           if (ready && userPaused)
             Center(
@@ -792,6 +821,350 @@ class _VideoClipState extends State<_VideoClip> {
     lifecycle.dispose();
 
     controller?.dispose();
+
+    super.dispose();
+  }
+}
+
+// =======================================================
+// ความคิดเห็นของวิดีโอ (แผ่นที่เลื่อนขึ้นมาทับวิดีโอ)
+// - เขียนความคิดเห็นได้ทันที (#แฮชแท็กกดได้)
+// - แตะชื่อ/รูป = เปิดโปรไฟล์, กดค้างความคิดเห็นของคนอื่น = รายงาน
+// =======================================================
+
+class _CommentsSheet extends StatefulWidget {
+  final Map<String, dynamic> post;
+
+  final int? myId;
+
+  // จำนวนความคิดเห็นเปลี่ยน → หน้าวิดีโอวาดตัวเลขใหม่
+  final VoidCallback onChanged;
+
+  const _CommentsSheet({
+    required this.post,
+    required this.myId,
+    required this.onChanged,
+  });
+
+  @override
+  State<_CommentsSheet> createState() => _CommentsSheetState();
+}
+
+class _CommentsSheetState extends State<_CommentsSheet> {
+  // ตรงกับ Laravel (content max:2000)
+  static const int maxCommentLength = 2000;
+
+  final TextEditingController input = TextEditingController();
+
+  final ScrollController scrollController = ScrollController();
+
+  bool sending = false;
+
+  List<dynamic> get comments => (widget.post['comments'] as List?) ?? [];
+
+  void showMessage(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> send() async {
+    final String text = input.text.trim();
+
+    final int? postId = (widget.post['id'] as num?)?.toInt();
+
+    if (text.isEmpty || sending || postId == null) return;
+
+    setState(() => sending = true);
+
+    try {
+      final result = await PostService.createComment(
+        postId: postId,
+        content: text,
+      );
+
+      if (!mounted) return;
+
+      final dynamic comment = result['comment'];
+
+      if (result['status'] == true && comment is Map) {
+        setState(() {
+          widget.post['comments'] = [
+            ...comments,
+            Map<String, dynamic>.from(comment),
+          ];
+
+          input.clear();
+        });
+
+        widget.onChanged();
+
+        // เลื่อนลงไปที่ความคิดเห็นใหม่
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (scrollController.hasClients) {
+            scrollController.animateTo(
+              scrollController.position.maxScrollExtent,
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeOut,
+            );
+          }
+        });
+      } else {
+        showMessage(
+          result['message']?.toString() ?? 'แสดงความคิดเห็นไม่สำเร็จ',
+        );
+      }
+    } catch (e) {
+      if (mounted) showMessage(e.toString());
+    } finally {
+      if (mounted) setState(() => sending = false);
+    }
+  }
+
+  void openProfile(Map<String, dynamic> user) {
+    final int? userId = (user['id'] as num?)?.toInt();
+
+    if (userId == null) return;
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) =>
+            UserProfilePage(userId: userId, name: user['name']?.toString()),
+      ),
+    );
+  }
+
+  Future<void> reportComment(int commentId, String name) async {
+    final String? reason = await showReportReasonSheet(
+      context,
+      title: 'รายงานความคิดเห็นของ $name',
+      note: 'เจ้าของความคิดเห็นจะไม่รู้ว่าใครเป็นคนรายงาน',
+    );
+
+    if (reason == null || !mounted) return;
+
+    try {
+      final result = await PostService.reportComment(
+        commentId: commentId,
+        reason: reason,
+      );
+
+      if (mounted) {
+        showMessage(result['message']?.toString() ?? 'ขอบคุณที่รายงาน');
+      }
+    } catch (e) {
+      if (mounted) showMessage(e.toString());
+    }
+  }
+
+  static String timeAgo(dynamic value) {
+    final DateTime? date = DateTime.tryParse(value?.toString() ?? '')
+        ?.toLocal();
+
+    if (date == null) return '';
+
+    final Duration ago = DateTime.now().difference(date);
+
+    if (ago.inMinutes < 1) return 'เมื่อสักครู่';
+    if (ago.inMinutes < 60) return '${ago.inMinutes} นาที';
+    if (ago.inHours < 24) return '${ago.inHours} ชั่วโมง';
+    if (ago.inDays < 7) return '${ago.inDays} วัน';
+
+    return '${date.day}/${date.month}/${date.year}';
+  }
+
+  Widget buildComment(Map<String, dynamic> comment) {
+    final Map<String, dynamic> user = comment['user'] is Map
+        ? Map<String, dynamic>.from(comment['user'] as Map)
+        : {};
+
+    final String name = user['name']?.toString() ?? 'สมาชิก';
+
+    final int? commentId = (comment['id'] as num?)?.toInt();
+
+    final int? authorId =
+        (comment['user_id'] as num?)?.toInt() ?? (user['id'] as num?)?.toInt();
+
+    final bool mine = authorId != null && authorId == widget.myId;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onLongPress: commentId == null || mine
+          ? null
+          : () => reportComment(commentId, name),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            GestureDetector(
+              onTap: () => openProfile(user),
+              child: UserAvatar(
+                user: {
+                  'name': name,
+                  'profile_photo_url': user['profile_image_url'],
+                },
+                radius: 18,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  GestureDetector(
+                    onTap: () => openProfile(user),
+                    child: Text.rich(
+                      TextSpan(
+                        children: [
+                          TextSpan(
+                            text: name,
+                            style: TextStyle(
+                              color: AppColors.navy,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          TextSpan(
+                            text: '  ${timeAgo(comment['created_at'])}',
+                            style: TextStyle(
+                              color: AppColors.muted,
+                              fontSize: 11.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  HashtagText(
+                    comment['content']?.toString() ?? '',
+                    style: TextStyle(
+                      color: AppColors.navy,
+                      fontSize: 14,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final List<Map<String, dynamic>> items = comments
+        .whereType<Map>()
+        .map((comment) => Map<String, dynamic>.from(comment))
+        .toList();
+
+    return Padding(
+      // ยกขึ้นเหนือคีย์บอร์ด
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: SizedBox(
+        height: MediaQuery.sizeOf(context).height * 0.62,
+        child: Column(
+          children: [
+            Text(
+              'ความคิดเห็น ${items.length}',
+              style: TextStyle(
+                color: AppColors.navy,
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Divider(height: 1, color: AppColors.border),
+            Expanded(
+              child: items.isEmpty
+                  ? Center(
+                      child: Text(
+                        'ยังไม่มีความคิดเห็น\nเป็นคนแรกที่แสดงความคิดเห็น',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: AppColors.muted, height: 1.5),
+                      ),
+                    )
+                  : ListView.builder(
+                      controller: scrollController,
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                      itemCount: items.length,
+                      itemBuilder: (context, index) =>
+                          buildComment(items[index]),
+                    ),
+            ),
+            Divider(height: 1, color: AppColors.border),
+            SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: input,
+                        enabled: !sending,
+                        minLines: 1,
+                        maxLines: 4,
+                        maxLength: maxCommentLength,
+                        textInputAction: TextInputAction.newline,
+                        decoration: InputDecoration(
+                          hintText: 'เขียนความคิดเห็น... ใส่ #แฮชแท็ก ได้',
+                          counterText: '',
+                          isDense: true,
+                          filled: true,
+                          fillColor: AppColors.fill,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 10,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(20),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    ValueListenableBuilder<TextEditingValue>(
+                      valueListenable: input,
+                      builder: (context, value, child) => IconButton(
+                        tooltip: 'ส่ง',
+                        onPressed: sending || value.text.trim().isEmpty
+                            ? null
+                            : send,
+                        icon: sending
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : Icon(
+                                Icons.send_rounded,
+                                color: value.text.trim().isEmpty
+                                    ? AppColors.muted
+                                    : AppColors.primary,
+                              ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    input.dispose();
+    scrollController.dispose();
 
     super.dispose();
   }

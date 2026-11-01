@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\AppNotification;
 use App\Models\FamilyMember;
+use App\Models\Hashtag;
 use App\Models\Interaction;
 use App\Models\Post;
 use App\Models\PostLike;
@@ -73,12 +74,18 @@ class PostController extends Controller
                 'sort' => 'nullable|in:for_you,latest',
                 // media=video → เฉพาะโพสต์ที่มีวิดีโอ (แท็บ "วิดีโอ" เรียงล่าสุดก่อน)
                 'media' => 'nullable|in:video',
+                // hashtag=ทำอาหาร → เฉพาะโพสต์ที่มีแท็กนี้ (มี # หรือไม่ก็ได้)
+                'hashtag' => 'nullable|string|max:51',
                 'page' => 'nullable|integer|min:1',
             ]);
 
             $videosOnly = ($data['media'] ?? null) === 'video';
 
-            if (($data['sort'] ?? 'latest') === 'for_you' && !isset($data['user_id']) && !$videosOnly) {
+            $hashtag = filled($data['hashtag'] ?? null)
+                ? Hashtag::normalize($data['hashtag'])
+                : null;
+
+            if (($data['sort'] ?? 'latest') === 'for_you' && !isset($data['user_id']) && !$videosOnly && !$hashtag) {
                 return $this->forYouFeed(
                     $user,
                     $data['category'] ?? null,
@@ -90,7 +97,8 @@ class PostController extends Controller
                 $user,
                 $data['category'] ?? null,
                 isset($data['user_id']) ? (int) $data['user_id'] : null,
-                $videosOnly
+                $videosOnly,
+                $hashtag
             );
         }
 
@@ -132,8 +140,13 @@ class PostController extends Controller
     // - ไม่แสดงโพสต์/ความคิดเห็นของคนที่เราบล็อก
     // =====================================================
 
-    private function communityFeed(User $user, ?string $category, ?int $authorId = null, bool $videosOnly = false)
-    {
+    private function communityFeed(
+        User $user,
+        ?string $category,
+        ?int $authorId = null,
+        bool $videosOnly = false,
+        ?string $hashtag = null
+    ) {
         $blockedIds = $user->blockedUsers()->pluck('users.id');
 
         $paginator = Post::query()
@@ -142,6 +155,10 @@ class PostController extends Controller
             ->when($authorId, fn ($query) => $query->where('user_id', $authorId))
             // วิดีโอของโพสต์นั้นเอง (โพสต์ที่แชร์ต่อไม่นับ จะได้ไม่ซ้ำกับต้นฉบับ)
             ->when($videosOnly, fn ($query) => $query->whereHas('video'))
+            ->when($hashtag, fn ($query) => $query->whereHas(
+                'hashtags',
+                fn ($tags) => $tags->where('name', $hashtag)
+            ))
             ->with($this->communityRelations($user, $blockedIds))
             ->tap(fn ($query) => $this->withLikeInfo($query, $user))
             ->orderByDesc('created_at')
@@ -157,6 +174,7 @@ class PostController extends Controller
             'scope' => 'community',
             'category' => $category,
             'media' => $videosOnly ? 'video' : null,
+            'hashtag' => $hashtag,
             'current_user' => $this->currentUserPayload($user),
             'posts' => $posts,
             'page' => $paginator->currentPage(),

@@ -132,6 +132,20 @@ class Post extends Model
         return $this->hasMany(PostImage::class)->orderBy('sort');
     }
 
+    // แฮชแท็กในข้อความ (#ทำอาหาร)
+    public function hashtags()
+    {
+        return $this->belongsToMany(Hashtag::class);
+    }
+
+    public function syncHashtags(): void
+    {
+        $ids = collect(Hashtag::extract((string) $this->content))
+            ->map(fn (string $name) => Hashtag::firstOrCreate(['name' => $name])->id);
+
+        $this->hashtags()->sync($ids);
+    }
+
     // ลบไฟล์รูปใน storage เมื่อโพสต์ถูกลบด้วย $post->delete()
     // (API ลบโพสต์ และปุ่มลบในหน้า Admin)
     //
@@ -139,6 +153,13 @@ class Post extends Model
     // จะถูกลบตามไปด้วย cascade และลบไฟล์หลัง Transaction สำเร็จ
     protected static function booted(): void
     {
+        // สร้าง/แก้ข้อความ → ดึงแฮชแท็กใหม่
+        static::saved(function (Post $post) {
+            if ($post->wasRecentlyCreated || $post->wasChanged('content')) {
+                $post->syncHashtags();
+            }
+        });
+
         static::deleting(function (Post $post) {
             $post->loadMissing(['images', 'video']);
         });

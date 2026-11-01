@@ -42,6 +42,8 @@ class PostService {
     String? sort,
     // ฟีดชุมชน: video = เฉพาะโพสต์ที่มีวิดีโอ
     String? media,
+    // ฟีดชุมชน: เฉพาะโพสต์ที่มีแฮชแท็กนี้
+    String? hashtag,
   }) async {
     final headers = await _headers();
 
@@ -56,11 +58,23 @@ class PostService {
         if (userId != null) 'user_id': '$userId',
         if (scope == 'community' && sort != null) 'sort': sort,
         if (scope == 'community' && media != null) 'media': media,
+        if (scope == 'community' && hashtag != null) 'hashtag': hashtag,
       },
     );
 
     final response = await ApiHelper.request(
       () => http.get(uri, headers: headers),
+    );
+
+    return ApiHelper.decode(response);
+  }
+
+  // แฮชแท็กยอดนิยมในชุมชน (ปุ่มลัดตอนเขียนโพสต์)
+  static Future<Map<String, dynamic>> popularHashtags() async {
+    final headers = await _headers();
+
+    final response = await ApiHelper.request(
+      () => http.get(Uri.parse('$baseUrl/hashtags/popular'), headers: headers),
     );
 
     return ApiHelper.decode(response);

@@ -7,6 +7,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\FamilyController;
 use App\Http\Controllers\FamilyInvitationController;
 use App\Http\Controllers\FollowController;
+use App\Http\Controllers\HashtagController;
 use App\Http\Controllers\HistoryController;
 use App\Http\Controllers\LocationController;
 use App\Http\Controllers\MapStatusController;
@@ -119,6 +120,12 @@ Route::middleware('auth:sanctum')->group(function () {
         LocationController::class,
         'route'
     ])->middleware('throttle:route');
+
+    // แฮชแท็กยอดนิยมในชุมชน (ปุ่มลัดตอนเขียนโพสต์)
+    Route::get('/hashtags/popular', [
+        HashtagController::class,
+        'popular'
+    ]);
 
     // รายละเอียดตำแหน่งสมาชิก: หมู่บ้าน/ชุมชน + สถานที่ใกล้เคียง
     Route::get('/family/members/{user}/place', [

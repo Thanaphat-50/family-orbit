@@ -10,6 +10,7 @@ import '../services/post_service.dart';
 import '../services/social_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/community_sheets.dart';
+import '../widgets/hashtag_text.dart';
 import '../widgets/photo_viewer.dart';
 import '../widgets/post_categories.dart';
 import 'post_detail_page.dart';
@@ -45,6 +46,7 @@ class _ScopeFeed {
 // - FeedScope.community: หน้าหลัก (ทุกครอบครัวเห็น)
 // - FeedScope.family:    แท็บครอบครัว (เฉพาะครอบครัว)
 // - FeedScope.mine:      โพสต์ของฉัน (ครอบครัว + ชุมชน)
+// - hashtag:            โพสต์ชุมชนที่มี #แท็กนี้ (หน้าแฮชแท็ก)
 // - authorId:           โพสต์ของผู้ใช้คนเดียวที่เราเห็นได้ (หน้าโปรไฟล์)
 //                        ครอบครัวเดียวกัน + ชุมชน
 // - postId:              โพสต์เดียว (เปิดจากการแจ้งเตือน)
@@ -69,6 +71,9 @@ class FeedPage extends StatefulWidget {
   // ฟีดชุมชน: สำหรับคุณ / ล่าสุด / วิดีโอ (แต่ละแบบเป็นหน้าแยกในหน้าหลัก)
   final CommunityFeedMode communityMode;
 
+  // หน้าแฮชแท็ก: เฉพาะโพสต์ชุมชนที่มีแท็กนี้
+  final String? hashtag;
+
   // ดึงลงเพื่อรีเฟรช → ให้หน้าที่ใช้ header โหลดข้อมูลของตัวเองใหม่ด้วย
   final Future<void> Function()? onRefresh;
 
@@ -81,6 +86,7 @@ class FeedPage extends StatefulWidget {
     this.onUserBlocked,
     this.onJoinFamily,
     this.communityMode = CommunityFeedMode.forYou,
+    this.hashtag,
     this.onRefresh,
   });
 
@@ -147,9 +153,14 @@ class _FeedPageState extends State<FeedPage> {
 
   bool get isAuthorFeed => widget.authorId != null;
 
+  bool get isHashtagFeed => widget.hashtag != null;
+
   // ฟีดหลักที่เขียนโพสต์ได้ (ชุมชน / ครอบครัว)
   bool get isMainFeed =>
-      !isSinglePost && !isAuthorFeed && scope != FeedScope.mine;
+      !isSinglePost &&
+      !isAuthorFeed &&
+      !isHashtagFeed &&
+      scope != FeedScope.mine;
 
   // ฟีดที่โหลดทีละหน้า
   bool get isPaged =>
@@ -271,6 +282,7 @@ class _FeedPageState extends State<FeedPage> {
         userId: widget.authorId,
         sort: forYou ? 'for_you' : null,
         media: videosOnly ? 'video' : null,
+        hashtag: widget.hashtag,
       );
 
       if (!mounted || generation != feedGeneration) return;
@@ -880,6 +892,8 @@ class _FeedPageState extends State<FeedPage> {
 
   Future<void> openComposer() async {
     composerError = null;
+
+    if (scope == FeedScope.community) loadPopularHashtags();
 
     await showModalBottomSheet<void>(
       context: context,
@@ -1837,6 +1851,13 @@ class _FeedPageState extends State<FeedPage> {
     );
   }
 
+  // กดแท็กเดียวกับหน้าที่เปิดอยู่ → ไม่ต้องเปิดซ้ำ
+  void openHashtag(String tag) {
+    if (widget.hashtag?.toLowerCase() == tag.toLowerCase()) return;
+
+    openHashtagPage(context, tag);
+  }
+
   void openUserProfile(int userId, String name) {
     dismissKeyboard();
 
@@ -1993,6 +2014,124 @@ class _FeedPageState extends State<FeedPage> {
   // เนื้อหาหน้าต่างเขียนโพสต์
   // =====================================================
 
+  // =====================================================
+  // แฮชแท็กแนะนำตอนเขียนโพสต์ชุมชน
+  // พิมพ์ # แล้ว → แท็กยอดนิยมที่ขึ้นต้นตรงกัน / ยังไม่พิมพ์ → แท็กยอดนิยม
+  // =====================================================
+
+  // โหลดครั้งเดียวต่อการเปิดแอป
+  static List<String>? popularHashtags;
+
+  Future<void> loadPopularHashtags() async {
+    if (popularHashtags != null) return;
+
+    try {
+      final result = await PostService.popularHashtags();
+
+      final dynamic raw = result['hashtags'];
+
+      if (result['status'] != true || raw is! List) return;
+
+      popularHashtags = raw
+          .whereType<Map>()
+          .map((tag) => tag['name']?.toString() ?? '')
+          .where((name) => name.isNotEmpty)
+          .toList();
+
+      composerVersion.value++;
+    } catch (_) {
+      // ไม่มีแท็กแนะนำก็ยังโพสต์ได้
+    }
+  }
+
+  // แท็กที่กำลังพิมพ์อยู่หน้าเคอร์เซอร์ (null = ไม่ได้พิมพ์แท็ก)
+  RegExpMatch? typingHashtag(TextEditingValue value) {
+    final int cursor = value.selection.isValid
+        ? value.selection.baseOffset
+        : value.text.length;
+
+    return typingHashtagPattern.firstMatch(value.text.substring(0, cursor));
+  }
+
+  // ใส่แท็ก: แทนแท็กที่พิมพ์ค้างไว้ / ต่อท้ายตำแหน่งเคอร์เซอร์
+  void insertHashtag(String tag) {
+    final TextEditingValue value = postController.value;
+
+    final String text = value.text;
+
+    final int cursor = value.selection.isValid
+        ? value.selection.baseOffset
+        : text.length;
+
+    final int start = typingHashtag(value)?.start ?? cursor;
+
+    final bool needsSpace = start > 0 && text[start - 1].trim().isNotEmpty;
+
+    final String insert = '${needsSpace ? ' ' : ''}#$tag ';
+
+    postController.value = TextEditingValue(
+      text: text.replaceRange(start, cursor, insert),
+      selection: TextSelection.collapsed(offset: start + insert.length),
+    );
+  }
+
+  Widget buildHashtagSuggestions() {
+    return ValueListenableBuilder<TextEditingValue>(
+      valueListenable: postController,
+      builder: (context, value, child) {
+        final RegExpMatch? typing = typingHashtag(value);
+
+        final String prefix = typing?.group(1)?.toLowerCase() ?? '';
+
+        final Set<String> used = hashtagPattern
+            .allMatches(value.text)
+            .map((match) => match.group(1)!.toLowerCase())
+            .toSet();
+
+        final List<String> tags = (popularHashtags ?? const <String>[])
+            .where(
+              (tag) => typing != null
+                  ? tag.startsWith(prefix) && tag != prefix
+                  : !used.contains(tag),
+            )
+            .take(8)
+            .toList();
+
+        if (tags.isEmpty) return const SizedBox.shrink();
+
+        return Padding(
+          padding: const EdgeInsets.only(top: 10),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                Icon(Icons.tag_rounded, size: 18, color: communityColor),
+                const SizedBox(width: 6),
+                for (final tag in tags) ...[
+                  ActionChip(
+                    label: Text('#$tag'),
+                    onPressed: () => insertHashtag(tag),
+                    labelStyle: TextStyle(
+                      color: communityColor,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    side: BorderSide(
+                      color: communityColor.withValues(alpha: 0.25),
+                    ),
+                    backgroundColor: communityColor.withValues(alpha: 0.06),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  const SizedBox(width: 6),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget buildComposer() {
     final inputBorder = OutlineInputBorder(
       borderRadius: BorderRadius.circular(18),
@@ -2054,7 +2193,7 @@ class _FeedPageState extends State<FeedPage> {
 
                 decoration: InputDecoration(
                   hintText: scope == FeedScope.community
-                      ? 'แชร์เรื่องราวให้ทุกครอบครัวในชุมชน...'
+                      ? 'แชร์เรื่องราวให้ทุกครอบครัวในชุมชน... ใส่ #แฮชแท็ก ได้'
                       : 'มีอะไรอยากเล่าให้ครอบครัวฟังไหม?',
                   filled: true,
                   fillColor: AppColors.fill,
@@ -2072,6 +2211,7 @@ class _FeedPageState extends State<FeedPage> {
             ),
           ],
         ),
+        if (community) buildHashtagSuggestions(),
         if (pickedImages.isNotEmpty) ...[
           const SizedBox(height: 12),
           buildPickedImages(),
@@ -2959,8 +3099,9 @@ class _FeedPageState extends State<FeedPage> {
               ),
               if (content.isNotEmpty) ...[
                 const SizedBox(height: 8),
-                Text(
+                HashtagText(
                   content,
+                  onTagTap: openHashtag,
                   maxLines: 6,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -3189,8 +3330,9 @@ class _FeedPageState extends State<FeedPage> {
                     16,
                     imageUrls.isEmpty ? 14 : 10,
                   ),
-                  child: Text(
+                  child: HashtagText(
                     content,
+                    onTagTap: openHashtag,
                     style: TextStyle(
                       color: AppColors.navy,
                       fontSize: 15.5,
@@ -3796,8 +3938,9 @@ class _FeedPageState extends State<FeedPage> {
                           ),
                         ),
                         const SizedBox(height: 2),
-                        Text(
+                        HashtagText(
                           content,
+                          onTagTap: openHashtag,
                           style: TextStyle(
                             color: AppColors.navy,
                             fontSize: 14.5,
@@ -3883,6 +4026,15 @@ class _FeedPageState extends State<FeedPage> {
     }
 
     final PostCategory? filter = findPostCategory(filterCategory);
+
+    if (isHashtagFeed) {
+      return buildStateCard(
+        icon: Icons.tag_rounded,
+        color: communityColor,
+        title: 'ยังไม่มีโพสต์ #${widget.hashtag}',
+        message: 'โพสต์ในชุมชนที่ใส่ #${widget.hashtag} จะแสดงที่นี่',
+      );
+    }
 
     if (videosOnly) {
       return buildStateCard(
