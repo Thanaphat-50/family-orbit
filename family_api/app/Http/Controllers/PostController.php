@@ -71,10 +71,14 @@ class PostController extends Controller
                 'category' => ['nullable', Rule::in(Post::CATEGORIES)],
                 'user_id' => 'nullable|integer',
                 'sort' => 'nullable|in:for_you,latest',
+                // media=video → เฉพาะโพสต์ที่มีวิดีโอ (แท็บ "วิดีโอ" เรียงล่าสุดก่อน)
+                'media' => 'nullable|in:video',
                 'page' => 'nullable|integer|min:1',
             ]);
 
-            if (($data['sort'] ?? 'latest') === 'for_you' && !isset($data['user_id'])) {
+            $videosOnly = ($data['media'] ?? null) === 'video';
+
+            if (($data['sort'] ?? 'latest') === 'for_you' && !isset($data['user_id']) && !$videosOnly) {
                 return $this->forYouFeed(
                     $user,
                     $data['category'] ?? null,
@@ -85,7 +89,8 @@ class PostController extends Controller
             return $this->communityFeed(
                 $user,
                 $data['category'] ?? null,
-                isset($data['user_id']) ? (int) $data['user_id'] : null
+                isset($data['user_id']) ? (int) $data['user_id'] : null,
+                $videosOnly
             );
         }
 
@@ -127,7 +132,7 @@ class PostController extends Controller
     // - ไม่แสดงโพสต์/ความคิดเห็นของคนที่เราบล็อก
     // =====================================================
 
-    private function communityFeed(User $user, ?string $category, ?int $authorId = null)
+    private function communityFeed(User $user, ?string $category, ?int $authorId = null, bool $videosOnly = false)
     {
         $blockedIds = $user->blockedUsers()->pluck('users.id');
 
@@ -135,6 +140,8 @@ class PostController extends Controller
             ->tap(fn ($query) => $this->visibleInCommunity($query, $user, $blockedIds))
             ->when($category, fn ($query) => $query->where('category', $category))
             ->when($authorId, fn ($query) => $query->where('user_id', $authorId))
+            // วิดีโอของโพสต์นั้นเอง (โพสต์ที่แชร์ต่อไม่นับ จะได้ไม่ซ้ำกับต้นฉบับ)
+            ->when($videosOnly, fn ($query) => $query->whereHas('video'))
             ->with($this->communityRelations($user, $blockedIds))
             ->tap(fn ($query) => $this->withLikeInfo($query, $user))
             ->orderByDesc('created_at')
@@ -149,6 +156,7 @@ class PostController extends Controller
             'status' => true,
             'scope' => 'community',
             'category' => $category,
+            'media' => $videosOnly ? 'video' : null,
             'current_user' => $this->currentUserPayload($user),
             'posts' => $posts,
             'page' => $paginator->currentPage(),

@@ -70,6 +70,55 @@ class PostVideoTest extends TestCase
             ->assertJsonMissingPath('posts.0.video.path');
     }
 
+    public function test_video_tab_lists_only_community_posts_with_videos(): void
+    {
+        $me = $this->member();
+
+        $author = User::factory()->create();
+        $family = $this->createFamily($author);
+
+        $make = function (string $visibility, string $content, bool $withVideo, ?int $sharedPostId = null) use ($author, $family) {
+            $post = Post::create([
+                'family_id' => $family->id,
+                'user_id' => $author->id,
+                'visibility' => $visibility,
+                'content' => $content,
+                'shared_post_id' => $sharedPostId,
+            ]);
+
+            if ($withVideo) {
+                PostVideo::create(['post_id' => $post->id, 'path' => "post_videos/{$author->id}/{$post->id}.mp4"]);
+            }
+
+            return $post;
+        };
+
+        $older = $make('community', 'Old clip', true);
+        $this->travel(1)->minutes();
+        $make('community', 'Just text', false);
+        $make('family', 'Family clip', true);
+        $this->travel(1)->minutes();
+        $newer = $make('community', 'New clip', true);
+        // แชร์ต่อวิดีโอ → ไม่ซ้ำในแท็บวิดีโอ
+        $make('community', 'Look at this', false, $newer->id);
+
+        Sanctum::actingAs($me);
+
+        $this->getJson('/api/posts?scope=community&media=video')
+            ->assertOk()
+            ->assertJsonPath('media', 'video')
+            ->assertJsonCount(2, 'posts')
+            ->assertJsonPath('posts.0.id', $newer->id)
+            ->assertJsonPath('posts.1.id', $older->id);
+
+        // ขอ for_you มาด้วยก็ยังได้เฉพาะวิดีโอ
+        $this->getJson('/api/posts?scope=community&media=video&sort=for_you')
+            ->assertOk()
+            ->assertJsonCount(2, 'posts');
+
+        $this->getJson('/api/posts?scope=community&media=photo')->assertStatus(422);
+    }
+
     public function test_video_already_uploaded_to_the_bucket(): void
     {
         $me = $this->member();

@@ -43,7 +43,11 @@ class SectionSwitch<T> extends StatelessWidget {
             ButtonSegment<T>(
               value: option.value,
               icon: Icon(option.icon, size: 18),
-              label: Text(option.label),
+              label: Text(
+                option.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
         ],
         selected: {value},

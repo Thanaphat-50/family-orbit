@@ -73,8 +73,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   // ข้อมูลจาก /api/profile ใช้กับรูปมุมซ้ายบนและหัวเมนูบัญชี
   Map<String, dynamic>? myProfile;
 
-  // หน้าหลัก: สำหรับคุณ | ล่าสุด (ปัดซ้าย-ขวาสลับได้)
-  bool homeForYou = true;
+  // หน้าหลัก: สำหรับคุณ | ล่าสุด | วิดีโอ (ปัดซ้าย-ขวาสลับได้)
+  CommunityFeedMode homeMode = CommunityFeedMode.forYou;
 
   // ครอบครัว: โพสต์ | สมาชิก (ปัดซ้าย-ขวาสลับได้)
   FamilySection familySection = FamilySection.posts;
@@ -1425,7 +1425,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   // PAGE SELECTOR
   // แถบล่างเปลี่ยนหน้าด้วยการกดเท่านั้น
   // ปัดซ้าย-ขวาได้เฉพาะหน้าย่อยในหน้าเดียวกัน
-  // (หน้าหลัก: สำหรับคุณ / ล่าสุด, ครอบครัว: โพสต์ / สมาชิก)
+  // (หน้าหลัก: สำหรับคุณ / ล่าสุด / วิดีโอ, ครอบครัว: โพสต์ / สมาชิก)
   // =====================================================
 
   // แท็บที่ต้องใช้ข้อมูลครอบครัว (รอโหลดก่อนแสดง)
@@ -1465,38 +1465,66 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
-  // หน้าหลัก: สำหรับคุณ | ล่าสุด
+  // หน้าหลัก: สำหรับคุณ | ล่าสุด | วิดีโอ
+  // แถบสลับอยู่กับที่ เลื่อนเฉพาะเนื้อหา (เหมือนแท็บครอบครัว)
   // ยังไม่มีครอบครัว: ดูชุมชนได้ โพสต์ต้องมีครอบครัวก่อน
   Widget buildHomeTab() {
     final bool guest = !hasFamily && !isLoading;
 
-    final Widget feeds = SwipeSections(
-      index: homeForYou ? 0 : 1,
-      onChanged: (index) => setState(() => homeForYou = index == 0),
-      children: [
-        for (final bool forYou in [true, false])
-          buildHomeFeed(forYou: forYou, guest: guest),
-      ],
-    );
-
-    if (!guest) return feeds;
-
     return Column(
       children: [
-        buildJoinFamilyBanner(),
-        Expanded(child: feeds),
+        if (guest) buildJoinFamilyBanner(),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: SectionSwitch<CommunityFeedMode>(
+            value: homeMode,
+            options: const [
+              SectionOption(
+                value: CommunityFeedMode.forYou,
+                icon: Icons.auto_awesome_rounded,
+                label: 'สำหรับคุณ',
+              ),
+              SectionOption(
+                value: CommunityFeedMode.latest,
+                icon: Icons.schedule_rounded,
+                label: 'ล่าสุด',
+              ),
+              SectionOption(
+                value: CommunityFeedMode.videos,
+                icon: Icons.smart_display_rounded,
+                label: 'วิดีโอ',
+              ),
+            ],
+            onChanged: (value) {
+              setState(() {
+                homeMode = value;
+              });
+            },
+          ),
+        ),
+        Expanded(
+          child: SwipeSections(
+            index: homeMode.index,
+            onChanged: (index) {
+              setState(() {
+                homeMode = CommunityFeedMode.values[index];
+              });
+            },
+            children: [
+              for (final mode in CommunityFeedMode.values)
+                buildHomeFeed(mode: mode, guest: guest),
+            ],
+          ),
+        ),
       ],
     );
   }
 
-  Widget buildHomeFeed({required bool forYou, required bool guest}) {
-    final String mode = forYou ? 'for-you' : 'latest';
-
+  Widget buildHomeFeed({required CommunityFeedMode mode, required bool guest}) {
     return FeedPage(
-      key: ValueKey('feed-community-$mode${guest ? '-guest' : ''}'),
+      key: ValueKey('feed-community-${mode.name}${guest ? '-guest' : ''}'),
       scope: FeedScope.community,
-      forYou: forYou,
-      onCommunityTabSelected: (value) => setState(() => homeForYou = value),
+      communityMode: mode,
       onJoinFamily: guest ? goToFamilyTab : null,
     );
   }

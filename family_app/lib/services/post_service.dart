@@ -40,6 +40,8 @@ class PostService {
     int? userId,
     // ฟีดชุมชน: for_you = เรียงตามความสนใจ / ไม่ส่ง = ล่าสุด
     String? sort,
+    // ฟีดชุมชน: video = เฉพาะโพสต์ที่มีวิดีโอ
+    String? media,
   }) async {
     final headers = await _headers();
 
@@ -53,6 +55,7 @@ class PostService {
         if (scope == 'community' && category != null) 'category': category,
         if (userId != null) 'user_id': '$userId',
         if (scope == 'community' && sort != null) 'sort': sort,
+        if (scope == 'community' && media != null) 'media': media,
       },
     );
 

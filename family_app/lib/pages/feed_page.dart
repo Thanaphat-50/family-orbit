@@ -19,6 +19,10 @@ import 'video_player_page.dart';
 // ฟีด "ครอบครัว" (เฉพาะครอบครัว) และ "ชุมชน" (ทุกคนในแอป)
 enum FeedScope { family, community, mine }
 
+// ฟีดชุมชนในหน้าหลัก (สลับด้วยแถบด้านบนของหน้าหลัก)
+// forYou = เรียงตามความสนใจ / latest = ล่าสุด / videos = เฉพาะวิดีโอ
+enum CommunityFeedMode { forYou, latest, videos }
+
 // ข้อมูลของแต่ละฟีด แยกกันเพื่อสลับแท็บได้โดยไม่ต้องโหลดใหม่
 class _ScopeFeed {
   List<Map<String, dynamic>> posts = [];
@@ -62,10 +66,8 @@ class FeedPage extends StatefulWidget {
   // ยังไม่มีครอบครัว: ดูได้อย่างเดียว กดโพสต์/แชร์ในแอป → ชวนไปสร้าง/เข้าร่วมครอบครัว
   final VoidCallback? onJoinFamily;
 
-  // ฟีดชุมชนแยกหน้า สำหรับคุณ / ล่าสุด (หน้าหลักเลื่อนซ้าย-ขวาได้)
-  // กดแท็บ → แจ้งหน้าหลักให้เลื่อนไปอีกหน้า แทนการสลับในหน้านี้
-  final bool? forYou;
-  final ValueChanged<bool>? onCommunityTabSelected;
+  // ฟีดชุมชน: สำหรับคุณ / ล่าสุด / วิดีโอ (แต่ละแบบเป็นหน้าแยกในหน้าหลัก)
+  final CommunityFeedMode communityMode;
 
   // ดึงลงเพื่อรีเฟรช → ให้หน้าที่ใช้ header โหลดข้อมูลของตัวเองใหม่ด้วย
   final Future<void> Function()? onRefresh;
@@ -78,8 +80,7 @@ class FeedPage extends StatefulWidget {
     this.header,
     this.onUserBlocked,
     this.onJoinFamily,
-    this.forYou,
-    this.onCommunityTabSelected,
+    this.communityMode = CommunityFeedMode.forYou,
     this.onRefresh,
   });
 
@@ -161,10 +162,15 @@ class _FeedPageState extends State<FeedPage> {
 
   bool communityTermsAccepted = false;
 
-  // ฟีดชุมชน: true = สำหรับคุณ (เรียงตามความสนใจ) / false = ล่าสุด
-  bool forYou = true;
+  // ฟีดชุมชนหลัก (หน้าหลัก)
+  bool get isCommunityMain => isMainFeed && scope == FeedScope.community;
 
-  bool get showsCommunityTabs => isMainFeed && scope == FeedScope.community;
+  // สำหรับคุณ: เรียงตามความสนใจ + แนะนำคนที่ชอบเรื่องเดียวกัน
+  bool get forYou =>
+      isCommunityMain && widget.communityMode == CommunityFeedMode.forYou;
+
+  bool get videosOnly =>
+      isCommunityMain && widget.communityMode == CommunityFeedMode.videos;
 
   // คนที่อาจชอบเรื่องเดียวกับเรา (แสดงในแท็บ "สำหรับคุณ")
   List<Map<String, dynamic>> suggestions = [];
@@ -213,11 +219,10 @@ class _FeedPageState extends State<FeedPage> {
   @override
   void initState() {
     super.initState();
-    forYou = widget.forYou ?? true;
     scrollController.addListener(onScroll);
     loadPosts();
 
-    if (showsCommunityTabs && forYou) loadSuggestions();
+    if (forYou) loadSuggestions();
   }
 
   String apiScope(FeedScope value) {
@@ -264,7 +269,8 @@ class _FeedPageState extends State<FeedPage> {
         page: page,
         category: isMainFeed ? filterCategory : null,
         userId: widget.authorId,
-        sort: showsCommunityTabs && forYou ? 'for_you' : null,
+        sort: forYou ? 'for_you' : null,
+        media: videosOnly ? 'video' : null,
       );
 
       if (!mounted || generation != feedGeneration) return;
@@ -347,45 +353,12 @@ class _FeedPageState extends State<FeedPage> {
   }
 
   Future<void> refreshFeed() async {
-    if (showsCommunityTabs && forYou) loadSuggestions();
+    if (forYou) loadSuggestions();
 
     final Future<void>? headerRefresh = widget.onRefresh?.call();
 
     await loadPosts();
     await headerRefresh;
-  }
-
-  void selectCommunityTab(bool toForYou) {
-    final ValueChanged<bool>? onSelected = widget.onCommunityTabSelected;
-
-    if (onSelected != null) {
-      if (toForYou != forYou) onSelected(toForYou);
-      return;
-    }
-
-    switchCommunityTab(toForYou);
-  }
-
-  // สลับแท็บ สำหรับคุณ / ล่าสุด → ล้างฟีดแล้วโหลดใหม่
-  Future<void> switchCommunityTab(bool toForYou) async {
-    if (toForYou == forYou) return;
-
-    setState(() {
-      forYou = toForYou;
-      feedGeneration++;
-
-      feed.posts = [];
-      feed.isLoading = true;
-      feed.isLoadingMore = false;
-      feed.loadError = null;
-      feed.hasMore = false;
-
-      expandedPostIds.clear();
-    });
-
-    if (toForYou && suggestions.isEmpty) loadSuggestions();
-
-    await loadPosts();
   }
 
   // =====================================================
@@ -681,6 +654,7 @@ class _FeedPageState extends State<FeedPage> {
                   (channel == 'community' &&
                       scope == FeedScope.community &&
                       !forYou &&
+                      !videosOnly &&
                       filterCategory == null));
 
           if (showHere) {
@@ -2748,16 +2722,8 @@ class _FeedPageState extends State<FeedPage> {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // สำหรับคุณ (ตามความสนใจ) / ล่าสุด (ตามเวลา)
+          // สำหรับคุณ / ล่าสุด / วิดีโอ อยู่ที่แถบด้านบนของหน้าหลัก
           // ผู้ใช้ที่บล็อก: ตั้งค่า → ความเป็นส่วนตัว
-          Row(
-            children: [
-              buildFeedTab('สำหรับคุณ', forYou, () => selectCommunityTab(true)),
-              const SizedBox(width: 20),
-              buildFeedTab('ล่าสุด', !forYou, () => selectCommunityTab(false)),
-            ],
-          ),
-          const SizedBox(height: 8),
           buildCategoryFilter(),
           if (forYou && suggestions.isNotEmpty) ...[
             const SizedBox(height: 16),
@@ -2795,36 +2761,6 @@ class _FeedPageState extends State<FeedPage> {
             ),
           ),
       ],
-    );
-  }
-
-  Widget buildFeedTab(String label, bool selected, VoidCallback onTap) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              color: selected ? AppColors.navy : AppColors.muted,
-              fontSize: 19,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 3),
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            width: selected ? 28 : 0,
-            height: 3,
-            decoration: BoxDecoration(
-              color: AppColors.primary,
-              borderRadius: BorderRadius.circular(999),
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -3947,6 +3883,17 @@ class _FeedPageState extends State<FeedPage> {
     }
 
     final PostCategory? filter = findPostCategory(filterCategory);
+
+    if (videosOnly) {
+      return buildStateCard(
+        icon: Icons.smart_display_rounded,
+        color: communityColor,
+        title: filter == null
+            ? 'ยังไม่มีวิดีโอในชุมชน'
+            : 'ยังไม่มีวิดีโอหมวด "${filter.label}"',
+        message: 'กด + แล้วเลือกวิดีโอ เพื่อเป็นคนแรกที่แชร์วิดีโอ',
+      );
+    }
 
     if (scope == FeedScope.community && filter != null) {
       return buildStateCard(
