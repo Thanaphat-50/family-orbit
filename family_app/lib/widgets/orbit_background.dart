@@ -193,126 +193,60 @@ class _OrbitPainter
 // โลโก้แอป
 // =======================================================
 
-class FamilyOrbitLogo
+class AppLogo
     extends StatelessWidget {
   final double size;
 
-  const FamilyOrbitLogo({
+  const AppLogo({
     super.key,
     this.size = 92,
   });
 
   @override
   Widget build(BuildContext context) {
+    final BorderRadius radius =
+        BorderRadius.circular(
+      size * 0.26,
+    );
+
     return SizedBox(
       width: size + 30,
       height: size + 30,
-      child: Stack(
-        alignment:
-            Alignment.center,
-        children: [
-          // Orbit
-          Container(
-            width: size + 20,
-            height: size * 0.72,
-            decoration:
-                BoxDecoration(
-              borderRadius:
-                  BorderRadius.circular(
-                999,
-              ),
-              border:
-                  Border.all(
+      child: Center(
+        child: Container(
+          width: size,
+          height: size,
+          decoration:
+              BoxDecoration(
+            borderRadius: radius,
+            boxShadow: [
+              BoxShadow(
                 color:
-                    AppColors.primary
-                        .withValues(
-                  alpha: 0.18,
+                    const Color(
+                  0xFFB04FD8,
+                ).withValues(
+                  alpha: 0.30,
                 ),
-                width: 2,
-              ),
-            ),
-          ),
-
-          // Main icon
-          Container(
-            width: size,
-            height: size,
-            decoration:
-                BoxDecoration(
-              gradient:
-                  LinearGradient(
-                begin:
-                    Alignment.topLeft,
-                end:
-                    Alignment.bottomRight,
-                colors: [
-                  AppColors.primary,
-                  Color(0xFF7479FF),
-                ],
-              ),
-
-              borderRadius:
-                  BorderRadius.circular(
-                size * 0.31,
-              ),
-
-              boxShadow: [
-                BoxShadow(
-                  color:
-                      AppColors.primary
-                          .withValues(
-                    alpha: 0.25,
-                  ),
-                  blurRadius: 28,
-                  offset:
-                      const Offset(
-                    0,
-                    12,
-                  ),
+                blurRadius: 28,
+                offset:
+                    const Offset(
+                  0,
+                  12,
                 ),
-              ],
-            ),
-
-            child: Icon(
-              Icons.family_restroom,
-              color: Colors.white,
-              size: size * 0.52,
-            ),
-          ),
-
-          // Orbit dot
-          Positioned(
-            right: 2,
-            top: 38,
-            child: Container(
-              width: 15,
-              height: 15,
-              decoration:
-                  BoxDecoration(
-                color:
-                    AppColors.sky,
-                shape:
-                    BoxShape.circle,
               ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: radius,
+            child: Image.asset(
+              'assets/branding/app_icon.png',
+              width: size,
+              height: size,
+              filterQuality:
+                  FilterQuality.medium,
             ),
           ),
-
-          Positioned(
-            left: 6,
-            bottom: 27,
-            child: Container(
-              width: 11,
-              height: 11,
-              decoration:
-                  BoxDecoration(
-                color:
-                    AppColors.warm,
-                shape:
-                    BoxShape.circle,
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

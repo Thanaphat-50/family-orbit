@@ -233,7 +233,7 @@ class _RegisterPageState
 
                     const Center(
                       child:
-                          FamilyOrbitLogo(
+                          AppLogo(
                         size: 70,
                       ),
                     ),

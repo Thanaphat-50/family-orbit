@@ -13,6 +13,7 @@ import 'services/auth_service.dart';
 
 import 'theme/app_theme.dart';
 import 'theme/theme_controller.dart';
+import 'widgets/orbit_background.dart';
 import 'pages/splash_page.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -230,7 +231,7 @@ class _AuthCheckPageState extends State<AuthCheckPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.family_restroom, size: 62, color: AppColors.primary),
+              const AppLogo(size: 72),
 
               const SizedBox(height: 20),
 

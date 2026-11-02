@@ -345,7 +345,7 @@ class _LoginPageState
 
                     const Center(
                       child:
-                          FamilyOrbitLogo(),
+                          AppLogo(),
                     ),
 
                     const SizedBox(

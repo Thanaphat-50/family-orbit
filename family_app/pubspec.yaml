@@ -116,15 +116,23 @@ flutter_launcher_icons:
   android: true
   ios: false
   image_path: "assets/branding/app_icon.png"
+  # Android 8+ ไอคอน 2 ชั้น (ตัวอักษร ora + พื้นไล่สี) / Android 13+ ไอคอนตามธีม
+  # รูปใน assets/launcher ใช้สร้างไอคอนเท่านั้น ไม่รวมอยู่ในแอป
+  adaptive_icon_background: "assets/launcher/icon_background.png"
+  adaptive_icon_foreground: "assets/launcher/icon_foreground.png"
+  adaptive_icon_monochrome: "assets/launcher/icon_monochrome.png"
+  # รูปตัวอักษรเว้นขอบไว้แล้ว ไม่ต้องเว้นเพิ่ม
+  adaptive_icon_foreground_inset: 0
   min_sdk_android: 21
 
 flutter_native_splash:
   color: "#F6F7FB"
-  image: "assets/branding/app_icon.png"
+  image: "assets/launcher/splash_icon.png"
 
+  # Android 12+ ตัดรูปเป็นวงกลม → ใช้รูปวงกลมที่เตรียมไว้
   android_12:
     color: "#F6F7FB"
-    image: "assets/branding/app_icon.png"
+    image: "assets/launcher/splash_android12.png"
 
   android: true
   ios: false
