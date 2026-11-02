@@ -13,7 +13,7 @@ return [
     |
     */
 
-    'app_name' => env('PUBLIC_APP_NAME', 'ใกล้กัน'),
+    'app_name' => env('PUBLIC_APP_NAME', 'ORAVELLE'),
 
     'support_email' => env('SUPPORT_EMAIL'),
 

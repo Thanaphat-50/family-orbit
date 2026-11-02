@@ -479,7 +479,7 @@ class _LoginPageState
                           ),
 
                           Text(
-                            'เข้าสู่บัญชี${AppInfo.name}ของคุณ',
+                            'เข้าสู่บัญชี ${AppInfo.name} ของคุณ',
                             style:
                                 TextStyle(
                               color:

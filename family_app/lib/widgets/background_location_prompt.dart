@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../config/app_info.dart';
 import '../services/background_location.dart';
 import '../theme/app_theme.dart';
 
@@ -21,11 +22,11 @@ Future<bool> enableBackgroundLocation(BuildContext context) async {
       title: const Text('แชร์ตำแหน่งแม้ไม่ได้เปิดแอป'),
       content: SingleChildScrollView(
         child: Text(
-          'ใกล้กันจะเก็บตำแหน่งของคุณและส่งให้สมาชิกในครอบครัวเห็น '
+          '${AppInfo.name} จะเก็บตำแหน่งของคุณและส่งให้สมาชิกในครอบครัวเห็น '
           'แม้ตอนปิดแอปหรือไม่ได้ใช้งานอยู่\n\n'
           '• ครอบครัวรู้ว่าคุณอยู่ที่ไหน และนำทางไปหาได้\n'
           '• ส่งเมื่อคุณขยับ และอย่างน้อยทุก 5 นาที\n'
-          '• มีแจ้งเตือน "ใกล้กันกำลังแชร์ตำแหน่ง" ค้างไว้ระหว่างทำงาน\n'
+          '• มีแจ้งเตือน "$locationSharingTitle" ค้างไว้ระหว่างทำงาน\n'
           '• ปิดได้ทุกเมื่อที่ ตั้งค่า\n\n'
           'หน้าถัดไป ให้เลือก "อนุญาตตลอดเวลา"',
           style: TextStyle(color: AppColors.navy, fontSize: 14, height: 1.55),

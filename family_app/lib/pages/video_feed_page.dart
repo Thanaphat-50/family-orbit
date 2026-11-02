@@ -333,12 +333,12 @@ class _VideoFeedPageState extends State<VideoFeedPage> {
 
     final String text = [
       if (content.isNotEmpty) content,
-      '— ${authorName(post)} ในแอป${AppInfo.name}',
+      '— ${authorName(post)} ในแอป ${AppInfo.name}',
     ].join('\n\n');
 
     try {
       final ShareResult result = await SharePlus.instance.share(
-        ShareParams(text: text, subject: 'วิดีโอจากแอป${AppInfo.name}'),
+        ShareParams(text: text, subject: 'วิดีโอจากแอป ${AppInfo.name}'),
       );
 
       // ปิดหน้าแชร์ไปโดยไม่ได้ส่ง → ไม่นับ

@@ -33,7 +33,7 @@ class MainActivity : FlutterActivity() {
             "แชร์ตำแหน่งตอนปิดแอป",
             NotificationManager.IMPORTANCE_MIN,
         ).apply {
-            description = "แสดงว่าใกล้กันกำลังแชร์ตำแหน่งให้ครอบครัว"
+            description = "แสดงว่า ORAVELLE กำลังแชร์ตำแหน่งให้ครอบครัว"
             setShowBadge(false)
         }
 

@@ -9,7 +9,7 @@ import 'api_config.dart';
 // =======================================================
 
 class AppInfo {
-  static const String name = 'ใกล้กัน';
+  static const String name = 'ORAVELLE';
 
   // หน้าเว็บนโยบายบน Laravel (ลิงก์เดียวกับที่ใส่ใน Google Play)
   static const String privacyUrl = '${ApiConfig.serverUrl}/privacy';

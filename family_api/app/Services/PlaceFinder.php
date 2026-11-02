@@ -247,6 +247,6 @@ class PlaceFinder
     {
         $contact = config('legal.support_email') ?: config('app.url');
 
-        return 'Klaikan/1.0 (' . $contact . ')';
+        return 'Oravelle/1.0 (' . $contact . ')';
     }
 }

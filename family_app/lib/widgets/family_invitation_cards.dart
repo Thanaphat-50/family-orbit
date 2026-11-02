@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../config/app_info.dart';
 import '../theme/app_theme.dart';
 import 'user_avatar.dart';
 
@@ -237,7 +238,7 @@ Future<String?> askInviteEmail(BuildContext context) async {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'ใส่อีเมลที่เขาใช้สมัครแอปใกล้กัน เขาจะได้รับคำเชิญในแอป',
+            'ใส่อีเมลที่เขาใช้สมัครแอป ${AppInfo.name} เขาจะได้รับคำเชิญในแอป',
             style: TextStyle(color: AppColors.muted, fontSize: 13),
           ),
           const SizedBox(height: 12),

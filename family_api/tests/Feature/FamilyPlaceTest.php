@@ -113,7 +113,7 @@ class FamilyPlaceTest extends TestCase
 
         Http::assertSent(fn (Request $request) => str_starts_with($request->url(), 'https://nominatim.openstreetmap.org/reverse')
             && $request['accept-language'] === 'th'
-            && str_starts_with($request->header('User-Agent')[0] ?? '', 'Klaikan/'));
+            && str_starts_with($request->header('User-Agent')[0] ?? '', 'Oravelle/'));
 
         Http::assertSent(fn (Request $request) => str_starts_with($request->url(), 'https://places.googleapis.com/')
             && $request->hasHeader('X-Goog-Api-Key', 'server-key')

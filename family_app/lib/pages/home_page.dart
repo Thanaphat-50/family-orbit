@@ -267,7 +267,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       await SharePlus.instance.share(
         ShareParams(
           text:
-              'มาอยู่ครอบครัว "$familyName" ด้วยกันในแอป${AppInfo.name}\n'
+              'มาอยู่ครอบครัว "$familyName" ด้วยกันในแอป ${AppInfo.name}\n'
               'เปิดแอป → แท็บครอบครัว → เข้าร่วมครอบครัว แล้วใส่รหัส $code',
           subject: 'ชวนเข้าครอบครัว $familyName',
         ),

@@ -37,9 +37,9 @@
 ## 2. LINE
 
 1. https://developers.line.biz → **Log in** ด้วยบัญชี LINE
-2. **Create a new provider** → ชื่อ `ใกล้กัน`
+2. **Create a new provider** → ชื่อ `ORAVELLE`
 3. **Create a LINE Login channel**
-   - Region: Thailand / Channel name: `ใกล้กัน` / App types: **Mobile app**
+   - Region: Thailand / Channel name: `ORAVELLE` / App types: **Mobile app**
    - ใส่อีเมล + ลิงก์นโยบายความเป็นส่วนตัว + ข้อกำหนด → ยอมรับข้อกำหนด → **Create**
 4. แท็บ **LINE Login** → **Mobile app**
    - Package names: `com.familyorbit.app`
@@ -54,7 +54,7 @@
 ## 3. Facebook
 
 1. https://developers.facebook.com → **My Apps → Create app**
-2. Use case: **Authenticate and request data from users with Facebook Login** → ตั้งชื่อ `ใกล้กัน` → Create
+2. Use case: **Authenticate and request data from users with Facebook Login** → ตั้งชื่อ `ORAVELLE` → Create
 3. **Use cases → Customize** (Facebook Login)
    - **Permissions**: เพิ่ม **email** (public_profile มีอยู่แล้ว)
    - **Settings → Valid OAuth Redirect URIs**: ใส่ Facebook Redirect URI จากตารางด้านบน → Save

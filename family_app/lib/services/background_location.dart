@@ -10,6 +10,7 @@ import 'package:http/http.dart' as http;
 import 'package:permission_handler/permission_handler.dart';
 
 import '../config/api_config.dart';
+import '../config/app_info.dart';
 import 'auth_service.dart';
 import 'settings_service.dart';
 
@@ -17,12 +18,15 @@ import 'settings_service.dart';
 // แชร์ตำแหน่งแม้ไม่ได้เปิดแอป (Android)
 //
 // - ทำงานใน Foreground Service แยกจากหน้าแอป → ล็อกจอ / ปัดแอปทิ้งแล้วยังส่งต่อ
-//   (Android บังคับให้มีแจ้งเตือนค้าง "ใกล้กันกำลังแชร์ตำแหน่ง")
+//   (Android บังคับให้มีแจ้งเตือนค้าง "ORAVELLE กำลังแชร์ตำแหน่ง")
 // - ส่งเมื่อขยับเกิน 50 เมตร และอย่างน้อยทุก 5 นาที (ครอบครัวรู้ว่ายังออนไลน์)
 // - เปิดเองไม่ได้: ผู้ใช้ต้องเปิดสวิตช์ + อนุญาตตำแหน่ง "ตลอดเวลา"
 // - หยุดเอง: ออกจากระบบ / ปิดแชร์ตำแหน่ง / ออกจากครอบครัว / ถอนสิทธิ์ / ปิด GPS
 //   (เปิดแอปครั้งถัดไป sync() จะเริ่มใหม่ให้ถ้ายังเปิดสวิตช์ไว้)
 // =======================================================
+
+// หัวข้อแจ้งเตือนค้าง (หน้าอธิบายก่อนขอสิทธิ์ใช้ข้อความเดียวกัน)
+const String locationSharingTitle = '${AppInfo.name} กำลังแชร์ตำแหน่ง';
 
 class BackgroundLocation {
   static const String _enabledKey = 'background_location_enabled';
@@ -72,7 +76,7 @@ class BackgroundLocation {
         isForegroundMode: true,
         // ช่องแจ้งเตือนระดับต่ำสุด (สร้างใน MainActivity.kt) → ย่อเล็กที่สุด
         notificationChannelId: 'location_sharing',
-        initialNotificationTitle: 'ใกล้กันกำลังแชร์ตำแหน่ง',
+        initialNotificationTitle: locationSharingTitle,
         initialNotificationContent:
             'ครอบครัวเห็นตำแหน่งของคุณ ปิดได้ที่ ตั้งค่า',
         foregroundServiceNotificationId: 4410,
@@ -265,7 +269,7 @@ Future<void> backgroundLocationMain(ServiceInstance service) async {
             '${now.minute.toString().padLeft(2, '0')}';
 
         service.setForegroundNotificationInfo(
-          title: 'ใกล้กันกำลังแชร์ตำแหน่ง',
+          title: locationSharingTitle,
           content: 'ล่าสุด $time น. · ปิดได้ที่ ตั้งค่า ในแอป',
         );
       }

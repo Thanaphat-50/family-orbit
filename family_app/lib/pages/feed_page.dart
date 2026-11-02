@@ -502,12 +502,12 @@ class _FeedPageState extends State<FeedPage> {
 
     final String text = [
       if (content.isNotEmpty) content,
-      '— $name ในแอป${AppInfo.name}',
+      '— $name ในแอป ${AppInfo.name}',
     ].join('\n\n');
 
     try {
       final ShareResult result = await SharePlus.instance.share(
-        ShareParams(text: text, subject: 'โพสต์จากแอป${AppInfo.name}'),
+        ShareParams(text: text, subject: 'โพสต์จากแอป ${AppInfo.name}'),
       );
 
       // ปิดหน้าแชร์ไปโดยไม่ได้ส่ง → ไม่นับ
