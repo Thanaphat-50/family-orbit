@@ -149,6 +149,50 @@ const Map<String, String> marketReportReasons = {
 };
 
 // "บางนา, กรุงเทพมหานคร"
+// วิธีรับสินค้า (ตรงกับ config('market.delivery_methods'))
+class DeliveryMethod {
+  final String key;
+  final String label;
+  final IconData icon;
+
+  const DeliveryMethod({
+    required this.key,
+    required this.label,
+    required this.icon,
+  });
+}
+
+const List<DeliveryMethod> deliveryMethods = [
+  DeliveryMethod(
+    key: 'storefront',
+    label: 'รับที่หน้าร้าน',
+    icon: Icons.storefront_outlined,
+  ),
+  DeliveryMethod(
+    key: 'meetup',
+    label: 'นัดรับ',
+    icon: Icons.handshake_outlined,
+  ),
+  DeliveryMethod(
+    key: 'delivery',
+    label: 'ส่งถึงบ้าน',
+    icon: Icons.delivery_dining_outlined,
+  ),
+  DeliveryMethod(
+    key: 'shipping',
+    label: 'ส่งพัสดุ',
+    icon: Icons.local_shipping_outlined,
+  ),
+];
+
+DeliveryMethod? findDeliveryMethod(String key) {
+  for (final method in deliveryMethods) {
+    if (method.key == key) return method;
+  }
+
+  return null;
+}
+
 String shopArea(dynamic shop) {
   if (shop is! Map) return '';
 
@@ -161,6 +205,34 @@ String shopArea(dynamic shop) {
 // =======================================================
 // ราคา: "฿1,250" / "฿35.50" / ไม่มีราคา = "สอบถามราคา"
 // =======================================================
+
+// วันเวลาจาก Laravel (ISO 8601) → "18/11/2026 14:30 น." (null / ผิดรูปแบบ → '')
+String formatDateTime(dynamic value, {bool withTime = true}) {
+  final DateTime? time = DateTime.tryParse(value?.toString() ?? '')?.toLocal();
+
+  if (time == null) return '';
+
+  String two(int n) => n.toString().padLeft(2, '0');
+
+  final String date = '${two(time.day)}/${two(time.month)}/${time.year}';
+
+  return withTime ? '$date ${two(time.hour)}:${two(time.minute)} น.' : date;
+}
+
+// "เปิดร้านมาแล้ว 3 เดือน" / "สมาชิกมา 1 ปี"
+String durationSince(dynamic value) {
+  final DateTime? time = DateTime.tryParse(value?.toString() ?? '')?.toLocal();
+
+  if (time == null) return '';
+
+  final int days = DateTime.now().difference(time).inDays;
+
+  if (days >= 365) return '${days ~/ 365} ปี';
+  if (days >= 30) return '${days ~/ 30} เดือน';
+  if (days >= 1) return '$days วัน';
+
+  return 'วันนี้';
+}
 
 String formatPrice(dynamic price) {
   final double? value = price is num

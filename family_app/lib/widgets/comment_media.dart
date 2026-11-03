@@ -292,6 +292,15 @@ Future<CommentMediaFile?> pickCommentMedia(
   }
 }
 
+// วิดีโอสั้นจากคลัง (ไม่เกิน 30 วินาที / 20 MB บีบอัดให้ถ้าใหญ่ + รูปตัวอย่าง)
+// ใช้กับวิดีโอแนะนำร้านและสินค้าด้วย
+Future<CommentMediaFile?> pickShortVideo(
+  BuildContext context, {
+  ValueChanged<bool>? onBusy,
+}) {
+  return _videoFile(context, ImagePicker(), onBusy);
+}
+
 Future<CommentMediaFile?> _videoFile(
   BuildContext context,
   ImagePicker picker,

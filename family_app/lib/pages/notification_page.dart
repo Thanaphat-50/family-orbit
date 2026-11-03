@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../data/market_data.dart';
 import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/featured_shops_banner.dart' show featuredColor;
+import 'market_shop_page.dart';
 import 'my_shop_page.dart';
 import 'post_detail_page.dart';
 
@@ -281,10 +283,25 @@ class _NotificationPageState extends State<NotificationPage> {
           return;
         }
 
+      // สถานะร้าน / ผลตรวจสลิปช่องแนะนำ → ร้านของฉัน
       case 'shop_status':
+      case 'promotion_status':
         await Navigator.of(context)
             .push(MaterialPageRoute(builder: (context) => const MyShopPage()));
         return;
+
+      // รีวิวร้านใหม่ → หน้าร้าน (เห็นรีวิว)
+      case 'shop_review':
+        final int? shopId = dataId('shop_id');
+
+        if (shopId != null) {
+          await Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => MarketShopPage(shopId: shopId),
+            ),
+          );
+          return;
+        }
 
       case 'new_activity':
         Navigator.of(context).pop(NotificationTarget.activities);
@@ -401,6 +418,12 @@ class _NotificationPageState extends State<NotificationPage> {
         return const _NotificationStyle(
           icon: Icons.storefront_rounded,
           color: marketColor,
+        );
+      case 'promotion_status':
+      case 'shop_review':
+        return const _NotificationStyle(
+          icon: Icons.star_rounded,
+          color: featuredColor,
         );
       default:
         return _NotificationStyle(

@@ -33,6 +33,59 @@ return [
     // จำกัดไว้ให้ร้านที่จ่ายเงินได้รับการมองเห็นจริง
     'featured_slots' => (int) env('MARKET_FEATURED_SLOTS', 10),
 
+    // วิธีรับสินค้าที่ร้านเลือกแสดงได้
+    'delivery_methods' => [
+        'storefront' => 'รับที่หน้าร้าน',
+        'meetup' => 'นัดรับ',
+        'delivery' => 'ส่งถึงบ้าน',
+        'shipping' => 'ส่งพัสดุ',
+    ],
+
+    'max_shop_images' => 5,
+
+    // วิดีโอแนะนำร้าน/สินค้า (แอปบีบอัดก่อนส่ง)
+    'video_max_kb' => 20480,
+    'video_max_seconds' => 30,
+
+    /*
+    |--------------------------------------------------------------------------
+    | ช่องแนะนำสินค้าแบบชำระเงิน
+    |--------------------------------------------------------------------------
+    |
+    | ผู้ขายเลือกแพ็กเกจ → โอนพร้อมเพย์ตาม QR → แนบสลิป → Admin ตรวจแล้วอนุมัติ
+    | ช่องจำกัดต่อหมวด (หมวดละ featured_slots_per_category สินค้า)
+    | ราคาเปลี่ยนได้ใน Laravel Cloud (คำสั่งซื้อเดิมใช้ราคาตอนสั่ง)
+    |
+    */
+
+    'promotion_plans' => [
+        'day' => [
+            'label' => '1 วัน',
+            'days' => 1,
+            'price' => (int) env('PROMO_PRICE_DAY', 59),
+        ],
+        'month' => [
+            'label' => '1 เดือน',
+            'days' => 30,
+            'price' => (int) env('PROMO_PRICE_MONTH', 990),
+        ],
+        'year' => [
+            'label' => '1 ปี',
+            'days' => 365,
+            'price' => (int) env('PROMO_PRICE_YEAR', 8900),
+        ],
+    ],
+
+    'featured_slots_per_category' => (int) env('MARKET_FEATURED_SLOTS_PER_CATEGORY', 10),
+
+    // แนบสลิปภายในกี่ชั่วโมงหลังสั่งซื้อ (เกินแล้วยกเลิกเอง ช่องที่จองไว้คืน)
+    'promotion_payment_hours' => (int) env('PROMO_PAYMENT_HOURS', 24),
+
+    // บัญชีรับเงิน: เบอร์มือถือ 10 หลัก หรือเลขบัตรประชาชน/เลขผู้เสียภาษี 13 หลัก
+    // ไม่ตั้งค่า → ยังไม่เปิดรับชำระเงิน
+    'promptpay_id' => env('PROMPTPAY_ID'),
+    'promptpay_name' => env('PROMPTPAY_NAME'),
+
     // เขตเวลาที่ใช้ตีความ "วันที่" ที่ Admin เลือก (Server ใช้ UTC)
     // เลือก 18/11 → ร้านแนะนำถึง 23:59 ของวันที่ 18/11 เวลาไทย
     'timezone' => 'Asia/Bangkok',

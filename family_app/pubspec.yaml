@@ -54,6 +54,7 @@ dependencies:
   video_player: ^2.14.1
   video_compress: ^3.1.4
   http_parser: ^4.1.2
+  qr_flutter: ^4.1.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

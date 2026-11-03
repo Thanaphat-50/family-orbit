@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Product;
 use App\Models\ProductImage;
 use App\Models\Shop;
+use App\Support\MarketVideo;
 use App\Support\MediaStorage;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -34,7 +35,9 @@ class MyProductController extends Controller
 
         return response()->json([
             'status' => true,
-            'products' => $shop->products()->with('images')->latest()->get(),
+            'products' => $shop->products()->with('images')->latest()->get()
+                ->map(fn (Product $product) => $this->sellerPayload($product))
+                ->values(),
             'limit' => (int) config('market.max_products_per_shop'),
             'max_images' => (int) config('market.max_images_per_product'),
         ]);
@@ -103,7 +106,7 @@ class MyProductController extends Controller
         return response()->json([
             'status' => true,
             'message' => 'เพิ่มสินค้าแล้ว',
-            'product' => $product->load('images'),
+            'product' => $this->sellerPayload($product->load('images')),
         ], 201);
     }
 
@@ -190,7 +193,7 @@ class MyProductController extends Controller
         return response()->json([
             'status' => true,
             'message' => 'บันทึกสินค้าแล้ว',
-            'product' => $product->unsetRelation('images')->load('images'),
+            'product' => $this->sellerPayload($product->unsetRelation('images')->load('images')),
         ]);
     }
 
@@ -219,7 +222,7 @@ class MyProductController extends Controller
             'message' => $product->status === Product::STATUS_HIDDEN
                 ? 'ซ่อนสินค้าแล้ว'
                 : 'แสดงสินค้าแล้ว',
-            'product' => $product->load('images'),
+            'product' => $this->sellerPayload($product->load('images')),
         ]);
     }
 
@@ -244,8 +247,91 @@ class MyProductController extends Controller
     }
 
     // =====================================================
+    // POST /api/my-shop/products/{product}/video (multipart video + video_thumbnail)
+    // DELETE /api/my-shop/products/{product}/video
+    // วิดีโอแนะนำสินค้า (1 คลิปต่อสินค้า แทนของเดิม)
+    // =====================================================
+
+    public function updateVideo(Request $request, Product $product)
+    {
+        $shop = $this->myShop($request);
+
+        if (!$shop || (int) $product->shop_id !== (int) $shop->id) {
+            return $this->notFound();
+        }
+
+        if ($shop->status === Shop::STATUS_SUSPENDED) {
+            return $this->suspended();
+        }
+
+        $request->validate(
+            ['video' => 'required', ...MarketVideo::rules()],
+            ['video.required' => 'กรุณาเลือกวิดีโอ', ...MarketVideo::messages()]
+        );
+
+        try {
+            $video = MarketVideo::store($request, 'product_videos/' . $shop->id);
+        } catch (Throwable $e) {
+            Log::error('Product video upload failed', [
+                'product_id' => $product->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'status' => false,
+                'message' => 'อัปโหลดวิดีโอไม่สำเร็จ กรุณาลองอีกครั้ง',
+            ], 500);
+        }
+
+        $old = [$product->video_path, $product->video_thumbnail_path];
+
+        $product->forceFill($video)->save();
+
+        MediaStorage::delete($old);
+
+        return response()->json([
+            'status' => true,
+            'message' => 'บันทึกวิดีโอสินค้าแล้ว',
+            'product' => $this->sellerPayload($product->load('images')),
+        ]);
+    }
+
+    public function destroyVideo(Request $request, Product $product)
+    {
+        $shop = $this->myShop($request);
+
+        if (!$shop || (int) $product->shop_id !== (int) $shop->id) {
+            return $this->notFound();
+        }
+
+        $old = [$product->video_path, $product->video_thumbnail_path];
+
+        $product->forceFill(['video_path' => null, 'video_thumbnail_path' => null])->save();
+
+        MediaStorage::delete($old);
+
+        return response()->json([
+            'status' => true,
+            'message' => 'ลบวิดีโอสินค้าแล้ว',
+            'product' => $this->sellerPayload($product->load('images')),
+        ]);
+    }
+
+    // =====================================================
     // HELPERS
     // =====================================================
+
+    // ข้อมูลสินค้าฝั่งผู้ขาย + วิดีโอ + สถานะช่องแนะนำ
+    private function sellerPayload(Product $product): array
+    {
+        return [
+            ...$product->toArray(),
+            'video_url' => $product->video_url,
+            'video_thumbnail_url' => $product->video_thumbnail_url,
+            'featured_until' => $product->featured_until,
+            'is_featured' => $product->isFeatured(),
+        ];
+    }
 
     private function myShop(Request $request): ?Shop
     {

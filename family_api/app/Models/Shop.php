@@ -32,7 +32,11 @@ class Shop extends Model
         'line_id',
         'province',
         'district',
+        'opening_hours',
+        'delivery_methods',
         'logo_path',
+        'video_path',
+        'video_thumbnail_path',
         'status',
         'status_reason',
         'approved_at',
@@ -42,14 +46,19 @@ class Shop extends Model
 
     protected $hidden = [
         'logo_path',
+        'video_path',
+        'video_thumbnail_path',
     ];
 
     protected $appends = [
         'logo_url',
         'is_featured',
+        'video_url',
+        'video_thumbnail_url',
     ];
 
     protected $casts = [
+        'delivery_methods' => 'array',
         'approved_at' => 'datetime',
         'featured_until' => 'datetime',
         'terms_accepted_at' => 'datetime',
@@ -63,6 +72,26 @@ class Shop extends Model
     public function products()
     {
         return $this->hasMany(Product::class);
+    }
+
+    public function images()
+    {
+        return $this->hasMany(ShopImage::class)->orderBy('sort')->orderBy('id');
+    }
+
+    public function reviews()
+    {
+        return $this->hasMany(ShopReview::class);
+    }
+
+    public function getVideoUrlAttribute(): ?string
+    {
+        return MediaStorage::url($this->video_path);
+    }
+
+    public function getVideoThumbnailUrlAttribute(): ?string
+    {
+        return MediaStorage::url($this->video_thumbnail_path);
     }
 
     public function reports()
@@ -187,38 +216,42 @@ class Shop extends Model
         ]);
     }
 
-    // ลบไฟล์โลโก้และรูปสินค้าทั้งหมดเมื่อร้านถูกลบด้วย $shop->delete()
-    // (สินค้าและรูปถูกลบตาม cascade จึงต้องโหลด path ไว้ก่อน)
+    // ลบไฟล์ทั้งหมดของร้านเมื่อร้านถูกลบด้วย $shop->delete()
+    // (สินค้า รูป และสลิปถูกลบตาม cascade จึงต้องโหลด path ไว้ก่อน)
     protected static function booted(): void
     {
         static::deleting(function (Shop $shop) {
-            $shop->loadMissing('products.images');
+            $shop->loadMissing(['images', 'products.images', 'products.promotions']);
         });
 
         static::deleted(function (Shop $shop) {
             $paths = [
                 $shop->logo_path,
-                ...$shop->products->flatMap(fn (Product $product) => $product->images->pluck('path'))->all(),
+                $shop->video_path,
+                $shop->video_thumbnail_path,
+                ...$shop->images->pluck('path')->all(),
+                ...$shop->products->flatMap(fn (Product $product) => $product->mediaPaths())->all(),
             ];
 
             DB::afterCommit(fn () => MediaStorage::delete($paths));
         });
     }
 
-    // path ของไฟล์ทั้งหมดในร้านของผู้ใช้ (โลโก้ + รูปสินค้า)
+    // path ของไฟล์ทั้งหมดในร้านของผู้ใช้ (โลโก้ วิดีโอ รูปร้าน รูป/วิดีโอสินค้า สลิป)
     // ใช้ตอนลบบัญชี ซึ่งร้านถูกลบผ่าน cascade ของฐานข้อมูล
     public static function mediaPathsOfOwner(int $userId): array
     {
-        $shops = self::where('user_id', $userId)->get(['id', 'logo_path']);
+        $shops = self::where('user_id', $userId)->get(['id', 'logo_path', 'video_path', 'video_thumbnail_path']);
 
-        $productImages = ProductImage::whereIn(
-            'product_id',
-            Product::whereIn('shop_id', $shops->pluck('id'))->select('id')
-        )->pluck('path');
+        $products = Product::whereIn('shop_id', $shops->pluck('id'))
+            ->get(['id', 'video_path', 'video_thumbnail_path']);
 
         return [
-            ...$shops->pluck('logo_path')->all(),
-            ...$productImages->all(),
+            ...$shops->flatMap(fn (Shop $shop) => [$shop->logo_path, $shop->video_path, $shop->video_thumbnail_path])->all(),
+            ...ShopImage::whereIn('shop_id', $shops->pluck('id'))->pluck('path')->all(),
+            ...$products->flatMap(fn (Product $product) => [$product->video_path, $product->video_thumbnail_path])->all(),
+            ...ProductImage::whereIn('product_id', $products->pluck('id'))->pluck('path')->all(),
+            ...ProductPromotion::where('user_id', $userId)->pluck('slip_path')->all(),
         ];
     }
 }

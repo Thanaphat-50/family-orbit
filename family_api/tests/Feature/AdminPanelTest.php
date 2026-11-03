@@ -48,6 +48,8 @@ class AdminPanelTest extends TestCase
 
         $this->get('/admin')->assertOk();
         $this->get('/admin/users')->assertOk();
+        $this->get('/admin/product-promotions')->assertOk();
+        $this->get('/admin/shop-reviews')->assertOk();
 
         // Widget บน Dashboard โหลดแบบ lazy จึงทดสอบตัว Widget โดยตรง
         Livewire::test(AppStatsOverview::class)

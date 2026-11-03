@@ -7,6 +7,7 @@ import '../widgets/community_sheets.dart';
 import '../widgets/market_widgets.dart';
 import '../widgets/photo_viewer.dart';
 import 'market_shop_page.dart';
+import 'video_player_page.dart';
 
 // =======================================================
 // หน้าสินค้า: รูป ราคา รายละเอียด ร้าน และปุ่มติดต่อ
@@ -298,11 +299,19 @@ class _MarketProductPageState extends State<MarketProductPage> {
 
     final bool mine = data['is_mine'] == true;
 
+    final String? videoUrl = data['video_url']?.toString();
+
+    final String? videoThumbnail = data['video_thumbnail_url']?.toString();
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 32),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (data['is_featured'] == true) ...[
+            const FeaturedProductBadge(),
+            const SizedBox(height: 8),
+          ],
           Text(
             formatPrice(data['price']),
             style: const TextStyle(
@@ -321,6 +330,50 @@ class _MarketProductPageState extends State<MarketProductPage> {
               fontWeight: FontWeight.w800,
             ),
           ),
+          // วิดีโอแนะนำสินค้า
+          if (videoUrl != null) ...[
+            const SizedBox(height: 14),
+            GestureDetector(
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => VideoPlayerPage(url: videoUrl),
+                ),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(18),
+                child: AspectRatio(
+                  aspectRatio: 16 / 9,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      videoThumbnail != null
+                          ? Image.network(videoThumbnail, fit: BoxFit.cover)
+                          : const ColoredBox(color: Colors.black),
+                      const ColoredBox(color: Color(0x33000000)),
+                      const Center(
+                        child: Icon(
+                          Icons.play_circle_fill_rounded,
+                          size: 56,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const Positioned(
+                        left: 12,
+                        bottom: 10,
+                        child: Text(
+                          'วิดีโอแนะนำสินค้า',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
           if (category != null) ...[
             const SizedBox(height: 10),
             Container(

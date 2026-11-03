@@ -3,16 +3,16 @@ import 'package:flutter/material.dart';
 import '../data/market_data.dart';
 import '../services/market_service.dart';
 import '../theme/app_theme.dart';
-import '../widgets/market_sheets.dart';
 import '../widgets/featured_shops_banner.dart';
 import '../widgets/market_widgets.dart';
 import '../widgets/post_categories.dart';
+import 'featured_products_page.dart';
 import 'market_product_page.dart';
 import 'market_shop_page.dart';
 
 // =======================================================
-// หน้าตลาด
-// ค้นหา / กรองจังหวัดและหมวด / ร้านแนะนำ (ร้านที่เช่า) / สินค้าใหม่
+// หน้าร้านค้า
+// ค้นหา / กรองหมวด / สินค้าแนะนำ (ชำระเงิน ตามหมวด) / ร้านแนะนำ / สินค้าใหม่
 // =======================================================
 
 class ShopPage extends StatefulWidget {
@@ -32,10 +32,12 @@ class _ShopPageState extends State<ShopPage> {
   // ตัวกรอง (null = ทั้งหมด)
   String query = '';
   String? category;
-  String? province;
 
   List<Map<String, dynamic>> products = [];
   List<Map<String, dynamic>> featuredShops = [];
+
+  // สินค้าช่องแนะนำของหมวดที่เลือก (ไม่เลือก = ทุกหมวด)
+  List<Map<String, dynamic>> featuredProducts = [];
 
   bool isLoading = true;
   bool isLoadingMore = false;
@@ -70,7 +72,29 @@ class _ShopPageState extends State<ShopPage> {
   // =====================================================
 
   Future<void> refresh() async {
-    await Future.wait([loadProducts(), loadFeatured()]);
+    await Future.wait([loadProducts(), loadFeatured(), loadFeaturedProducts()]);
+  }
+
+  // สินค้าแนะนำ (ชำระเงิน) ของหมวดที่เลือก
+  Future<void> loadFeaturedProducts() async {
+    final String? selected = category;
+
+    try {
+      final result = await MarketService.getFeaturedProducts(
+        category: selected,
+      );
+
+      if (!mounted || result['status'] != true || selected != category) return;
+
+      setState(() {
+        featuredProducts = [
+          for (final item in (result['products'] as List?) ?? const [])
+            if (item is Map) Map<String, dynamic>.from(item),
+        ];
+      });
+    } catch (_) {
+      // ส่วนเสริม โหลดไม่ได้ก็ซ่อนไว้
+    }
   }
 
   Future<void> loadProducts({bool loadMore = false}) async {
@@ -92,7 +116,6 @@ class _ShopPageState extends State<ShopPage> {
       final result = await MarketService.getMarketProducts(
         q: query,
         category: category,
-        province: province,
         page: nextPage,
       );
 
@@ -173,9 +196,11 @@ class _ShopPageState extends State<ShopPage> {
       isLoading = true;
       isLoadingMore = false;
       loadError = null;
+      featuredProducts = [];
     });
 
     loadProducts();
+    loadFeaturedProducts();
   }
 
   void onScroll() {
@@ -202,25 +227,6 @@ class _ShopPageState extends State<ShopPage> {
   void clearSearch() {
     searchController.clear();
     submitSearch('');
-  }
-
-  Future<void> pickProvince() async {
-    FocusManager.instance.primaryFocus?.unfocus();
-
-    final String? picked = await showProvincePicker(
-      context,
-      selected: province,
-    );
-
-    if (picked == null || picked == province || !mounted) return;
-
-    province = picked;
-    applyFilters();
-  }
-
-  void clearProvince() {
-    province = null;
-    applyFilters();
   }
 
   Future<void> openProduct(Map<String, dynamic> product) async {
@@ -290,37 +296,12 @@ class _ShopPageState extends State<ShopPage> {
     );
   }
 
-  // จังหวัด + หมวด (เลื่อนซ้าย-ขวา)
+  // หมวด (เลื่อนซ้าย-ขวา)
   Widget buildFilters() {
-    final String? selectedProvince = province;
-
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
         children: [
-          InputChip(
-            avatar: const Icon(
-              Icons.location_on_outlined,
-              size: 18,
-              color: marketColor,
-            ),
-            label: Text(selectedProvince ?? 'ทุกจังหวัด'),
-            labelStyle: TextStyle(
-              color: AppColors.navy,
-              fontWeight: FontWeight.w700,
-            ),
-            backgroundColor: AppColors.surface,
-            side: BorderSide(
-              color: selectedProvince != null ? marketColor : AppColors.border,
-            ),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(999),
-            ),
-            onPressed: pickProvince,
-            onDeleted: selectedProvince != null ? clearProvince : null,
-            deleteButtonTooltipMessage: 'ทุกจังหวัด',
-          ),
-          const SizedBox(width: 8),
           CategoryChoiceChip(
             label: 'ทั้งหมด',
             icon: Icons.apps_rounded,
@@ -350,6 +331,66 @@ class _ShopPageState extends State<ShopPage> {
           ],
         ],
       ),
+    );
+  }
+
+  // แถวสินค้าแนะนำ (เลื่อนซ้าย-ขวา) + ดูทั้งหมดแยกตามหมวด
+  Widget buildFeaturedProducts() {
+    final MarketCategory? selected = category == null
+        ? null
+        : findMarketCategory(category);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.star_rounded, color: featuredColor, size: 22),
+            const SizedBox(width: 4),
+            Expanded(
+              child: Text(
+                selected == null
+                    ? 'สินค้าแนะนำ'
+                    : 'แนะนำในหมวด${selected.label}',
+                style: TextStyle(
+                  color: AppColors.navy,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) =>
+                      FeaturedProductsPage(initialCategory: category),
+                ),
+              ),
+              child: const Text('ดูทั้งหมด'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        SizedBox(
+          height: 250,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: featuredProducts.length,
+            separatorBuilder: (context, index) => const SizedBox(width: 12),
+            itemBuilder: (context, index) {
+              final product = featuredProducts[index];
+
+              return SizedBox(
+                width: 160,
+                child: MarketProductCard(
+                  product: product,
+                  onTap: () => openProduct(product),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 
@@ -401,9 +442,9 @@ class _ShopPageState extends State<ShopPage> {
             const Icon(Icons.storefront_outlined, size: 44, color: marketColor),
             const SizedBox(height: 10),
             Text(
-              isFiltering || province != null
+              isFiltering
                   ? 'ไม่พบสินค้าที่ตรงกับที่ค้นหา'
-                  : 'ยังไม่มีสินค้าในตลาด',
+                  : 'ยังไม่มีสินค้าในร้านค้า',
               style: TextStyle(
                 color: AppColors.navy,
                 fontSize: 15,
@@ -412,9 +453,9 @@ class _ShopPageState extends State<ShopPage> {
             ),
             const SizedBox(height: 4),
             Text(
-              isFiltering || province != null
-                  ? 'ลองเปลี่ยนคำค้น จังหวัด หรือหมวด'
-                  : 'กดไอคอนร้าน 🏪 ด้านบนเพื่อเปิดร้านแรกในตลาด',
+              isFiltering
+                  ? 'ลองเปลี่ยนคำค้น หรือหมวด'
+                  : 'กดไอคอนร้าน 🏪 ด้านบนเพื่อเปิดร้านแรก',
               style: TextStyle(color: AppColors.muted, fontSize: 13),
             ),
           ],
@@ -453,6 +494,10 @@ class _ShopPageState extends State<ShopPage> {
     // ร้านแนะนำแสดงตลอด ยกเว้นตอนค้นหา / เลือกหมวด (ให้เห็นผลลัพธ์ทันที)
     final bool showFeatured = featuredShops.isNotEmpty && !isFiltering;
 
+    // สินค้าแนะนำ: ทุกหมวด หรือหมวดที่เลือก (ไม่แสดงตอนค้นหาด้วยคำ)
+    final bool showFeaturedProducts =
+        featuredProducts.isNotEmpty && query.isEmpty;
+
     return RefreshIndicator(
       color: marketColor,
       onRefresh: refresh,
@@ -468,6 +513,10 @@ class _ShopPageState extends State<ShopPage> {
                 buildSearchField(),
                 const SizedBox(height: 10),
                 buildFilters(),
+                if (showFeaturedProducts) ...[
+                  const SizedBox(height: 20),
+                  buildFeaturedProducts(),
+                ],
                 if (showFeatured) ...[
                   const SizedBox(height: 20),
                   Row(

@@ -3,8 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\Product;
+use App\Models\ProductPromotion;
 use App\Models\ProductReport;
 use App\Models\Shop;
+use App\Models\ShopReview;
 use App\Models\ShopReport;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
@@ -94,6 +96,9 @@ class MarketController extends Controller
             'product' => [
                 ...$product->only(['id', 'title', 'description', 'price', 'category', 'status', 'created_at']),
                 'images' => $product->images,
+                'video_url' => $product->video_url,
+                'video_thumbnail_url' => $product->video_thumbnail_url,
+                'is_featured' => $product->isFeatured(),
                 'is_mine' => $isMine,
             ],
             'shop' => $this->shopPayload($product->shop),
@@ -162,13 +167,62 @@ class MarketController extends Controller
             ->latest()
             ->get();
 
+        $blockedIds = $user->blockedUsers()->pluck('users.id');
+
+        $reviews = ShopReview::where('shop_id', $shop->id)
+            ->visible()
+            ->whereNotIn('user_id', $blockedIds)
+            ->with('user')
+            ->latest()
+            ->limit(3)
+            ->get();
+
+        $myReview = ShopReview::where('shop_id', $shop->id)
+            ->where('user_id', $user->id)
+            ->with('user')
+            ->first();
+
         return response()->json([
             'status' => true,
             'shop' => [
                 ...$this->shopPayload($shop),
                 'is_mine' => $isMine,
+                'images' => $shop->images()->get(),
+                'trust' => $this->trustInfo($shop, $products->count()),
+                'rating' => ShopReview::summaryFor($shop->id),
             ],
+            'reviews' => $reviews->map(fn (ShopReview $review) => $review->toPayload($user->id))->values(),
+            'my_review' => $myReview?->toPayload($user->id),
             'products' => $products->map(fn (Product $product) => $this->productCard($product, false))->values(),
+        ]);
+    }
+
+    // =====================================================
+    // GET /api/market/featured-products?category=
+    // สินค้าช่องแนะนำ (ชำระเงินแล้ว) สลับลำดับทุกครั้ง
+    // ไม่ระบุหมวด → รวมทุกหมวด
+    // =====================================================
+
+    public function featuredProducts(Request $request)
+    {
+        $data = $request->validate([
+            'category' => ['nullable', Rule::in(array_keys(config('market.categories')))],
+        ]);
+
+        $category = $data['category'] ?? null;
+
+        $products = $this->visibleProductsFor($request->user())
+            ->featuredNow()
+            ->when($category, fn (Builder $query, string $value) => $query->where('category', $value))
+            ->with(['images', 'shop'])
+            ->inRandomOrder()
+            ->limit($category ? ProductPromotion::slotsPerCategory() : 100)
+            ->get();
+
+        return response()->json([
+            'status' => true,
+            'products' => $products->map(fn (Product $product) => $this->productCard($product))->values(),
+            'slots_per_category' => ProductPromotion::slotsPerCategory(),
         ]);
     }
 
@@ -271,6 +325,8 @@ class MarketController extends Controller
             ...$product->only(['id', 'title', 'price', 'category', 'created_at']),
             'image_url' => $product->images->first()?->url,
             'images_count' => $product->images->count(),
+            'is_featured' => $product->isFeatured(),
+            'has_video' => $product->video_path !== null,
             ...($withShop ? [
                 'shop' => [
                     'id' => $product->shop->id,
@@ -295,9 +351,31 @@ class MarketController extends Controller
             'line_id',
             'province',
             'district',
+            'opening_hours',
+            'delivery_methods',
             'logo_url',
+            'video_url',
+            'video_thumbnail_url',
             'is_featured',
         ]);
+    }
+
+    // ข้อมูลความน่าเชื่อถือที่ระบบคำนวณเอง (ไม่เปิดเผยข้อมูลส่วนตัวของเจ้าของ)
+    private function trustInfo(Shop $shop, int $productsCount): array
+    {
+        $owner = $shop->owner;
+
+        return [
+            'reviewed_by_admin' => $shop->isActive(),
+            'approved_at' => $shop->approved_at,
+            'member_since' => $owner?->created_at,
+            // google / line / facebook (เข้าสู่ระบบด้วยบัญชีเหล่านี้)
+            'login_methods' => $owner
+                ? $owner->socialAccounts()->pluck('provider')->unique()->values()
+                : [],
+            'products_count' => $productsCount,
+            'has_video' => $shop->video_path !== null,
+        ];
     }
 
     private function validateReport(Request $request): array

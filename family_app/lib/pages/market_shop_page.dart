@@ -6,6 +6,7 @@ import '../theme/app_theme.dart';
 import '../widgets/community_sheets.dart';
 import '../widgets/featured_shops_banner.dart';
 import '../widgets/market_widgets.dart';
+import '../widgets/shop_trust_widgets.dart';
 import 'market_product_page.dart';
 
 // =======================================================
@@ -24,6 +25,10 @@ class MarketShopPage extends StatefulWidget {
 class _MarketShopPageState extends State<MarketShopPage> {
   Map<String, dynamic>? shop;
   List<Map<String, dynamic>> products = [];
+
+  // รีวิวล่าสุด 3 รายการ + รีวิวของเรา
+  List<Map<String, dynamic>> reviews = [];
+  Map<String, dynamic>? myReview;
 
   bool isLoading = true;
   String? loadError;
@@ -50,6 +55,13 @@ class _MarketShopPageState extends State<MarketShopPage> {
 
         setState(() {
           shop = Map<String, dynamic>.from(result['shop'] as Map);
+          reviews = [
+            for (final item in (result['reviews'] as List?) ?? const [])
+              if (item is Map) Map<String, dynamic>.from(item),
+          ];
+          myReview = result['my_review'] is Map
+              ? Map<String, dynamic>.from(result['my_review'])
+              : null;
           products = raw is List
               ? raw
                     .whereType<Map>()
@@ -184,10 +196,7 @@ class _MarketShopPageState extends State<MarketShopPage> {
                         if (category != null) category.label,
                         shopArea(data),
                       ].where((part) => part.isNotEmpty).join(' · '),
-                      style: TextStyle(
-                        color: AppColors.muted,
-                        fontSize: 13,
-                      ),
+                      style: TextStyle(color: AppColors.muted, fontSize: 13),
                     ),
                   ],
                 ),
@@ -269,6 +278,21 @@ class _MarketShopPageState extends State<MarketShopPage> {
                     sliver: SliverList.list(
                       children: [
                         buildHeader(data),
+                        const SizedBox(height: 14),
+                        ShopTrustCard(shop: data),
+                        if (ShopDetailsCard.hasContent(data)) ...[
+                          const SizedBox(height: 14),
+                          ShopDetailsCard(shop: data),
+                        ],
+                        const SizedBox(height: 14),
+                        ShopReviewsCard(
+                          shopId: widget.shopId,
+                          shopName: data['name']?.toString() ?? '',
+                          shop: data,
+                          reviews: reviews,
+                          myReview: myReview,
+                          onChanged: loadShop,
+                        ),
                         const SizedBox(height: 20),
                         Text(
                           'สินค้าทั้งหมด (${products.length})',

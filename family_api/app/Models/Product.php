@@ -21,12 +21,20 @@ class Product extends Model
         'status',
         'hidden_at',
         'views',
+        'video_path',
+        'video_thumbnail_path',
+    ];
+
+    protected $hidden = [
+        'video_path',
+        'video_thumbnail_path',
     ];
 
     protected $casts = [
         'price' => 'decimal:2',
         'hidden_at' => 'datetime',
         'views' => 'integer',
+        'featured_until' => 'datetime',
     ];
 
     public function shop()
@@ -44,6 +52,43 @@ class Product extends Model
         return $this->hasMany(ProductReport::class);
     }
 
+    public function promotions()
+    {
+        return $this->hasMany(ProductPromotion::class);
+    }
+
+    // ขึ้นช่องแนะนำอยู่ตอนนี้
+    public function isFeatured(): bool
+    {
+        return $this->featured_until !== null && $this->featured_until->isFuture();
+    }
+
+    public function scopeFeaturedNow(Builder $query): Builder
+    {
+        return $query->where('featured_until', '>', now());
+    }
+
+    public function getVideoUrlAttribute(): ?string
+    {
+        return MediaStorage::url($this->video_path);
+    }
+
+    public function getVideoThumbnailUrlAttribute(): ?string
+    {
+        return MediaStorage::url($this->video_thumbnail_path);
+    }
+
+    // ไฟล์ทั้งหมดของสินค้า (รูป วิดีโอ สลิป) ต้องโหลด images, promotions ไว้ก่อน
+    public function mediaPaths(): array
+    {
+        return [
+            ...$this->images->pluck('path')->all(),
+            $this->video_path,
+            $this->video_thumbnail_path,
+            ...$this->promotions->pluck('slip_path')->all(),
+        ];
+    }
+
     // สินค้าที่ผู้ซื้อเห็นในตลาด:
     // เจ้าของร้านไม่ได้ซ่อน, ไม่ถูกซ่อนโดย Admin และร้านเปิดขายอยู่
     public function scopeVisibleInMarket(Builder $query): Builder
@@ -53,16 +98,16 @@ class Product extends Model
             ->whereHas('shop', fn ($shops) => $shops->active());
     }
 
-    // ลบไฟล์รูปเมื่อสินค้าถูกลบด้วย $product->delete()
-    // (โหลดรายการรูปไว้ก่อน เพราะแถวรูปถูกลบตาม cascade)
+    // ลบไฟล์เมื่อสินค้าถูกลบด้วย $product->delete()
+    // (โหลดรายการรูป/สลิปไว้ก่อน เพราะแถวถูกลบตาม cascade)
     protected static function booted(): void
     {
         static::deleting(function (Product $product) {
-            $product->loadMissing('images');
+            $product->loadMissing(['images', 'promotions']);
         });
 
         static::deleted(function (Product $product) {
-            $paths = $product->images->pluck('path')->all();
+            $paths = $product->mediaPaths();
 
             DB::afterCommit(fn () => MediaStorage::delete($paths));
         });

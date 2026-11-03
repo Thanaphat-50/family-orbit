@@ -3,10 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Models\Shop;
+use App\Support\MarketVideo;
 use App\Support\MediaStorage;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use RuntimeException;
@@ -168,6 +170,9 @@ class MyShopController extends Controller
             'line_id' => ['nullable', 'string', 'max:50', 'regex:/^@?[A-Za-z0-9._\-]+$/'],
             'province' => ['required', Rule::in(config('market.provinces'))],
             'district' => 'nullable|string|max:80',
+            'opening_hours' => 'nullable|string|max:200',
+            'delivery_methods' => 'nullable|array',
+            'delivery_methods.*' => ['distinct', Rule::in(array_keys(config('market.delivery_methods')))],
             'logo' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:4096',
         ];
     }
@@ -185,6 +190,8 @@ class MyShopController extends Controller
             'line_id.max' => 'LINE ID ยาวได้ไม่เกิน 50 ตัวอักษร',
             'province.*' => 'กรุณาเลือกจังหวัด',
             'district.max' => 'อำเภอ/เขต ยาวได้ไม่เกิน 80 ตัวอักษร',
+            'opening_hours.max' => 'เวลาเปิด-ปิดยาวได้ไม่เกิน 200 ตัวอักษร',
+            'delivery_methods.*' => 'วิธีรับสินค้าไม่ถูกต้อง',
             'logo.*' => 'โลโก้ต้องเป็นรูป JPG, PNG หรือ WEBP ไม่เกิน 4 MB',
             'accept_terms.accepted' => 'กรุณายอมรับกฎผู้ขายก่อนเปิดร้าน',
         ];
@@ -201,6 +208,8 @@ class MyShopController extends Controller
             'line_id' => $data['line_id'] ?? null,
             'province' => $data['province'],
             'district' => $data['district'] ?? null,
+            'opening_hours' => filled($data['opening_hours'] ?? null) ? trim($data['opening_hours']) : null,
+            'delivery_methods' => array_values(array_unique($data['delivery_methods'] ?? [])) ?: null,
         ];
     }
 
@@ -234,7 +243,119 @@ class MyShopController extends Controller
         return [
             ...$shop->toArray(),
             'status_label' => Shop::STATUS_LABELS[$shop->status] ?? $shop->status,
+            'images' => $shop->images()->get(),
+            'max_images' => (int) config('market.max_shop_images'),
         ];
+    }
+
+    // =====================================================
+    // POST /api/my-shop/media (multipart)
+    // รูปหน้าร้าน: images[] เพิ่ม / remove_image_ids[] ลบ
+    // วิดีโอแนะนำร้าน: video + video_thumbnail แทนของเดิม / remove_video=1 ลบ
+    // =====================================================
+
+    public function updateMedia(Request $request)
+    {
+        $shop = Shop::where('user_id', $request->user()->id)->first();
+
+        if (!$shop) {
+            return response()->json([
+                'status' => false,
+                'message' => 'คุณยังไม่มีร้าน',
+            ], 404);
+        }
+
+        if ($shop->status === Shop::STATUS_SUSPENDED) {
+            return response()->json([
+                'status' => false,
+                'message' => 'ร้านถูกระงับ แก้ไขรูปและวิดีโอไม่ได้',
+            ], 403);
+        }
+
+        $max = (int) config('market.max_shop_images');
+
+        $data = $request->validate([
+            'images' => "nullable|array|max:{$max}",
+            'images.*' => 'image|mimes:jpg,jpeg,png,webp|max:5120',
+            'remove_image_ids' => 'nullable|array',
+            'remove_image_ids.*' => 'integer',
+            'remove_video' => 'nullable|boolean',
+            ...MarketVideo::rules(),
+        ], [
+            'images.max' => "รูปหน้าร้านได้ไม่เกิน {$max} รูป",
+            'images.*' => 'รูปต้องเป็น JPG, PNG หรือ WEBP ไม่เกิน 5 MB',
+            ...MarketVideo::messages(),
+        ]);
+
+        $removeIds = collect($data['remove_image_ids'] ?? [])->map(fn ($id) => (int) $id);
+
+        $removed = $shop->images()->whereIn('id', $removeIds)->get();
+
+        $newFiles = $request->file('images', []);
+
+        if ($shop->images()->count() - $removed->count() + count($newFiles) > $max) {
+            return response()->json([
+                'status' => false,
+                'message' => "รูปหน้าร้านได้ไม่เกิน {$max} รูป",
+            ], 422);
+        }
+
+        $newPaths = [];
+        $video = null;
+
+        try {
+            foreach ($newFiles as $file) {
+                $newPaths[] = $file->store('shop_images/' . $shop->id, MediaStorage::disk())
+                    ?: throw new RuntimeException('Could not store the shop image.');
+            }
+
+            if ($request->hasFile('video')) {
+                $video = MarketVideo::store($request, 'shop_videos/' . $shop->id);
+            }
+        } catch (Throwable $e) {
+            MediaStorage::delete($newPaths);
+
+            Log::error('Shop media upload failed', [
+                'shop_id' => $shop->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'status' => false,
+                'message' => 'อัปโหลดรูปหรือวิดีโอไม่สำเร็จ กรุณาลองอีกครั้ง',
+            ], 500);
+        }
+
+        $oldPaths = $removed->pluck('path')->all();
+
+        if ($video || $request->boolean('remove_video')) {
+            $oldPaths[] = $shop->video_path;
+            $oldPaths[] = $shop->video_thumbnail_path;
+        }
+
+        DB::transaction(function () use ($shop, $removed, $newPaths, $video, $request) {
+            $shop->images()->whereKey($removed->pluck('id'))->delete();
+
+            $sort = (int) $shop->images()->max('sort');
+
+            foreach ($newPaths as $path) {
+                $shop->images()->create(['path' => $path, 'sort' => ++$sort]);
+            }
+
+            if ($video) {
+                $shop->forceFill($video)->save();
+            } elseif ($request->boolean('remove_video')) {
+                $shop->forceFill(['video_path' => null, 'video_thumbnail_path' => null])->save();
+            }
+        });
+
+        DB::afterCommit(fn () => MediaStorage::delete($oldPaths));
+
+        return response()->json([
+            'status' => true,
+            'message' => 'บันทึกรูปและวิดีโอร้านแล้ว',
+            'shop' => $this->payload($shop->refresh()),
+        ]);
     }
 
     private function alreadyHasShop()

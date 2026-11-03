@@ -19,6 +19,8 @@ use App\Http\Controllers\DeviceTokenController;
 use App\Http\Controllers\MarketController;
 use App\Http\Controllers\MyProductController;
 use App\Http\Controllers\MyShopController;
+use App\Http\Controllers\MyPromotionController;
+use App\Http\Controllers\ShopReviewController;
 use App\Http\Controllers\ActivityController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SettingsController;
@@ -361,6 +363,28 @@ Route::middleware('auth:sanctum')->group(function () {
         'reportShop'
     ])->middleware('throttle:ugc');
 
+    // สินค้าช่องแนะนำ (ชำระเงินแล้ว) ทั้งหมด / ตามหมวด
+    Route::get('/market/featured-products', [
+        MarketController::class,
+        'featuredProducts'
+    ]);
+
+    // รีวิวร้าน
+    Route::get('/market/shops/{shop}/reviews', [
+        ShopReviewController::class,
+        'index'
+    ]);
+
+    Route::post('/market/shops/{shop}/reviews', [
+        ShopReviewController::class,
+        'store'
+    ])->middleware('throttle:ugc');
+
+    Route::delete('/market/shops/{shop}/reviews', [
+        ShopReviewController::class,
+        'destroy'
+    ]);
+
     // ตลาด: ร้านของฉัน (ฝั่งผู้ขาย)
     Route::get('/my-shop', [
         MyShopController::class,
@@ -375,6 +399,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/my-shop/update', [
         MyShopController::class,
         'update'
+    ])->middleware('throttle:ugc');
+
+    // รูปหน้าร้าน + วิดีโอแนะนำร้าน
+    Route::post('/my-shop/media', [
+        MyShopController::class,
+        'updateMedia'
     ])->middleware('throttle:ugc');
 
     // ตลาด: สินค้าในร้านของฉัน
@@ -401,6 +431,43 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/my-shop/products/{product}', [
         MyProductController::class,
         'destroy'
+    ]);
+
+    // วิดีโอแนะนำสินค้า
+    Route::post('/my-shop/products/{product}/video', [
+        MyProductController::class,
+        'updateVideo'
+    ])->middleware('throttle:ugc');
+
+    Route::delete('/my-shop/products/{product}/video', [
+        MyProductController::class,
+        'destroyVideo'
+    ]);
+
+    // ช่องแนะนำสินค้า (โอนพร้อมเพย์ + แนบสลิป)
+    Route::get('/my-shop/products/{product}/promotion', [
+        MyPromotionController::class,
+        'show'
+    ]);
+
+    Route::post('/my-shop/products/{product}/promotion', [
+        MyPromotionController::class,
+        'store'
+    ])->middleware('throttle:ugc');
+
+    Route::get('/my-shop/promotions', [
+        MyPromotionController::class,
+        'index'
+    ]);
+
+    Route::post('/my-shop/promotions/{promotion}/slip', [
+        MyPromotionController::class,
+        'uploadSlip'
+    ])->middleware('throttle:ugc');
+
+    Route::post('/my-shop/promotions/{promotion}/cancel', [
+        MyPromotionController::class,
+        'cancel'
     ]);
 
     Route::get('/activities', [

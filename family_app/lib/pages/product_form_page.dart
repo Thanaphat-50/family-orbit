@@ -5,8 +5,12 @@ import 'package:image_picker/image_picker.dart';
 
 import '../data/market_data.dart';
 import '../services/market_service.dart';
+import '../services/post_service.dart' show CommentMediaFile;
 import '../theme/app_theme.dart';
+import '../widgets/comment_media.dart' show pickShortVideo;
+import '../widgets/market_widgets.dart' show MarketVideoField;
 import '../widgets/post_categories.dart';
+import 'promotion_page.dart';
 
 // =======================================================
 // เพิ่ม / แก้ไขสินค้า
@@ -20,7 +24,15 @@ class ProductFormPage extends StatefulWidget {
   // หมวดเริ่มต้นของสินค้าใหม่ (ใช้หมวดของร้าน)
   final String? defaultCategory;
 
-  const ProductFormPage({super.key, this.product, this.defaultCategory});
+  // ร้านเปิดขายอยู่ → เลือกขึ้นช่องแนะนำต่อหลังบันทึกได้
+  final bool canPromote;
+
+  const ProductFormPage({
+    super.key,
+    this.product,
+    this.defaultCategory,
+    this.canPromote = false,
+  });
 
   @override
   State<ProductFormPage> createState() => _ProductFormPageState();
@@ -51,6 +63,19 @@ class _ProductFormPageState extends State<ProductFormPage> {
   ];
   final List<int> removedImageIds = [];
   final List<XFile> newImages = [];
+
+  // วิดีโอแนะนำสินค้า (ใหม่ / ลบของเดิม)
+  CommentMediaFile? newVideo;
+  bool removeVideo = false;
+  bool isPickingVideo = false;
+
+  late final String? existingVideoThumbnail = widget
+      .product?['video_thumbnail_url']
+      ?.toString();
+  late final bool hadVideo = widget.product?['video_url'] != null;
+
+  // บันทึกแล้วไปหน้าชำระเงินช่องแนะนำต่อ
+  bool promoteAfterSave = false;
 
   bool isSaving = false;
 
@@ -123,6 +148,54 @@ class _ProductFormPageState extends State<ProductFormPage> {
   }
 
   // =====================================================
+  // วิดีโอแนะนำสินค้า
+  // =====================================================
+
+  Future<void> pickVideo() async {
+    dismissKeyboard();
+
+    final CommentMediaFile? picked = await pickShortVideo(
+      context,
+      onBusy: (busy) {
+        if (mounted) setState(() => isPickingVideo = busy);
+      },
+    );
+
+    if (picked == null || !mounted) return;
+
+    setState(() {
+      newVideo = picked;
+      removeVideo = false;
+    });
+  }
+
+  void clearVideo() {
+    setState(() {
+      newVideo = null;
+      removeVideo = hadVideo;
+    });
+  }
+
+  // บันทึกสินค้าสำเร็จแล้ว → อัปโหลด/ลบวิดีโอ (ไม่สำเร็จก็ไม่ยกเลิกสินค้า)
+  Future<void> saveVideo(int productId) async {
+    try {
+      final CommentMediaFile? video = newVideo;
+
+      final Map<String, dynamic>? result = video != null
+          ? await MarketService.uploadProductVideo(productId, video)
+          : removeVideo
+          ? await MarketService.deleteProductVideo(productId)
+          : null;
+
+      if (result != null && result['status'] != true) {
+        showMessage(result['message']?.toString() ?? 'บันทึกวิดีโอไม่สำเร็จ');
+      }
+    } catch (e) {
+      showMessage('บันทึกวิดีโอไม่สำเร็จ: $e');
+    }
+  }
+
+  // =====================================================
   // บันทึก
   // =====================================================
 
@@ -169,9 +242,33 @@ class _ProductFormPageState extends State<ProductFormPage> {
       if (!mounted) return;
 
       if (result['status'] == true) {
+        final dynamic product = result['product'];
+
+        final int? productId = product is Map
+            ? (product['id'] as num?)?.toInt()
+            : null;
+
+        if (productId != null && (newVideo != null || removeVideo)) {
+          await saveVideo(productId);
+        }
+
+        if (!mounted) return;
+
         showMessage(result['message']?.toString() ?? 'บันทึกสินค้าแล้ว');
 
-        Navigator.of(context).pop(result['product']);
+        if (promoteAfterSave && productId != null) {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (context) => PromotionPage(
+                productId: productId,
+                productTitle: titleController.text.trim(),
+              ),
+            ),
+          );
+          return;
+        }
+
+        Navigator.of(context).pop(product);
         return;
       }
 
@@ -339,6 +436,47 @@ class _ProductFormPageState extends State<ProductFormPage> {
     );
   }
 
+  Widget buildVideo() {
+    return MarketVideoField(
+      hasNewVideo: newVideo != null,
+      newThumbnailPath: newVideo?.thumbnailPath,
+      showExisting: hadVideo && !removeVideo,
+      existingThumbnailUrl: existingVideoThumbnail,
+      busy: isPickingVideo,
+      disabled: isSaving,
+      onPick: pickVideo,
+      onRemove: clearVideo,
+    );
+  }
+
+  Widget buildPromoteSwitch() {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFFF59E0B).withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: const Color(0xFFF59E0B).withValues(alpha: 0.35),
+        ),
+      ),
+      child: SwitchListTile(
+        value: promoteAfterSave,
+        onChanged: isSaving
+            ? null
+            : (value) => setState(() => promoteAfterSave = value),
+        activeThumbColor: const Color(0xFFF59E0B),
+        secondary: const Icon(Icons.star_rounded, color: Color(0xFFF59E0B)),
+        title: Text(
+          'ขึ้นช่องแนะนำ (มีค่าใช้จ่าย)',
+          style: TextStyle(color: AppColors.navy, fontWeight: FontWeight.w800),
+        ),
+        subtitle: Text(
+          'บันทึกแล้วไปเลือกแพ็กเกจและชำระด้วยพร้อมเพย์ต่อ',
+          style: TextStyle(color: AppColors.muted, fontSize: 12.5),
+        ),
+      ),
+    );
+  }
+
   Widget buildSectionLabel(String text) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -439,6 +577,13 @@ class _ProductFormPageState extends State<ProductFormPage> {
                   errorText: serverErrors['description'],
                 ),
               ),
+              const SizedBox(height: 8),
+              buildSectionLabel('วิดีโอแนะนำสินค้า (ไม่บังคับ)'),
+              buildVideo(),
+              if (widget.canPromote) ...[
+                const SizedBox(height: 12),
+                buildPromoteSwitch(),
+              ],
               const SizedBox(height: 20),
               FilledButton.icon(
                 style: FilledButton.styleFrom(

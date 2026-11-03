@@ -5,8 +5,11 @@ import 'package:image_picker/image_picker.dart';
 
 import '../data/market_data.dart';
 import '../services/market_service.dart';
+import '../services/post_service.dart' show CommentMediaFile;
 import '../theme/app_theme.dart';
+import '../widgets/comment_media.dart' show pickShortVideo;
 import '../widgets/market_sheets.dart';
+import '../widgets/market_widgets.dart' show MarketVideoField;
 import '../widgets/post_categories.dart';
 
 // =======================================================
@@ -41,6 +44,45 @@ class _ShopFormPageState extends State<ShopFormPage> {
   late final TextEditingController districtController = TextEditingController(
     text: initialText('district'),
   );
+
+  late final TextEditingController hoursController = TextEditingController(
+    text: initialText('opening_hours'),
+  );
+
+  // วิธีรับสินค้าที่เลือก (key ตาม deliveryMethods)
+  late final Set<String> delivery = {
+    for (final method
+        in (widget.shop?['delivery_methods'] as List?) ?? const [])
+      method.toString(),
+  };
+
+  // รูปหน้าร้าน: รูปเดิม ({id, url}) / รูปเดิมที่เอาออก / รูปใหม่
+  static const int maxPhotos = 5;
+
+  late final List<Map<String, dynamic>> keptPhotos = [
+    for (final image in (widget.shop?['images'] as List?) ?? const [])
+      if (image is Map) Map<String, dynamic>.from(image),
+  ];
+  final List<int> removedPhotoIds = [];
+  final List<XFile> newPhotos = [];
+
+  // วิดีโอแนะนำร้าน
+  CommentMediaFile? newVideo;
+  bool removeVideo = false;
+  bool isPickingVideo = false;
+
+  late final String? existingVideoThumbnail = widget
+      .shop?['video_thumbnail_url']
+      ?.toString();
+  late final bool hadVideo = widget.shop?['video_url'] != null;
+
+  bool get mediaChanged =>
+      newPhotos.isNotEmpty ||
+      removedPhotoIds.isNotEmpty ||
+      newVideo != null ||
+      removeVideo;
+
+  int get photoCount => keptPhotos.length + newPhotos.length;
 
   late String? category = widget.shop?['category']?.toString();
   late String? province = widget.shop?['province']?.toString();
@@ -107,6 +149,72 @@ class _ShopFormPageState extends State<ShopFormPage> {
   }
 
   // =====================================================
+  // รูปหน้าร้าน + วิดีโอแนะนำร้าน
+  // =====================================================
+
+  Future<void> pickPhotos() async {
+    dismissKeyboard();
+
+    final int remaining = maxPhotos - photoCount;
+
+    if (remaining <= 0) return;
+
+    try {
+      final List<XFile> images = await ImagePicker().pickMultiImage(
+        maxWidth: 1600,
+        imageQuality: 85,
+        limit: remaining > 1 ? remaining : null,
+      );
+
+      if (images.isEmpty || !mounted) return;
+
+      setState(() => newPhotos.addAll(images.take(remaining)));
+    } catch (_) {
+      showMessage('เลือกรูปไม่สำเร็จ กรุณาลองอีกครั้ง');
+    }
+  }
+
+  Future<void> pickVideo() async {
+    dismissKeyboard();
+
+    final CommentMediaFile? picked = await pickShortVideo(
+      context,
+      onBusy: (busy) {
+        if (mounted) setState(() => isPickingVideo = busy);
+      },
+    );
+
+    if (picked == null || !mounted) return;
+
+    setState(() {
+      newVideo = picked;
+      removeVideo = false;
+    });
+  }
+
+  // บันทึกข้อมูลร้านแล้ว → ส่งรูป/วิดีโอ (คืนข้อมูลร้านล่าสุด / null ถ้าไม่สำเร็จ)
+  Future<dynamic> saveMedia() async {
+    try {
+      final result = await MarketService.updateShopMedia(
+        newImagePaths: newPhotos.map((photo) => photo.path).toList(),
+        removeImageIds: removedPhotoIds,
+        video: newVideo,
+        removeVideo: removeVideo,
+      );
+
+      if (result['status'] == true) return result['shop'];
+
+      showMessage(
+        result['message']?.toString() ?? 'บันทึกรูปหรือวิดีโอไม่สำเร็จ',
+      );
+    } catch (e) {
+      showMessage('บันทึกรูปหรือวิดีโอไม่สำเร็จ: $e');
+    }
+
+    return null;
+  }
+
+  // =====================================================
   // บันทึก
   // =====================================================
 
@@ -146,7 +254,12 @@ class _ShopFormPageState extends State<ShopFormPage> {
           'line_id': lineController.text.trim(),
           'province': province ?? '',
           'district': districtController.text.trim(),
+          'opening_hours': hoursController.text.trim(),
         },
+        deliveryMethods: [
+          for (final method in deliveryMethods)
+            if (delivery.contains(method.key)) method.key,
+        ],
         logoPath: pickedLogo?.path,
         removeLogo: removeLogo && pickedLogo == null,
       );
@@ -154,9 +267,18 @@ class _ShopFormPageState extends State<ShopFormPage> {
       if (!mounted) return;
 
       if (result['status'] == true) {
+        dynamic shop = result['shop'];
+
+        // ข้อมูลร้านบันทึกแล้ว รูป/วิดีโอไม่สำเร็จก็ไม่ยกเลิก (แก้ทีหลังได้)
+        if (mediaChanged) {
+          shop = await saveMedia() ?? shop;
+        }
+
+        if (!mounted) return;
+
         showMessage(result['message']?.toString() ?? 'บันทึกแล้ว');
 
-        Navigator.of(context).pop(result['shop']);
+        Navigator.of(context).pop(shop);
         return;
       }
 
@@ -198,6 +320,82 @@ class _ShopFormPageState extends State<ShopFormPage> {
   // =====================================================
   // UI
   // =====================================================
+
+  // รูปหน้าร้าน: รูปเดิม + รูปใหม่ (กด × เพื่อเอาออก) + ช่องเพิ่มรูป
+  Widget buildPhotos() {
+    Widget tile({required Widget image, required VoidCallback onRemove}) {
+      return Stack(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: SizedBox(width: 84, height: 84, child: image),
+          ),
+          Positioned(
+            right: 4,
+            top: 4,
+            child: GestureDetector(
+              onTap: isSaving ? null : onRemove,
+              child: Container(
+                padding: const EdgeInsets.all(3),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.6),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.close_rounded,
+                  size: 14,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: [
+        for (final photo in keptPhotos)
+          tile(
+            image: Image.network(
+              photo['url']?.toString() ?? '',
+              fit: BoxFit.cover,
+            ),
+            onRemove: () {
+              setState(() {
+                keptPhotos.remove(photo);
+
+                final dynamic id = photo['id'];
+
+                if (id is num) removedPhotoIds.add(id.toInt());
+              });
+            },
+          ),
+        for (final photo in newPhotos)
+          tile(
+            image: Image.file(File(photo.path), fit: BoxFit.cover),
+            onRemove: () => setState(() => newPhotos.remove(photo)),
+          ),
+        if (photoCount < maxPhotos)
+          InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: isSaving ? null : pickPhotos,
+            child: Container(
+              width: 84,
+              height: 84,
+              decoration: BoxDecoration(
+                color: AppColors.fill,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: const Icon(Icons.add_a_photo_outlined, color: marketColor),
+            ),
+          ),
+      ],
+    );
+  }
 
   Widget buildLogoPicker() {
     final bool hasLogo = pickedLogo != null || currentLogoUrl != null;
@@ -434,7 +632,7 @@ class _ShopFormPageState extends State<ShopFormPage> {
                   ),
                   child: Text(
                     'เปิดร้านฟรีช่วงเปิดตัว ลงสินค้าได้ 30 ชิ้น '
-                    'ผู้ดูแลจะตรวจสอบร้านก่อนแสดงในตลาด',
+                    'ผู้ดูแลจะตรวจสอบร้านก่อนแสดงในหน้าร้านค้า',
                     style: TextStyle(
                       color: AppColors.navy,
                       fontSize: 13,
@@ -526,6 +724,62 @@ class _ShopFormPageState extends State<ShopFormPage> {
                   errorText: serverErrors['district'],
                 ),
               ),
+              const SizedBox(height: 16),
+              buildSectionLabel('เวลาเปิด-ปิด และวิธีรับสินค้า'),
+              TextFormField(
+                controller: hoursController,
+                maxLength: 200,
+                decoration: InputDecoration(
+                  labelText: 'เวลาเปิด-ปิด (ไม่บังคับ)',
+                  hintText: 'เช่น ทุกวัน 08:00–18:00',
+                  prefixIcon: const Icon(Icons.schedule_rounded),
+                  errorText: serverErrors['opening_hours'],
+                ),
+              ),
+              const SizedBox(height: 4),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final method in deliveryMethods)
+                    FilterChip(
+                      avatar: Icon(method.icon, size: 18),
+                      label: Text(method.label),
+                      selected: delivery.contains(method.key),
+                      onSelected: isSaving
+                          ? null
+                          : (selected) {
+                              setState(() {
+                                if (selected) {
+                                  delivery.add(method.key);
+                                } else {
+                                  delivery.remove(method.key);
+                                }
+                              });
+                            },
+                    ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              buildSectionLabel('รูปหน้าร้าน (ไม่เกิน $maxPhotos รูป)'),
+              buildPhotos(),
+              const SizedBox(height: 24),
+              buildSectionLabel('วิดีโอแนะนำร้าน (ไม่บังคับ)'),
+              MarketVideoField(
+                hasNewVideo: newVideo != null,
+                newThumbnailPath: newVideo?.thumbnailPath,
+                showExisting: hadVideo && !removeVideo,
+                existingThumbnailUrl: existingVideoThumbnail,
+                busy: isPickingVideo,
+                disabled: isSaving,
+                onPick: pickVideo,
+                onRemove: () {
+                  setState(() {
+                    newVideo = null;
+                    removeVideo = hadVideo;
+                  });
+                },
+              ),
               if (isNew) ...[const SizedBox(height: 12), buildRulesAgreement()],
               const SizedBox(height: 24),
               FilledButton.icon(
@@ -563,6 +817,7 @@ class _ShopFormPageState extends State<ShopFormPage> {
     phoneController.dispose();
     lineController.dispose();
     districtController.dispose();
+    hoursController.dispose();
 
     super.dispose();
   }

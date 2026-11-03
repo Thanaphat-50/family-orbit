@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -53,35 +55,64 @@ class MarketProductCard extends StatelessWidget {
             children: [
               // รูปใช้ความสูงที่เหลือจากข้อความ (ไม่ล้นเมื่อขยายตัวอักษร)
               Expanded(
-                child: SizedBox(
-                  width: double.infinity,
-                  child: imageUrl == null
-                      ? ColoredBox(
-                          color: AppColors.fill,
-                          child: Icon(
-                            Icons.shopping_bag_outlined,
-                            color: marketColor,
-                          ),
-                        )
-                      : Image.network(
-                          imageUrl,
-                          fit: BoxFit.cover,
-                          cacheWidth: 500,
-                          loadingBuilder: (context, child, progress) {
-                            return progress == null
-                                ? child
-                                : ColoredBox(color: AppColors.fill);
-                          },
-                          errorBuilder: (context, error, stackTrace) {
-                            return ColoredBox(
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    SizedBox(
+                      width: double.infinity,
+                      child: imageUrl == null
+                          ? ColoredBox(
                               color: AppColors.fill,
                               child: Icon(
-                                Icons.broken_image_outlined,
-                                color: AppColors.muted,
+                                Icons.shopping_bag_outlined,
+                                color: marketColor,
                               ),
-                            );
-                          },
+                            )
+                          : Image.network(
+                              imageUrl,
+                              fit: BoxFit.cover,
+                              cacheWidth: 500,
+                              loadingBuilder: (context, child, progress) {
+                                return progress == null
+                                    ? child
+                                    : ColoredBox(color: AppColors.fill);
+                              },
+                              errorBuilder: (context, error, stackTrace) {
+                                return ColoredBox(
+                                  color: AppColors.fill,
+                                  child: Icon(
+                                    Icons.broken_image_outlined,
+                                    color: AppColors.muted,
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+                    // ช่องแนะนำแบบชำระเงิน
+                    if (product['is_featured'] == true)
+                      const Positioned(
+                        left: 8,
+                        top: 8,
+                        child: FeaturedProductBadge(),
+                      ),
+                    if (product['has_video'] == true)
+                      Positioned(
+                        right: 8,
+                        top: 8,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.55),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.play_arrow_rounded,
+                            size: 16,
+                            color: Colors.white,
+                          ),
                         ),
+                      ),
+                  ],
                 ),
               ),
               Padding(
@@ -127,6 +158,144 @@ class MarketProductCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// =======================================================
+// ช่องเลือกวิดีโอแนะนำ (ฟอร์มร้าน / ฟอร์มสินค้า)
+// newThumbnailPath: รูปตัวอย่างของวิดีโอที่เพิ่งเลือก
+// existingThumbnailUrl + showExisting: วิดีโอเดิมบนเซิร์ฟเวอร์
+// =======================================================
+
+class MarketVideoField extends StatelessWidget {
+  final bool hasNewVideo;
+  final String? newThumbnailPath;
+  final bool showExisting;
+  final String? existingThumbnailUrl;
+  final bool busy;
+  final bool disabled;
+  final VoidCallback onPick;
+  final VoidCallback onRemove;
+
+  const MarketVideoField({
+    super.key,
+    required this.hasNewVideo,
+    this.newThumbnailPath,
+    required this.showExisting,
+    this.existingThumbnailUrl,
+    required this.busy,
+    required this.disabled,
+    required this.onPick,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (!hasNewVideo && !showExisting) {
+      return OutlinedButton.icon(
+        onPressed: disabled || busy ? null : onPick,
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size(double.infinity, 52),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+        ),
+        icon: busy
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.videocam_outlined),
+        label: Text(
+          busy ? 'กำลังเตรียมวิดีโอ...' : 'เพิ่มวิดีโอ (ไม่เกิน 30 วินาที)',
+        ),
+      );
+    }
+
+    final String? localThumbnail = newThumbnailPath;
+
+    final Widget preview = hasNewVideo && localThumbnail != null
+        ? Image.file(File(localThumbnail), fit: BoxFit.cover)
+        : !hasNewVideo && existingThumbnailUrl != null
+        ? Image.network(existingThumbnailUrl!, fit: BoxFit.cover)
+        : const ColoredBox(color: Colors.black);
+
+    return Row(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: SizedBox(
+            width: 96,
+            height: 96,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                preview,
+                const Center(
+                  child: Icon(
+                    Icons.play_circle_fill_rounded,
+                    color: Colors.white,
+                    size: 34,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            hasNewVideo ? 'วิดีโอใหม่ (บันทึกพร้อมข้อมูล)' : 'วิดีโอแนะนำ',
+            style: TextStyle(
+              color: AppColors.navy,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        IconButton(
+          tooltip: 'เปลี่ยนวิดีโอ',
+          onPressed: disabled || busy ? null : onPick,
+          icon: const Icon(Icons.swap_horiz_rounded),
+        ),
+        IconButton(
+          tooltip: 'ลบวิดีโอ',
+          onPressed: disabled ? null : onRemove,
+          icon: Icon(Icons.delete_outline_rounded, color: AppColors.danger),
+        ),
+      ],
+    );
+  }
+}
+
+// ป้าย "แนะนำ" บนการ์ดสินค้าที่ซื้อช่องแนะนำ
+class FeaturedProductBadge extends StatelessWidget {
+  const FeaturedProductBadge({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF59E0B),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.star_rounded, size: 13, color: Colors.white),
+          SizedBox(width: 3),
+          Text(
+            'แนะนำ',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -442,6 +442,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         }
 
       case 'shop_status':
+      case 'promotion_status':
         await navigator.push(
           MaterialPageRoute(builder: (_) => const MyShopPage()),
         );
@@ -1299,7 +1300,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         return 'ชุมชน';
 
       case tabMarket:
-        return 'ตลาด';
+        return 'ร้านค้า';
 
       case tabFamily:
         return 'กลุ่มสมาชิก';
@@ -1876,7 +1877,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _NavItem(
       Icons.shopping_basket_outlined,
       Icons.shopping_basket_rounded,
-      'ตลาด',
+      'ร้านค้า',
     ),
     _NavItem(Icons.groups_outlined, Icons.groups_rounded, 'กลุ่มสมาชิก'),
     _NavItem(Icons.location_on_outlined, Icons.location_on_rounded, 'ตำแหน่ง'),

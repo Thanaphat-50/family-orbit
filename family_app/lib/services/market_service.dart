@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'api_helper.dart';
+import 'post_service.dart' show CommentMediaFile;
 import 'auth_service.dart';
 import '../config/api_config.dart';
 
@@ -50,6 +51,7 @@ class MarketService {
   static Future<Map<String, dynamic>> saveShop({
     required bool isNew,
     required Map<String, String> fields,
+    List<String> deliveryMethods = const [],
     String? logoPath,
     bool removeLogo = false,
   }) async {
@@ -64,6 +66,11 @@ class MarketService {
 
     if (isNew) {
       request.fields['accept_terms'] = '1';
+    }
+
+    // ไม่ส่งเลย = ไม่ระบุวิธีรับสินค้า
+    for (int i = 0; i < deliveryMethods.length; i++) {
+      request.fields['delivery_methods[$i]'] = deliveryMethods[i];
     }
 
     if (removeLogo) {
@@ -253,6 +260,249 @@ class MarketService {
     // ถูกลบไปแล้ว (เช่น กดลบซ้ำ)
     if (response.statusCode == 404) {
       return {'status': true, 'message': 'ลบสินค้าแล้ว'};
+    }
+
+    return ApiHelper.decode(response);
+  }
+
+  // =====================================================
+  // รูปหน้าร้าน + วิดีโอแนะนำร้าน
+  // =====================================================
+
+  static Future<Map<String, dynamic>> updateShopMedia({
+    List<String> newImagePaths = const [],
+    List<int> removeImageIds = const [],
+    CommentMediaFile? video,
+    bool removeVideo = false,
+  }) async {
+    final request = http.MultipartRequest(
+      'POST',
+      Uri.parse('$baseUrl/my-shop/media'),
+    )..headers.addAll(await _headers());
+
+    for (int i = 0; i < removeImageIds.length; i++) {
+      request.fields['remove_image_ids[$i]'] = '${removeImageIds[i]}';
+    }
+
+    for (final path in newImagePaths) {
+      request.files.add(await http.MultipartFile.fromPath('images[]', path));
+    }
+
+    if (video != null) {
+      await _addVideo(request, video);
+    } else if (removeVideo) {
+      request.fields['remove_video'] = '1';
+    }
+
+    return _sendUpload(request);
+  }
+
+  // =====================================================
+  // วิดีโอแนะนำสินค้า
+  // =====================================================
+
+  static Future<Map<String, dynamic>> uploadProductVideo(
+    int productId,
+    CommentMediaFile video,
+  ) async {
+    final request = http.MultipartRequest(
+      'POST',
+      Uri.parse('$baseUrl/my-shop/products/$productId/video'),
+    )..headers.addAll(await _headers());
+
+    await _addVideo(request, video);
+
+    return _sendUpload(request);
+  }
+
+  static Future<Map<String, dynamic>> deleteProductVideo(int productId) async {
+    final headers = await _headers();
+
+    final response = await ApiHelper.request(
+      () => http.delete(
+        Uri.parse('$baseUrl/my-shop/products/$productId/video'),
+        headers: headers,
+      ),
+    );
+
+    return ApiHelper.decode(response);
+  }
+
+  // =====================================================
+  // สินค้าช่องแนะนำ (category = null → ทุกหมวด)
+  // =====================================================
+
+  static Future<Map<String, dynamic>> getFeaturedProducts({
+    String? category,
+  }) async {
+    final headers = await _headers();
+
+    final uri = Uri.parse('$baseUrl/market/featured-products')
+        .replace(queryParameters: {'category': ?category});
+
+    final response = await ApiHelper.request(
+      () => http.get(uri, headers: headers),
+    );
+
+    return ApiHelper.decode(response);
+  }
+
+  // =====================================================
+  // รีวิวร้าน
+  // =====================================================
+
+  static Future<Map<String, dynamic>> getShopReviews(
+    int shopId, {
+    int page = 1,
+  }) async {
+    final headers = await _headers();
+
+    final response = await ApiHelper.request(
+      () => http.get(
+        Uri.parse('$baseUrl/market/shops/$shopId/reviews?page=$page'),
+        headers: headers,
+      ),
+    );
+
+    return ApiHelper.decode(response);
+  }
+
+  static Future<Map<String, dynamic>> saveShopReview(
+    int shopId, {
+    required int rating,
+    String? comment,
+  }) async {
+    final headers = await _headers();
+
+    final response = await ApiHelper.request(
+      () => http.post(
+        Uri.parse('$baseUrl/market/shops/$shopId/reviews'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode({'rating': rating, 'comment': comment}),
+      ),
+    );
+
+    return ApiHelper.decode(response);
+  }
+
+  static Future<Map<String, dynamic>> deleteShopReview(int shopId) async {
+    final headers = await _headers();
+
+    final response = await ApiHelper.request(
+      () => http.delete(
+        Uri.parse('$baseUrl/market/shops/$shopId/reviews'),
+        headers: headers,
+      ),
+    );
+
+    return ApiHelper.decode(response);
+  }
+
+  // =====================================================
+  // ช่องแนะนำสินค้า (โอนพร้อมเพย์ + แนบสลิป)
+  // =====================================================
+
+  static Future<Map<String, dynamic>> getPromotionInfo(int productId) async {
+    final headers = await _headers();
+
+    final response = await ApiHelper.request(
+      () => http.get(
+        Uri.parse('$baseUrl/my-shop/products/$productId/promotion'),
+        headers: headers,
+      ),
+    );
+
+    return ApiHelper.decode(response);
+  }
+
+  static Future<Map<String, dynamic>> createPromotion(
+    int productId,
+    String plan,
+  ) async {
+    final headers = await _headers();
+
+    final response = await ApiHelper.request(
+      () => http.post(
+        Uri.parse('$baseUrl/my-shop/products/$productId/promotion'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode({'plan': plan}),
+      ),
+    );
+
+    return ApiHelper.decode(response);
+  }
+
+  static Future<Map<String, dynamic>> uploadPromotionSlip(
+    int promotionId,
+    String slipPath,
+  ) async {
+    final request = http.MultipartRequest(
+      'POST',
+      Uri.parse('$baseUrl/my-shop/promotions/$promotionId/slip'),
+    )..headers.addAll(await _headers());
+
+    request.files.add(await http.MultipartFile.fromPath('slip', slipPath));
+
+    return _sendUpload(request);
+  }
+
+  static Future<Map<String, dynamic>> cancelPromotion(int promotionId) async {
+    final headers = await _headers();
+
+    final response = await ApiHelper.request(
+      () => http.post(
+        Uri.parse('$baseUrl/my-shop/promotions/$promotionId/cancel'),
+        headers: headers,
+      ),
+    );
+
+    return ApiHelper.decode(response);
+  }
+
+  static Future<Map<String, dynamic>> getMyPromotions() async {
+    final headers = await _headers();
+
+    final response = await ApiHelper.request(
+      () =>
+          http.get(Uri.parse('$baseUrl/my-shop/promotions'), headers: headers),
+    );
+
+    return ApiHelper.decode(response);
+  }
+
+  // =====================================================
+  // HELPERS
+  // =====================================================
+
+  static Future<void> _addVideo(
+    http.MultipartRequest request,
+    CommentMediaFile video,
+  ) async {
+    request.files.add(await http.MultipartFile.fromPath('video', video.path));
+
+    if (video.thumbnailPath != null) {
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'video_thumbnail',
+          video.thumbnailPath!,
+        ),
+      );
+    }
+  }
+
+  static Future<Map<String, dynamic>> _sendUpload(
+    http.MultipartRequest request,
+  ) async {
+    final response = await ApiHelper.request(
+      () async => http.Response.fromStream(await request.send()),
+      timeLimit: _uploadTimeLimit,
+    );
+
+    if (response.statusCode == 413) {
+      return {
+        'status': false,
+        'message': 'ไฟล์ใหญ่เกินไป กรุณาเลือกไฟล์ที่เล็กลง',
+      };
     }
 
     return ApiHelper.decode(response);

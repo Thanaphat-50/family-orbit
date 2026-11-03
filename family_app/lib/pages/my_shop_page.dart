@@ -6,6 +6,7 @@ import '../theme/app_theme.dart';
 import '../widgets/featured_shops_banner.dart';
 import '../widgets/market_sheets.dart';
 import 'product_form_page.dart';
+import 'promotion_page.dart';
 import 'shop_form_page.dart';
 
 // =======================================================
@@ -159,11 +160,35 @@ class _MyShopPageState extends State<MyShopPage> {
         builder: (context) => ProductFormPage(
           product: product,
           defaultCategory: shop?['category']?.toString(),
+          canPromote: shop?['status'] == 'active',
         ),
       ),
     );
 
-    if (saved is Map && mounted) {
+    // บันทึกแล้ว (Map) หรือไปหน้าช่องแนะนำต่อแล้ว (bool)
+    if (saved != null && mounted) {
+      changed = true;
+
+      await loadProducts();
+    }
+  }
+
+  // ขึ้นช่องแนะนำ (โอนพร้อมเพย์ + แนบสลิป)
+  Future<void> openPromotion(Map<String, dynamic> product) async {
+    final int? id = (product['id'] as num?)?.toInt();
+
+    if (id == null) return;
+
+    final dynamic updated = await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => PromotionPage(
+          productId: id,
+          productTitle: product['title']?.toString() ?? '',
+        ),
+      ),
+    );
+
+    if (updated == true && mounted) {
       changed = true;
 
       await loadProducts();
@@ -405,10 +430,10 @@ class _MyShopPageState extends State<MyShopPage> {
 
     final String message = switch (status) {
       'active' =>
-        'ร้านของคุณแสดงในตลาดแล้ว ผู้ซื้อติดต่อคุณได้ทางโทรศัพท์และ LINE',
+        'ร้านของคุณแสดงในหน้าร้านค้าแล้ว ผู้ซื้อติดต่อคุณได้ทางโทรศัพท์และ LINE',
       'rejected' => 'แก้ไขข้อมูลร้านตามเหตุผลด้านล่าง แล้วกดส่งตรวจอีกครั้ง',
       'suspended' =>
-        'ร้านถูกซ่อนจากตลาดชั่วคราว ติดต่อผู้ดูแลหากคิดว่าเป็นความผิดพลาด',
+        'ร้านถูกซ่อนจากหน้าร้านค้าชั่วคราว ติดต่อผู้ดูแลหากคิดว่าเป็นความผิดพลาด',
       _ => 'ผู้ดูแลกำลังตรวจสอบร้านของคุณ เมื่อมีผลจะแจ้งในหน้าการแจ้งเตือน',
     };
 
@@ -554,7 +579,7 @@ class _MyShopPageState extends State<MyShopPage> {
         Padding(
           padding: EdgeInsets.only(top: 6),
           child: Text(
-            'เตรียมสินค้าไว้ก่อนได้ จะแสดงในตลาดเมื่อร้านผ่านการตรวจสอบ',
+            'เตรียมสินค้าไว้ก่อนได้ จะแสดงในหน้าร้านค้าเมื่อร้านผ่านการตรวจสอบ',
             style: TextStyle(color: AppColors.muted, fontSize: 12.5),
           ),
         ),
@@ -606,6 +631,12 @@ class _MyShopPageState extends State<MyShopPage> {
     final bool hiddenByOwner = product['status'] == 'hidden';
 
     final bool hiddenByAdmin = product['hidden_at'] != null;
+
+    final bool featured = product['is_featured'] == true;
+
+    // ซื้อช่องแนะนำได้เมื่อร้านเปิดขายและสินค้าแสดงอยู่
+    final bool canPromote =
+        shop?['status'] == 'active' && !hiddenByOwner && !hiddenByAdmin;
 
     return Opacity(
       opacity: busy ? 0.5 : 1,
@@ -660,6 +691,31 @@ class _MyShopPageState extends State<MyShopPage> {
                           fontWeight: FontWeight.w800,
                         ),
                       ),
+                      if (featured) ...[
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.star_rounded,
+                              size: 15,
+                              color: featuredColor,
+                            ),
+                            const SizedBox(width: 3),
+                            Flexible(
+                              child: Text(
+                                'แนะนำถึง ${formatDateTime(product['featured_until'])}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: featuredColor,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                       if (hiddenByAdmin || hiddenByOwner) ...[
                         const SizedBox(height: 4),
                         Text(
@@ -689,6 +745,8 @@ class _MyShopPageState extends State<MyShopPage> {
                     switch (value) {
                       case 'edit':
                         openProductForm(product);
+                      case 'promote':
+                        openPromotion(product);
                       case 'toggle':
                         toggleProductStatus(product);
                       case 'delete':
@@ -701,6 +759,13 @@ class _MyShopPageState extends State<MyShopPage> {
                         const PopupMenuItem(
                           value: 'edit',
                           child: Text('แก้ไขสินค้า'),
+                        ),
+                      if (canPromote)
+                        PopupMenuItem(
+                          value: 'promote',
+                          child: Text(
+                            featured ? 'ต่ออายุช่องแนะนำ' : 'ขึ้นช่องแนะนำ',
+                          ),
                         ),
                       PopupMenuItem(
                         value: 'toggle',
