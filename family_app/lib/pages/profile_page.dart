@@ -100,14 +100,14 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   String get familyName {
-    return family?['name']?.toString() ?? 'ยังไม่มีครอบครัว';
+    return family?['name']?.toString() ?? 'ยังไม่มีกลุ่ม';
   }
 
   String get role {
     final value = profileData['role']?.toString();
 
     if (value == 'owner') {
-      return 'เจ้าของครอบครัว';
+      return 'เจ้าของกลุ่ม';
     }
 
     if (value == 'member') {
@@ -609,7 +609,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
               children: [
                 const Icon(
-                  Icons.family_restroom_rounded,
+                  Icons.groups_rounded,
 
                   color: Colors.white,
 

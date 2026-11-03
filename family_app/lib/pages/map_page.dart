@@ -204,7 +204,7 @@ class _MapPageState extends State<MapPage> {
 
               Expanded(
                 child: Text(
-                  'ให้ครอบครัวเห็นตำแหน่งแม้คุณปิดแอป',
+                  'ให้สมาชิกในกลุ่มเห็นตำแหน่งแม้คุณปิดแอป',
 
                   style: TextStyle(
                     color: AppColors.navy,
@@ -2766,7 +2766,7 @@ class _MapPageState extends State<MapPage> {
         }
 
         final String message = selfPaused
-            ? 'คุณปิดการแชร์ตำแหน่งอยู่ ครอบครัวจะไม่เห็นตำแหน่งของคุณ'
+            ? 'คุณปิดการแชร์ตำแหน่งอยู่ สมาชิกในกลุ่มจะไม่เห็นตำแหน่งของคุณ'
             : 'ปิดการแชร์ตำแหน่งอยู่: ${pausedNames.join(', ')}';
 
         return Positioned(
@@ -2968,7 +2968,7 @@ class _MapPageState extends State<MapPage> {
               child: familyLocations.isEmpty
                   ? Center(
                       child: Text(
-                        'ยังไม่มีตำแหน่งของสมาชิกในครอบครัว',
+                        'ยังไม่มีตำแหน่งของสมาชิกในกลุ่ม',
                         style: TextStyle(color: AppColors.muted, fontSize: 12),
                       ),
                     )

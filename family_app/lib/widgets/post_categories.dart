@@ -65,6 +65,62 @@ PostCategory? findPostCategory(dynamic key) {
   return null;
 }
 
+// สีฝั่งชุมชน (โหมดมืดใช้โทนสว่างกว่าให้อ่านง่าย)
+Color get communityAccentColor =>
+    AppColors.isDark ? const Color(0xFF2A9CC4) : const Color(0xFF0B7FA6);
+
+// =======================================================
+// แถวกรองฟีดชุมชนตามหมวด ("ทั้งหมด" + หมวดต่าง ๆ) เลื่อนซ้าย-ขวาได้
+// selected = null → ทั้งหมด
+// =======================================================
+
+class CategoryFilterStrip extends StatelessWidget {
+  final String? selected;
+  final ValueChanged<String?> onChanged;
+  final EdgeInsetsGeometry padding;
+
+  const CategoryFilterStrip({
+    super.key,
+    required this.selected,
+    required this.onChanged,
+    this.padding = EdgeInsets.zero,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final List<Widget> chips = [
+      CategoryChoiceChip(
+        label: 'ทั้งหมด',
+        icon: Icons.apps_rounded,
+        color: communityAccentColor,
+        selected: selected == null,
+        onTap: () => onChanged(null),
+      ),
+      for (final category in postCategories)
+        CategoryChoiceChip(
+          label: category.label,
+          icon: category.icon,
+          color: category.color,
+          selected: selected == category.key,
+          onTap: () => onChanged(category.key),
+        ),
+    ];
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: padding,
+      child: Row(
+        children: [
+          for (int i = 0; i < chips.length; i++) ...[
+            if (i > 0) const SizedBox(width: 8),
+            chips[i],
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 // =======================================================
 // ชิปเลือกหมวด (ใช้ทั้งกล่องโพสต์และตัวกรองฟีด)
 // =======================================================

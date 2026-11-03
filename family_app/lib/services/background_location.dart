@@ -78,7 +78,7 @@ class BackgroundLocation {
         notificationChannelId: 'location_sharing',
         initialNotificationTitle: locationSharingTitle,
         initialNotificationContent:
-            'ครอบครัวเห็นตำแหน่งของคุณ ปิดได้ที่ ตั้งค่า',
+            'สมาชิกในกลุ่มเห็นตำแหน่งของคุณ ปิดได้ที่ ตั้งค่า',
         foregroundServiceNotificationId: 4410,
         foregroundServiceTypes: [AndroidForegroundType.location],
       ),

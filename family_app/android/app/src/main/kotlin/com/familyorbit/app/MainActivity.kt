@@ -23,7 +23,7 @@ class MainActivity : FlutterActivity() {
             "การแจ้งเตือน",
             NotificationManager.IMPORTANCE_HIGH,
         ).apply {
-            description = "โพสต์ ความคิดเห็น กิจกรรม และข่าวจากครอบครัว"
+            description = "โพสต์ ความคิดเห็น กิจกรรม และข่าวจากกลุ่ม"
         }
 
         // แจ้งเตือนค้างตอน "แชร์แม้ไม่ได้เปิดแอป" (Android บังคับให้มี)
@@ -33,7 +33,7 @@ class MainActivity : FlutterActivity() {
             "แชร์ตำแหน่งตอนปิดแอป",
             NotificationManager.IMPORTANCE_MIN,
         ).apply {
-            description = "แสดงว่า ORAVELLE กำลังแชร์ตำแหน่งให้ครอบครัว"
+            description = "แสดงว่า ORAVELLE กำลังแชร์ตำแหน่งให้กลุ่ม"
             setShowBadge(false)
         }
 

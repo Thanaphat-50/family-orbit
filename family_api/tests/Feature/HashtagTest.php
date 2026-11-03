@@ -72,7 +72,7 @@ class HashtagTest extends TestCase
         $this->makePost($other, 'ข้าวผัด #ทำอาหาร');
         $this->makePost($other, 'ไม่มีแท็ก');
         // โพสต์ครอบครัวไม่ขึ้นในหน้าแฮชแท็กของชุมชน
-        $this->makePost($other, 'ครอบครัว #ทำอาหาร', 'family');
+        $this->makePost($other, 'กลุ่ม #ทำอาหาร', 'family');
         // ถูกซ่อน
         $hidden = $this->makePost($other, 'ซ่อน #ทำอาหาร');
         $hidden->hidden_at = now();
@@ -103,7 +103,7 @@ class HashtagTest extends TestCase
         $this->makePost($author, '#ทำอาหาร #ต้นไม้');
         $this->makePost($author, '#ทำอาหาร');
         $this->makePost($author, '#ทำอาหาร #ต้นไม้ #แมว');
-        $this->makePost($author, '#ลับเฉพาะครอบครัว', 'family');
+        $this->makePost($author, '#ลับเฉพาะกลุ่ม', 'family');
 
         $old = $this->makePost($author, '#เก่ามาก');
         $old->created_at = now()->subDays(40);

@@ -425,7 +425,7 @@ class _HistoryListState extends State<_HistoryList>
         const Map<String, String> where = {
           'external': 'ส่งต่อไปแอปอื่น',
           'community': 'แชร์ในชุมชน',
-          'family': 'ส่งให้ครอบครัว',
+          'family': 'ส่งให้กลุ่ม',
         };
 
         return '${where[item['channel']] ?? 'แชร์'} · $thingของ $owner';

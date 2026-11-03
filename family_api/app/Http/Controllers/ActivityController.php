@@ -176,7 +176,7 @@ class ActivityController extends Controller
                     'status' => false,
 
                     'message' =>
-                        'คุณต้องมีครอบครัวก่อนจึงจะแชร์กิจกรรมได้',
+                        'คุณต้องมีกลุ่มก่อนจึงจะแชร์กิจกรรมได้',
                 ], 403);
             }
 
@@ -245,7 +245,7 @@ class ActivityController extends Controller
                         'new_activity',
 
                     'title' =>
-                        'กิจกรรมใหม่ในครอบครัว',
+                        'กิจกรรมใหม่ในกลุ่ม',
 
                     'message' =>
                         $user->name .
@@ -283,7 +283,7 @@ class ActivityController extends Controller
 
             'message' =>
                 $validated['visibility'] === 'family'
-                    ? 'สร้างและแชร์กิจกรรมกับครอบครัวแล้ว'
+                    ? 'สร้างและแชร์กิจกรรมกับกลุ่มแล้ว'
                     : 'สร้างกิจกรรมส่วนตัวแล้ว',
 
             'activity' =>
@@ -328,7 +328,7 @@ class ActivityController extends Controller
                     'status' => false,
 
                     'message' =>
-                        'คุณไม่ได้อยู่ในครอบครัวของกิจกรรมนี้แล้ว',
+                        'คุณไม่ได้อยู่ในกลุ่มของกิจกรรมนี้แล้ว',
                 ], 403);
             }
         }
@@ -449,7 +449,7 @@ class ActivityController extends Controller
                 'status' => false,
 
                 'message' =>
-                    'คุณต้องมีครอบครัวก่อนจึงจะแชร์กิจกรรมได้',
+                    'คุณต้องมีกลุ่มก่อนจึงจะแชร์กิจกรรมได้',
             ], 403);
         }
 
@@ -495,7 +495,7 @@ class ActivityController extends Controller
                         'new_activity',
 
                     'title' =>
-                        'กิจกรรมใหม่ในครอบครัว',
+                        'กิจกรรมใหม่ในกลุ่ม',
 
                     'message' =>
                         $user->name .
@@ -532,7 +532,7 @@ class ActivityController extends Controller
             'status' => true,
 
             'message' =>
-                'แชร์กิจกรรมกับครอบครัวแล้ว',
+                'แชร์กิจกรรมกับกลุ่มแล้ว',
 
             'activity' =>
                 $activity,
@@ -575,7 +575,7 @@ class ActivityController extends Controller
                     'status' => false,
 
                     'message' =>
-                        'คุณไม่ได้อยู่ในครอบครัวของกิจกรรมนี้แล้ว',
+                        'คุณไม่ได้อยู่ในกลุ่มของกิจกรรมนี้แล้ว',
                 ], 403);
             }
         }

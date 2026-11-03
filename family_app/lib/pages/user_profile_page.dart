@@ -232,7 +232,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
     return FilledButton.tonalIcon(
       onPressed: familyBusy ? null : sendFamilyInvitation,
       icon: const Icon(Icons.group_add_rounded, size: 18),
-      label: Text(canInvite ? 'ชวนเข้าครอบครัว' : 'ขอเข้าครอบครัว'),
+      label: Text(canInvite ? 'ชวนเข้ากลุ่ม' : 'ขอเข้ากลุ่ม'),
     );
   }
 
@@ -278,9 +278,9 @@ class _UserProfilePageState extends State<UserProfilePage> {
   String? get familyRoleText {
     switch (profile?['family_role']) {
       case 'owner':
-        return 'เจ้าของครอบครัว';
+        return 'เจ้าของกลุ่ม';
       case 'member':
-        return 'สมาชิกครอบครัว';
+        return 'สมาชิกกลุ่ม';
     }
 
     return null;
@@ -624,10 +624,10 @@ class _UserProfilePageState extends State<UserProfilePage> {
                     ),
                   if (profile?['is_family'] == true)
                     buildChip(
-                      Icons.family_restroom_rounded,
+                      Icons.groups_rounded,
                       familyRoleText == null
-                          ? 'ครอบครัวเดียวกัน'
-                          : 'ครอบครัวเดียวกัน · $familyRoleText',
+                          ? 'กลุ่มเดียวกัน'
+                          : 'กลุ่มเดียวกัน · $familyRoleText',
                       AppColors.success,
                     ),
                   if (joined != null)

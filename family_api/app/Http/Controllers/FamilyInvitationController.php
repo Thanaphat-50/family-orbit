@@ -90,7 +90,7 @@ class FamilyInvitationController extends Controller
         $membership = FamilyMember::where('user_id', $me->id)->first();
 
         if (!$membership) {
-            return $this->fail('สร้างหรือเข้าร่วมครอบครัวก่อน จึงจะชวนคนอื่นได้', 403);
+            return $this->fail('สร้างหรือเข้าร่วมกลุ่มก่อน จึงจะชวนคนอื่นได้', 403);
         }
 
         // ค้นด้วยอีเมลตรงตัวเท่านั้น (ไม่ให้ค้นรายชื่อผู้ใช้)
@@ -111,7 +111,7 @@ class FamilyInvitationController extends Controller
         }
 
         if (FamilyMember::where('user_id', $target->id)->exists()) {
-            return $this->fail($target->name . ' มีครอบครัวอยู่แล้ว', 409);
+            return $this->fail($target->name . ' มีกลุ่มอยู่แล้ว', 409);
         }
 
         $family = Family::find($membership->family_id);
@@ -146,8 +146,8 @@ class FamilyInvitationController extends Controller
                 'user_id' => $target->id,
                 'family_id' => null,
                 'type' => 'family_invite',
-                'title' => 'คำเชิญเข้าครอบครัว',
-                'message' => $me->name . ' ชวนคุณเข้าครอบครัว ' . $family->name,
+                'title' => 'คำเชิญเข้ากลุ่ม',
+                'message' => $me->name . ' ชวนคุณเข้ากลุ่ม ' . $family->name,
                 'data' => ['invitation_id' => $invitation->id],
                 'is_read' => false,
             ]);
@@ -167,17 +167,17 @@ class FamilyInvitationController extends Controller
         $me = $request->user();
 
         if (FamilyMember::where('user_id', $me->id)->exists()) {
-            return $this->fail('คุณมีครอบครัวอยู่แล้ว', 409);
+            return $this->fail('คุณมีกลุ่มอยู่แล้ว', 409);
         }
 
         $theirMembership = FamilyMember::where('user_id', $user->id)->first();
 
         if ((int) $user->id === (int) $me->id || !$theirMembership) {
-            return $this->fail('ผู้ใช้นี้ยังไม่มีครอบครัว', 404);
+            return $this->fail('ผู้ใช้นี้ยังไม่มีกลุ่ม', 404);
         }
 
         if ($this->blockedBetween($me, $user)) {
-            return $this->fail('ขอเข้าครอบครัวนี้ไม่ได้', 403);
+            return $this->fail('ขอเข้ากลุ่มนี้ไม่ได้', 403);
         }
 
         $family = Family::find($theirMembership->family_id);
@@ -212,8 +212,8 @@ class FamilyInvitationController extends Controller
                 'user_id' => $family->owner_id,
                 'family_id' => $family->id,
                 'type' => 'family_request',
-                'title' => 'คำขอเข้าครอบครัว',
-                'message' => $me->name . ' ขอเข้าร่วมครอบครัว ' . $family->name,
+                'title' => 'คำขอเข้ากลุ่ม',
+                'message' => $me->name . ' ขอเข้าร่วมกลุ่ม ' . $family->name,
                 'data' => ['invitation_id' => $invitation->id, 'user_id' => $me->id],
                 'is_read' => false,
             ]);
@@ -221,7 +221,7 @@ class FamilyInvitationController extends Controller
 
         return response()->json([
             'status' => true,
-            'message' => 'ส่งคำขอแล้ว รอเจ้าของครอบครัวอนุมัติ',
+            'message' => 'ส่งคำขอแล้ว รอเจ้าของกลุ่มอนุมัติ',
             'invitation' => $invitation->load(['family.owner', 'user', 'creator'])->payload(),
         ]);
     }
@@ -335,8 +335,8 @@ class FamilyInvitationController extends Controller
 
             return $this->fail(
                 (int) $user->id === (int) $responder->id
-                    ? 'คุณมีครอบครัวอยู่แล้ว ออกจากครอบครัวเดิมก่อน'
-                    : $user->name . ' เข้าครอบครัวอื่นไปแล้ว',
+                    ? 'คุณมีกลุ่มอยู่แล้ว ออกจากกลุ่มเดิมก่อน'
+                    : $user->name . ' เข้ากลุ่มอื่นไปแล้ว',
                 409
             );
         }
@@ -363,8 +363,8 @@ class FamilyInvitationController extends Controller
                     'user_id' => $user->id,
                     'family_id' => $family->id,
                     'type' => 'family_request_accepted',
-                    'title' => 'เข้าร่วมครอบครัวแล้ว',
-                    'message' => 'คำขอเข้าครอบครัว ' . $family->name . ' ได้รับการอนุมัติ',
+                    'title' => 'เข้าร่วมกลุ่มแล้ว',
+                    'message' => 'คำขอเข้ากลุ่ม ' . $family->name . ' ได้รับการอนุมัติ',
                     'data' => ['family_id' => $family->id],
                     'is_read' => false,
                 ]);
@@ -375,7 +375,7 @@ class FamilyInvitationController extends Controller
                     'family_id' => $family->id,
                     'type' => 'member_joined',
                     'title' => 'สมาชิกใหม่',
-                    'message' => $user->name . ' เข้าร่วมครอบครัวแล้ว',
+                    'message' => $user->name . ' เข้าร่วมกลุ่มแล้ว',
                     'data' => ['user_id' => $user->id],
                     'is_read' => false,
                 ]);
@@ -386,8 +386,8 @@ class FamilyInvitationController extends Controller
             'status' => true,
             'message' => $invitation->type === FamilyInvitation::REQUEST
                 && (int) $responder->id !== (int) $user->id
-                ? 'รับ ' . $user->name . ' เข้าครอบครัวแล้ว'
-                : 'เข้าร่วมครอบครัว ' . $family->name . ' แล้ว',
+                ? 'รับ ' . $user->name . ' เข้ากลุ่มแล้ว'
+                : 'เข้าร่วมกลุ่ม ' . $family->name . ' แล้ว',
             'joined' => true,
         ]);
     }

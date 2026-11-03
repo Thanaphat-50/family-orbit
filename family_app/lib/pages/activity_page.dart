@@ -371,7 +371,7 @@ class _ActivityPageState extends State<ActivityPage> {
                                 SizedBox(height: 3),
 
                                 Text(
-                                  'สร้างแผนของคุณหรือแชร์ให้ครอบครัว',
+                                  'สร้างแผนของคุณหรือแชร์ให้กลุ่ม',
                                   style: TextStyle(
                                     color: AppColors.muted,
                                     fontSize: 12,
@@ -471,7 +471,7 @@ class _ActivityPageState extends State<ActivityPage> {
                       const SizedBox(height: 5),
 
                       Text(
-                        'เลือกว่ากิจกรรมนี้เป็นเรื่องส่วนตัวหรือแชร์กับครอบครัว',
+                        'เลือกว่ากิจกรรมนี้เป็นเรื่องส่วนตัวหรือแชร์กับกลุ่ม',
                         style: TextStyle(color: AppColors.muted, fontSize: 10),
                       ),
 
@@ -501,9 +501,9 @@ class _ActivityPageState extends State<ActivityPage> {
 
                           Expanded(
                             child: _VisibilityChoice(
-                              icon: Icons.family_restroom_rounded,
+                              icon: Icons.groups_rounded,
 
-                              title: 'ครอบครัว',
+                              title: 'กลุ่ม',
 
                               subtitle: hasFamily
                                   ? 'สมาชิกเห็นได้'
@@ -551,7 +551,7 @@ class _ActivityPageState extends State<ActivityPage> {
 
                               Expanded(
                                 child: Text(
-                                  'เข้าร่วมหรือสร้างครอบครัวก่อน จึงจะแชร์กิจกรรมได้',
+                                  'เข้าร่วมหรือสร้างกลุ่มก่อน จึงจะแชร์กิจกรรมได้',
                                   style: TextStyle(
                                     color: AppColors.muted,
                                     fontSize: 10,
@@ -699,7 +699,7 @@ class _ActivityPageState extends State<ActivityPage> {
 
                         label: Text(
                           selectedVisibility == 'family'
-                              ? 'สร้างและแชร์กับครอบครัว'
+                              ? 'สร้างและแชร์กับกลุ่ม'
                               : 'สร้างกิจกรรมส่วนตัว',
                         ),
                       ),
@@ -766,7 +766,7 @@ class _ActivityPageState extends State<ActivityPage> {
 
         showMessage(
           visibility == 'family'
-              ? 'แชร์กิจกรรมกับครอบครัวแล้ว'
+              ? 'แชร์กิจกรรมกับกลุ่มแล้ว'
               : 'สร้างกิจกรรมส่วนตัวแล้ว',
         );
       } else {
@@ -840,7 +840,7 @@ class _ActivityPageState extends State<ActivityPage> {
     }
 
     if (newVisibility == 'family' && !hasFamily) {
-      showMessage('คุณต้องมีครอบครัวก่อนจึงจะแชร์กิจกรรมได้');
+      showMessage('คุณต้องมีกลุ่มก่อนจึงจะแชร์กิจกรรมได้');
 
       return;
     }
@@ -861,7 +861,7 @@ class _ActivityPageState extends State<ActivityPage> {
 
         showMessage(
           newVisibility == 'family'
-              ? 'แชร์กิจกรรมกับครอบครัวแล้ว'
+              ? 'แชร์กิจกรรมกับกลุ่มแล้ว'
               : 'เปลี่ยนเป็นกิจกรรมส่วนตัวแล้ว',
         );
       } else {
@@ -1195,9 +1195,9 @@ class _ActivityPageState extends State<ActivityPage> {
           const SizedBox(width: 8),
 
           _FilterChip(
-            text: 'ครอบครัว',
+            text: 'กลุ่ม',
 
-            icon: Icons.family_restroom_rounded,
+            icon: Icons.groups_rounded,
 
             selected: selectedFilter == 'family',
 
@@ -1298,7 +1298,7 @@ class _ActivityPageState extends State<ActivityPage> {
                   completed
                       ? Icons.check_rounded
                       : shared
-                      ? Icons.family_restroom_rounded
+                      ? Icons.groups_rounded
                       : Icons.lock_outline_rounded,
 
                   color: completed
@@ -1533,7 +1533,7 @@ class _ActivityPageState extends State<ActivityPage> {
                       child: Row(
                         children: [
                           Icon(
-                            Icons.family_restroom_rounded,
+                            Icons.groups_rounded,
 
                             color: hasFamily ? AppColors.sky : AppColors.muted,
                           ),
@@ -1541,7 +1541,7 @@ class _ActivityPageState extends State<ActivityPage> {
                           const SizedBox(width: 10),
 
                           Text(
-                            hasFamily ? 'แชร์กับครอบครัว' : 'ยังไม่มีครอบครัว',
+                            hasFamily ? 'แชร์กับกลุ่ม' : 'ยังไม่มีกลุ่ม',
                           ),
                         ],
                       ),
@@ -1638,7 +1638,7 @@ class _ActivityPageState extends State<ActivityPage> {
           const SizedBox(height: 7),
 
           Text(
-            'สร้างกิจกรรมส่วนตัว หรือแชร์แผนให้ครอบครัวได้',
+            'สร้างกิจกรรมส่วนตัว หรือแชร์แผนให้กลุ่มได้',
 
             textAlign: TextAlign.center,
 
@@ -1742,7 +1742,7 @@ class _ActivityPageState extends State<ActivityPage> {
                       SizedBox(height: 3),
 
                       Text(
-                        'แผนส่วนตัวและกิจกรรมของครอบครัว',
+                        'แผนส่วนตัวและกิจกรรมของกลุ่ม',
 
                         style: TextStyle(color: AppColors.muted, fontSize: 11),
                       ),
@@ -1931,7 +1931,7 @@ class _VisibilityBadge extends StatelessWidget {
 
         children: [
           Icon(
-            family ? Icons.family_restroom_rounded : Icons.lock_outline_rounded,
+            family ? Icons.groups_rounded : Icons.lock_outline_rounded,
 
             color: family ? AppColors.sky : AppColors.primary,
 
@@ -1941,7 +1941,7 @@ class _VisibilityBadge extends StatelessWidget {
           const SizedBox(width: 4),
 
           Text(
-            family ? 'ครอบครัว' : 'ส่วนตัว',
+            family ? 'กลุ่ม' : 'ส่วนตัว',
 
             style: TextStyle(
               color: family ? AppColors.sky : AppColors.primary,

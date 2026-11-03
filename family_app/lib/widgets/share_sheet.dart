@@ -93,9 +93,9 @@ Future<String?> showShareChannelSheet(BuildContext context) {
             option(
               sheetContext,
               channel: 'family',
-              icon: Icons.family_restroom_rounded,
-              title: 'ส่งให้ครอบครัว',
-              subtitle: 'แชร์เข้าไปในหน้าครอบครัว',
+              icon: Icons.groups_rounded,
+              title: 'ส่งให้กลุ่ม',
+              subtitle: 'แชร์เข้าไปในหน้ากลุ่มสมาชิก',
               color: AppColors.primary,
             ),
           ],
@@ -112,7 +112,7 @@ Future<String?> askShareNote(BuildContext context, String channel) async {
   final String? note = await showDialog<String>(
     context: context,
     builder: (dialogContext) => AlertDialog(
-      title: Text(channel == 'community' ? 'แชร์ในชุมชน' : 'ส่งให้ครอบครัว'),
+      title: Text(channel == 'community' ? 'แชร์ในชุมชน' : 'ส่งให้กลุ่ม'),
       content: TextField(
         controller: controller,
         autofocus: true,

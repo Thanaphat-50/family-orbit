@@ -210,7 +210,7 @@ class _ChatListPageState extends State<ChatListPage> {
           boxShadow: AppDecorations.cardShadow,
         ),
         child: Text(
-          'ยังไม่มีคนอื่นในครอบครัว ชวนคนในบ้านเข้าครอบครัวด้วยรหัสเชิญ แล้วคุยกันได้ที่นี่',
+          'ยังไม่มีสมาชิกคนอื่นในกลุ่ม ชวนคนที่รู้จักเข้ากลุ่มด้วยรหัสเชิญ แล้วคุยกันได้ที่นี่',
           style: TextStyle(color: AppColors.muted, fontSize: 13, height: 1.5),
         ),
       );
@@ -396,7 +396,7 @@ class _ChatListPageState extends State<ChatListPage> {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.only(bottom: 24),
         children: [
-          buildSectionTitle('คนในครอบครัว'),
+          buildSectionTitle('สมาชิกในกลุ่ม'),
           buildContacts(),
           buildSectionTitle('ข้อความ'),
           if (conversations.isEmpty)
@@ -407,7 +407,7 @@ class _ChatListPageState extends State<ChatListPage> {
                   Icon(Icons.forum_outlined, size: 40, color: AppColors.muted),
                   SizedBox(height: 10),
                   Text(
-                    'ยังไม่มีข้อความ\nกดรูปคนในครอบครัวด้านบนเพื่อเริ่มคุย',
+                    'ยังไม่มีข้อความ\nกดรูปสมาชิกในกลุ่มด้านบนเพื่อเริ่มคุย',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: AppColors.muted,

@@ -64,7 +64,7 @@ class AccountDrawer extends StatelessWidget {
     if (family is! Map) return null;
 
     final String role = profile?['role'] == 'owner'
-        ? 'เจ้าของครอบครัว'
+        ? 'เจ้าของกลุ่ม'
         : 'สมาชิก';
 
     return '${family['name']} · $role';
@@ -297,7 +297,7 @@ class AccountDrawer extends StatelessWidget {
                   item: AccountMenuItem.myPosts,
                   icon: Icons.article_outlined,
                   title: 'โพสต์ของฉัน',
-                  subtitle: 'ทั้งในครอบครัวและชุมชน',
+                  subtitle: 'ทั้งในกลุ่มและชุมชน',
                 ),
                 buildItem(
                   context,
@@ -318,11 +318,11 @@ class AccountDrawer extends StatelessWidget {
                 buildItem(
                   context,
                   item: AccountMenuItem.family,
-                  icon: Icons.family_restroom_rounded,
-                  title: 'ครอบครัวของฉัน',
+                  icon: Icons.groups_rounded,
+                  title: 'กลุ่มของฉัน',
                   subtitle: hasFamily
                       ? 'สมาชิกและรหัสเชิญ'
-                      : 'สร้างหรือเข้าร่วมครอบครัว',
+                      : 'สร้างหรือเข้าร่วมกลุ่ม',
                   color: AppColors.sky,
                 ),
                 buildItem(

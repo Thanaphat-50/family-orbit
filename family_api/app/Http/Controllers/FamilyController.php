@@ -36,7 +36,7 @@ class FamilyController extends Controller
         if ($alreadyMember) {
             return response()->json([
                 'status' => false,
-                'message' => 'คุณมีครอบครัวอยู่แล้ว',
+                'message' => 'คุณมีกลุ่มอยู่แล้ว',
             ], 409);
         }
 
@@ -88,7 +88,7 @@ class FamilyController extends Controller
             'status' => true,
 
             'message' =>
-                'สร้างครอบครัวสำเร็จ',
+                'สร้างกลุ่มสำเร็จ',
 
             'family' =>
                 $family,
@@ -120,7 +120,7 @@ class FamilyController extends Controller
                 'status' => false,
 
                 'message' =>
-                    'คุณมีครอบครัวอยู่แล้ว',
+                    'คุณมีกลุ่มอยู่แล้ว',
             ], 409);
         }
 
@@ -137,7 +137,7 @@ class FamilyController extends Controller
                 'status' => false,
 
                 'message' =>
-                    'ไม่พบรหัสครอบครัวนี้',
+                    'ไม่พบรหัสกลุ่มนี้',
             ], 404);
         }
 
@@ -182,7 +182,7 @@ class FamilyController extends Controller
 
                     'message' =>
                         $user->name .
-                        ' เข้าร่วมครอบครัวแล้ว',
+                        ' เข้าร่วมกลุ่มแล้ว',
 
                     'data' => [
                         'user_id' =>
@@ -199,7 +199,7 @@ class FamilyController extends Controller
             'status' => true,
 
             'message' =>
-                'เข้าร่วมครอบครัวสำเร็จ',
+                'เข้าร่วมกลุ่มสำเร็จ',
 
             'family' =>
                 $family,
@@ -289,7 +289,7 @@ class FamilyController extends Controller
                     false,
 
                 'message' =>
-                    'เฉพาะเจ้าของครอบครัวเท่านั้นที่แก้ไขได้',
+                    'เฉพาะเจ้าของกลุ่มเท่านั้นที่แก้ไขได้',
             ], 403);
         }
 
@@ -309,7 +309,7 @@ class FamilyController extends Controller
                 true,
 
             'message' =>
-                'เปลี่ยนชื่อครอบครัวสำเร็จ',
+                'เปลี่ยนชื่อกลุ่มสำเร็จ',
 
             'family' =>
                 $family,
@@ -338,7 +338,7 @@ class FamilyController extends Controller
                     false,
 
                 'message' =>
-                    'เฉพาะเจ้าของครอบครัวเท่านั้นที่สร้างรหัสใหม่ได้',
+                    'เฉพาะเจ้าของกลุ่มเท่านั้นที่สร้างรหัสใหม่ได้',
             ], 403);
         }
 
@@ -394,7 +394,7 @@ class FamilyController extends Controller
                     false,
 
                 'message' =>
-                    'เฉพาะเจ้าของครอบครัวเท่านั้นที่นำสมาชิกออกได้',
+                    'เฉพาะเจ้าของกลุ่มเท่านั้นที่นำสมาชิกออกได้',
             ], 403);
         }
 
@@ -428,7 +428,7 @@ class FamilyController extends Controller
                     false,
 
                 'message' =>
-                    'ไม่พบสมาชิกนี้ในครอบครัว',
+                    'ไม่พบสมาชิกนี้ในกลุ่ม',
             ], 404);
         }
 
@@ -441,7 +441,7 @@ class FamilyController extends Controller
                     false,
 
                 'message' =>
-                    'ไม่สามารถนำ Owner ออกจากครอบครัวได้',
+                    'ไม่สามารถนำเจ้าของกลุ่มออกจากกลุ่มได้',
             ], 422);
         }
 
@@ -496,7 +496,7 @@ class FamilyController extends Controller
                 true,
 
             'message' =>
-                'นำสมาชิกออกจากครอบครัวสำเร็จ',
+                'นำสมาชิกออกจากกลุ่มสำเร็จ',
         ]);
     }
 
@@ -522,7 +522,7 @@ class FamilyController extends Controller
                     false,
 
                 'message' =>
-                    'คุณยังไม่ได้อยู่ในครอบครัว',
+                    'คุณยังไม่ได้อยู่ในกลุ่ม',
             ], 404);
         }
 
@@ -535,7 +535,7 @@ class FamilyController extends Controller
                     false,
 
                 'message' =>
-                    'Owner ไม่สามารถออกจากครอบครัวได้ กรุณาโอนสิทธิ์ Owner ก่อน',
+                    'เจ้าของกลุ่มไม่สามารถออกจากกลุ่มได้ กรุณาโอนสิทธิ์ Owner ก่อน',
             ], 422);
         }
 
@@ -589,7 +589,7 @@ class FamilyController extends Controller
                 true,
 
             'message' =>
-                'ออกจากครอบครัวสำเร็จ',
+                'ออกจากกลุ่มสำเร็จ',
         ]);
     }
 
@@ -650,7 +650,7 @@ class FamilyController extends Controller
                     false,
 
                 'message' =>
-                    'ไม่พบสมาชิกนี้ในครอบครัว',
+                    'ไม่พบสมาชิกนี้ในกลุ่ม',
             ], 404);
         }
 
@@ -727,7 +727,7 @@ class FamilyController extends Controller
                     false,
 
                 'message' =>
-                    'เฉพาะ Owner เท่านั้นที่สามารถลบครอบครัวได้',
+                    'เฉพาะเจ้าของกลุ่มเท่านั้นที่สามารถลบกลุ่มได้',
             ], 403);
         }
 
@@ -868,7 +868,7 @@ class FamilyController extends Controller
                 true,
 
             'message' =>
-                'ลบครอบครัวสำเร็จ',
+                'ลบกลุ่มสำเร็จ',
         ]);
     }
 }

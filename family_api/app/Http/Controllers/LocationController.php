@@ -33,7 +33,7 @@ class LocationController extends Controller
             return response()->json([
                 'status' => false,
                 'message' =>
-                    'คุณต้องอยู่ในครอบครัวก่อนจึงจะอัปเดตตำแหน่งได้',
+                    'คุณต้องอยู่ในกลุ่มก่อนจึงจะอัปเดตตำแหน่งได้',
             ], 403);
         }
 
@@ -104,7 +104,7 @@ class LocationController extends Controller
             return response()->json([
                 'status' => false,
                 'message' =>
-                    'คุณยังไม่ได้อยู่ในครอบครัว',
+                    'คุณยังไม่ได้อยู่ในกลุ่ม',
                 'locations' => [],
             ], 403);
         }

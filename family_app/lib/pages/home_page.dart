@@ -19,6 +19,7 @@ import '../services/settings_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/account_drawer.dart';
 import '../widgets/family_invitation_cards.dart';
+import '../widgets/post_categories.dart';
 import '../widgets/section_switch.dart';
 import '../widgets/swipe_sections.dart';
 import '../widgets/user_avatar.dart';
@@ -76,6 +77,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   // หน้าหลัก: สำหรับคุณ | ล่าสุด | วิดีโอ (ปัดซ้าย-ขวาสลับได้)
   CommunityFeedMode homeMode = CommunityFeedMode.forYou;
+
+  // หมวดที่กรองฟีดหน้าหลัก (null = ทั้งหมด) ใช้ร่วมกันทั้ง สำหรับคุณ / ล่าสุด
+  String? homeCategory;
 
   // ครอบครัว: โพสต์ | สมาชิก (ปัดซ้าย-ขวาสลับได้)
   FamilySection familySection = FamilySection.posts;
@@ -267,9 +271,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       await SharePlus.instance.share(
         ShareParams(
           text:
-              'มาอยู่ครอบครัว "$familyName" ด้วยกันในแอป ${AppInfo.name}\n'
-              'เปิดแอป → แท็บครอบครัว → เข้าร่วมครอบครัว แล้วใส่รหัส $code',
-          subject: 'ชวนเข้าครอบครัว $familyName',
+              'มาอยู่กลุ่ม "$familyName" ด้วยกันในแอป ${AppInfo.name}\n'
+              'เปิดแอป → แท็บกลุ่มสมาชิก → เข้าร่วมกลุ่ม แล้วใส่รหัส $code',
+          subject: 'ชวนเข้ากลุ่ม $familyName',
         ),
       );
     } catch (_) {
@@ -307,7 +311,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     } catch (e) {
       if (!mounted) return;
 
-      showMessage('โหลดข้อมูลครอบครัวไม่สำเร็จ: $e');
+      showMessage('โหลดข้อมูลกลุ่มไม่สำเร็จ: $e');
     } finally {
       if (showLoading && mounted) {
         setState(() {
@@ -518,7 +522,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final name = familyNameController.text.trim();
 
     if (name.isEmpty) {
-      showMessage('กรุณาใส่ชื่อครอบครัว');
+      showMessage('กรุณาใส่ชื่อกลุ่ม');
 
       return;
     }
@@ -539,9 +543,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
         if (!mounted) return;
 
-        showMessage('สร้างครอบครัวสำเร็จ');
+        showMessage('สร้างกลุ่มสำเร็จ');
       } else {
-        showMessage(result['message'] ?? 'สร้างครอบครัวไม่สำเร็จ');
+        showMessage(result['message'] ?? 'สร้างกลุ่มไม่สำเร็จ');
       }
     } catch (e) {
       if (!mounted) return;
@@ -585,9 +589,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
         if (!mounted) return;
 
-        showMessage('เข้าร่วมครอบครัวสำเร็จ');
+        showMessage('เข้าร่วมกลุ่มสำเร็จ');
       } else {
-        showMessage(result['message'] ?? 'เข้าร่วมครอบครัวไม่สำเร็จ');
+        showMessage(result['message'] ?? 'เข้าร่วมกลุ่มไม่สำเร็จ');
       }
     } catch (e) {
       if (!mounted) return;
@@ -638,7 +642,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           ),
 
           title: Text(
-            'เปลี่ยนชื่อครอบครัว',
+            'เปลี่ยนชื่อกลุ่ม',
             style: TextStyle(
               color: AppColors.navy,
               fontWeight: FontWeight.w800,
@@ -655,8 +659,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             },
 
             decoration: const InputDecoration(
-              labelText: 'ชื่อครอบครัว',
-              prefixIcon: Icon(Icons.family_restroom_rounded),
+              labelText: 'ชื่อกลุ่ม',
+              prefixIcon: Icon(Icons.groups_rounded),
             ),
           ),
 
@@ -706,9 +710,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
         if (!mounted) return;
 
-        showMessage('เปลี่ยนชื่อครอบครัวสำเร็จ');
+        showMessage('เปลี่ยนชื่อกลุ่มสำเร็จ');
       } else {
-        showMessage(response['message'] ?? 'เปลี่ยนชื่อครอบครัวไม่สำเร็จ');
+        showMessage(response['message'] ?? 'เปลี่ยนชื่อกลุ่มไม่สำเร็จ');
       }
     } catch (e) {
       if (!mounted) return;
@@ -739,7 +743,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             style: TextStyle(fontWeight: FontWeight.w800),
           ),
 
-          content: const Text('รหัสเดิมจะไม่สามารถใช้เข้าร่วมครอบครัวได้อีก'),
+          content: const Text('รหัสเดิมจะไม่สามารถใช้เข้าร่วมกลุ่มได้อีก'),
 
           actions: [
             TextButton(
@@ -811,7 +815,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             style: TextStyle(fontWeight: FontWeight.w800),
           ),
 
-          content: Text('ต้องการนำ $name ออกจากครอบครัวหรือไม่?'),
+          content: Text('ต้องการนำ $name ออกจากกลุ่มหรือไม่?'),
 
           actions: [
             TextButton(
@@ -851,7 +855,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
         if (!mounted) return;
 
-        showMessage('นำสมาชิกออกจากครอบครัวแล้ว');
+        showMessage('นำสมาชิกออกจากกลุ่มแล้ว');
       } else {
         showMessage(response['message'] ?? 'นำสมาชิกออกไม่สำเร็จ');
       }
@@ -880,11 +884,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           ),
 
           title: const Text(
-            'ออกจากครอบครัว',
+            'ออกจากกลุ่ม',
             style: TextStyle(fontWeight: FontWeight.w800),
           ),
 
-          content: const Text('คุณต้องการออกจากครอบครัวนี้หรือไม่?'),
+          content: const Text('คุณต้องการออกจากกลุ่มนี้หรือไม่?'),
 
           actions: [
             TextButton(
@@ -899,7 +903,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               onPressed: () {
                 Navigator.of(dialogContext).pop(true);
               },
-              child: const Text('ออกจากครอบครัว'),
+              child: const Text('ออกจากกลุ่ม'),
             ),
           ],
         );
@@ -928,9 +932,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           selectedIndex = tabHome;
         });
 
-        showMessage('ออกจากครอบครัวแล้ว');
+        showMessage('ออกจากกลุ่มแล้ว');
       } else {
-        showMessage(response['message'] ?? 'ไม่สามารถออกจากครอบครัวได้');
+        showMessage(response['message'] ?? 'ไม่สามารถออกจากกลุ่มได้');
       }
     } catch (e) {
       if (!mounted) return;
@@ -1039,14 +1043,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           ),
 
           title: const Text(
-            'ลบครอบครัว?',
+            'ลบกลุ่ม?',
             textAlign: TextAlign.center,
             style: TextStyle(fontWeight: FontWeight.w800),
           ),
 
           content: const Text(
-            'สมาชิกทั้งหมดจะออกจากครอบครัว '
-            'โพสต์และข้อมูลของครอบครัวจะถูกลบ\n\n'
+            'สมาชิกทั้งหมดจะออกจากกลุ่ม '
+            'โพสต์และข้อมูลของกลุ่มจะถูกลบ\n\n'
             'การดำเนินการนี้ไม่สามารถย้อนกลับได้',
             textAlign: TextAlign.center,
           ),
@@ -1066,7 +1070,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               onPressed: () {
                 Navigator.of(dialogContext).pop(true);
               },
-              child: const Text('ลบครอบครัว'),
+              child: const Text('ลบกลุ่ม'),
             ),
           ],
         );
@@ -1095,9 +1099,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           selectedIndex = tabHome;
         });
 
-        showMessage('ลบครอบครัวสำเร็จ');
+        showMessage('ลบกลุ่มสำเร็จ');
       } else {
-        showMessage(result['message'] ?? 'ลบครอบครัวไม่สำเร็จ');
+        showMessage(result['message'] ?? 'ลบกลุ่มไม่สำเร็จ');
       }
     } catch (e) {
       if (!mounted) return;
@@ -1298,10 +1302,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         return 'ตลาด';
 
       case tabFamily:
-        return 'ครอบครัว';
+        return 'กลุ่มสมาชิก';
 
       case tabMap:
-        return 'Family Map';
+        return 'ตำแหน่งสมาชิก';
 
       case tabActivity:
         return 'กิจกรรม';
@@ -1452,7 +1456,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       case tabMap:
         if (!hasFamily) {
           return buildFamilyRequiredPage(
-            message: 'เข้าร่วมครอบครัวก่อนเพื่อดูตำแหน่งของสมาชิก',
+            message: 'เข้าร่วมกลุ่มก่อนเพื่อดูตำแหน่งของสมาชิก',
           );
         }
 
@@ -1503,6 +1507,20 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             ),
           ),
         ),
+        // แถวกรองหมวด: อยู่กับที่ ไม่เลื่อนตามตอนปัดซ้าย-ขวา
+        buildCollapsible(
+          visible: !immersive,
+          child: Padding(
+            padding: const EdgeInsets.only(top: 10, bottom: 2),
+            child: CategoryFilterStrip(
+              selected: homeCategory,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              onChanged: (category) {
+                setState(() => homeCategory = category);
+              },
+            ),
+          ),
+        ),
         Expanded(
           child: SwipeSections(
             index: homeMode.index,
@@ -1535,6 +1553,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         scope: FeedScope.community,
         communityMode: mode,
         onJoinFamily: guest ? goToFamilyTab : null,
+        category: homeCategory,
+        onCategoryChanged: (category) {
+          setState(() => homeCategory = category);
+        },
       ),
     );
   }
@@ -1856,7 +1878,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       Icons.shopping_basket_rounded,
       'ตลาด',
     ),
-    _NavItem(Icons.favorite_border_rounded, Icons.favorite_rounded, 'ครอบครัว'),
+    _NavItem(Icons.groups_outlined, Icons.groups_rounded, 'กลุ่มสมาชิก'),
     _NavItem(Icons.location_on_outlined, Icons.location_on_rounded, 'ตำแหน่ง'),
     _NavItem(Icons.event_note_outlined, Icons.event_note_rounded, 'กิจกรรม'),
   ];
@@ -1990,15 +2012,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 Icon(
                   invites > 0
                       ? Icons.mark_email_unread_rounded
-                      : Icons.family_restroom_rounded,
+                      : Icons.groups_rounded,
                   color: AppColors.primary,
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     invites > 0
-                        ? 'คุณได้รับคำเชิญเข้าครอบครัว $invites รายการ'
-                        : 'สร้างหรือเข้าร่วมครอบครัว เพื่อโพสต์ แชท และแชร์ตำแหน่ง',
+                        ? 'คุณได้รับคำเชิญเข้ากลุ่ม $invites รายการ'
+                        : 'สร้างหรือเข้าร่วมกลุ่ม เพื่อโพสต์ แชท และแชร์ตำแหน่ง',
                     style: TextStyle(
                       color: AppColors.navy,
                       fontSize: 13,
@@ -2036,7 +2058,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               ),
 
               child: Icon(
-                Icons.family_restroom_rounded,
+                Icons.groups_rounded,
                 size: 46,
                 color: AppColors.primary,
               ),
@@ -2045,7 +2067,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             const SizedBox(height: 24),
 
             Text(
-              'เข้าร่วมวงโคจรก่อน',
+              'เข้าร่วมกลุ่มก่อน',
               style: TextStyle(
                 color: AppColors.navy,
                 fontSize: 23,
@@ -2081,7 +2103,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
                 icon: const Icon(Icons.arrow_forward_rounded),
 
-                label: const Text('ไปหน้าครอบครัว'),
+                label: const Text('ไปหน้ากลุ่มสมาชิก'),
               ),
             ),
           ],
@@ -2243,7 +2265,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   const SizedBox(height: 8),
 
                   Text(
-                    'สร้างวงโคจรใหม่ หรือเข้าร่วมครอบครัวของคุณ',
+                    'สร้างกลุ่มใหม่ หรือเข้าร่วมกลุ่มของคุณ',
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.80),
                       fontSize: 14,
@@ -2277,7 +2299,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
         if (invitationList('sent').isNotEmpty) ...[
           FamilyInvitationSection(
-            title: 'คำขอเข้าครอบครัวของคุณ',
+            title: 'คำขอเข้ากลุ่มของคุณ',
             children: [
               for (final invitation in invitationList('sent'))
                 PendingInvitationTile(
@@ -2291,7 +2313,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         ],
 
         Text(
-          'เริ่มต้นครอบครัวของคุณ',
+          'เริ่มต้นกลุ่มของคุณ',
           style: TextStyle(
             color: AppColors.navy,
             fontSize: 20,
@@ -2351,7 +2373,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'สร้างครอบครัว',
+                          'สร้างกลุ่ม',
                           style: TextStyle(
                             color: AppColors.navy,
                             fontSize: 17,
@@ -2362,7 +2384,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                         SizedBox(height: 3),
 
                         Text(
-                          'คุณจะเป็น Owner ของครอบครัว',
+                          'คุณจะเป็นเจ้าของกลุ่ม',
                           style: TextStyle(
                             color: AppColors.muted,
                             fontSize: 12,
@@ -2380,7 +2402,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 controller: familyNameController,
 
                 decoration: const InputDecoration(
-                  labelText: 'ชื่อครอบครัว',
+                  labelText: 'ชื่อกลุ่ม',
                   hintText: 'เช่น บ้านของเรา',
                   prefixIcon: Icon(Icons.favorite_outline_rounded),
                 ),
@@ -2393,7 +2415,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
                 icon: const Icon(Icons.add_rounded),
 
-                label: Text(isWorking ? 'กำลังสร้าง...' : 'สร้างครอบครัว'),
+                label: Text(isWorking ? 'กำลังสร้าง...' : 'สร้างกลุ่ม'),
               ),
             ],
           ),
@@ -2444,7 +2466,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'เข้าร่วมครอบครัว',
+                          'เข้าร่วมกลุ่ม',
                           style: TextStyle(
                             color: AppColors.navy,
                             fontSize: 17,
@@ -2488,7 +2510,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
                 icon: const Icon(Icons.login_rounded),
 
-                label: const Text('เข้าร่วมครอบครัว'),
+                label: const Text('เข้าร่วมกลุ่ม'),
               ),
             ],
           ),
@@ -2505,7 +2527,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final family = familyData?['family'];
 
     if (family == null) {
-      return const Center(child: Text('ไม่พบข้อมูลครอบครัว'));
+      return const Center(child: Text('ไม่พบข้อมูลกลุ่ม'));
     }
 
     final List members = family['members'] as List? ?? [];
@@ -2516,7 +2538,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
     final int ownerId = (family['owner_id'] as num).toInt();
 
-    final String familyName = family['name']?.toString() ?? 'Family';
+    final String familyName = family['name']?.toString() ?? 'กลุ่ม';
 
     final String inviteCode = family['invite_code']?.toString() ?? '';
 
@@ -2632,12 +2654,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                           ),
 
                           child: const Text(
-                            'MY ORBIT',
+                            'กลุ่มของฉัน',
                             style: TextStyle(
                               color: Colors.white,
-                              fontSize: 10,
+                              fontSize: 12,
                               fontWeight: FontWeight.w800,
-                              letterSpacing: 1.6,
+                              letterSpacing: 0.2,
                             ),
                           ),
                         ),
@@ -2671,14 +2693,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                               const SizedBox(width: 5),
 
                               Text(
-                                isOwner ? 'OWNER' : 'MEMBER',
+                                isOwner ? 'เจ้าของกลุ่ม' : 'สมาชิก',
                                 style: TextStyle(
                                   color: isOwner
                                       ? AppColors.warm
                                       : Colors.white,
-                                  fontSize: 10,
+                                  fontSize: 12,
                                   fontWeight: FontWeight.w800,
-                                  letterSpacing: 0.8,
+                                  letterSpacing: 0.2,
                                 ),
                               ),
                             ],
@@ -2709,7 +2731,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                               const SizedBox(height: 8),
 
                               Text(
-                                '${members.length} สมาชิกในวงโคจร',
+                                'สมาชิก ${members.length} คน',
                                 style: TextStyle(
                                   color: Colors.white.withValues(alpha: 0.76),
                                   fontSize: 13,
@@ -2767,12 +2789,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'INVITE CODE',
+                                  'รหัสเชิญ',
                                   style: TextStyle(
                                     color: Colors.white.withValues(alpha: 0.64),
-                                    fontSize: 9,
+                                    fontSize: 11.5,
                                     fontWeight: FontWeight.w700,
-                                    letterSpacing: 1.2,
+                                    letterSpacing: 0.2,
                                   ),
                                 ),
 
@@ -2880,7 +2902,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             const SizedBox(height: 22),
             FamilyInvitationSection(
               title: 'คำขอเข้าร่วม (${invitationList('requests').length})',
-              subtitle: 'คนที่ขอเข้าครอบครัวจากหน้าโปรไฟล์ในชุมชน',
+              subtitle: 'คนที่ขอเข้ากลุ่มจากหน้าโปรไฟล์ในชุมชน',
               children: [
                 for (final invitation in invitationList('requests'))
                   InvitationCard(
@@ -2917,7 +2939,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           Row(
             children: [
               Text(
-                'สมาชิกในครอบครัว',
+                'สมาชิกในกลุ่ม',
                 style: TextStyle(
                   color: AppColors.navy,
                   fontSize: 20,
@@ -2954,7 +2976,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           const SizedBox(height: 6),
 
           Text(
-            'คนสำคัญที่อยู่ในวงโคจรเดียวกับคุณ',
+            'คนที่อยู่ในกลุ่มเดียวกับคุณ',
             style: TextStyle(color: AppColors.muted, fontSize: 13),
           ),
 
@@ -3040,12 +3062,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                 ),
 
                                 child: const Text(
-                                  'OWNER',
+                                  'เจ้าของ',
                                   style: TextStyle(
                                     color: Color(0xFFCF762F),
-                                    fontSize: 8,
+                                    fontSize: 10,
                                     fontWeight: FontWeight.w800,
-                                    letterSpacing: 0.5,
                                   ),
                                 ),
                               ),
@@ -3109,7 +3130,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
                               SizedBox(width: 10),
 
-                              Text('นำออกจากครอบครัว'),
+                              Text('นำออกจากกลุ่ม'),
                             ],
                           ),
                         ),
@@ -3164,7 +3185,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   const SizedBox(height: 5),
 
                   Text(
-                    'คุณสามารถออกจากครอบครัวนี้ได้ทุกเมื่อ',
+                    'คุณสามารถออกจากกลุ่มนี้ได้ทุกเมื่อ',
                     style: TextStyle(color: AppColors.muted, fontSize: 12),
                   ),
 
@@ -3183,7 +3204,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
                     icon: const Icon(Icons.logout_rounded),
 
-                    label: const Text('ออกจากครอบครัว'),
+                    label: const Text('ออกจากกลุ่ม'),
                   ),
                 ],
               ),
@@ -3229,7 +3250,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   const SizedBox(height: 7),
 
                   Text(
-                    'คุณเป็นผู้ดูแลครอบครัวนี้ '
+                    'คุณเป็นผู้ดูแลกลุ่มนี้ '
                     'หากต้องการออก กรุณาโอน Owner ให้สมาชิกคนอื่นก่อน',
                     style: TextStyle(
                       color: AppColors.muted,
@@ -3253,7 +3274,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
                     icon: const Icon(Icons.delete_outline_rounded),
 
-                    label: const Text('ลบครอบครัว'),
+                    label: const Text('ลบกลุ่ม'),
                   ),
                 ],
               ),

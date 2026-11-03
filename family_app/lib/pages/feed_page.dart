@@ -80,6 +80,12 @@ class FeedPage extends StatefulWidget {
   // ดึงลงเพื่อรีเฟรช → ให้หน้าที่ใช้ header โหลดข้อมูลของตัวเองใหม่ด้วย
   final Future<void> Function()? onRefresh;
 
+  // แถวกรองหมวดอยู่ที่หน้าแม่ (อยู่กับที่ ไม่เลื่อนตามตอนปัดซ้าย-ขวา)
+  // category = หมวดที่หน้าแม่เลือก / onCategoryChanged = หน้านี้ล้างตัวกรองเอง
+  // (เช่น หลังโพสต์หมวดอื่น) ไม่ส่ง onCategoryChanged → แสดงแถวกรองในฟีดเอง
+  final String? category;
+  final ValueChanged<String?>? onCategoryChanged;
+
   const FeedPage({
     super.key,
     required this.scope,
@@ -91,6 +97,8 @@ class FeedPage extends StatefulWidget {
     this.communityMode = CommunityFeedMode.forYou,
     this.hashtag,
     this.onRefresh,
+    this.category,
+    this.onCategoryChanged,
   });
 
   @override
@@ -108,8 +116,7 @@ class _FeedPageState extends State<FeedPage> {
   static const int collapsedCommentCount = 2;
 
   // สีของป้าย/ปุ่มฝั่งชุมชน (โหมดมืดใช้โทนสว่างกว่าให้อ่านง่าย)
-  static Color get communityColor =>
-      AppColors.isDark ? const Color(0xFF2A9CC4) : const Color(0xFF0B7FA6);
+  static Color get communityColor => communityAccentColor;
 
   // สีปุ่มถูกใจ
   static const Color likeColor = Color(0xFFE5486B);
@@ -241,9 +248,12 @@ class _FeedPageState extends State<FeedPage> {
   // ผลโหลดของตัวกรองเก่าที่ตอบกลับช้าจะถูกทิ้ง
   int feedGeneration = 0;
 
+  bool get categoryFromParent => widget.onCategoryChanged != null;
+
   @override
   void initState() {
     super.initState();
+    if (categoryFromParent) filterCategory = widget.category;
     scrollController.addListener(onScroll);
     loadPosts();
 
@@ -353,13 +363,13 @@ class _FeedPageState extends State<FeedPage> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         icon: Icon(
-          Icons.family_restroom_rounded,
+          Icons.groups_rounded,
           color: AppColors.primary,
           size: 34,
         ),
-        title: const Text('ต้องมีครอบครัวก่อน'),
+        title: const Text('ต้องมีกลุ่มก่อน'),
         content: const Text(
-          'สร้างครอบครัวใหม่ หรือเข้าร่วมด้วยรหัสเชิญ/คำเชิญ '
+          'สร้างกลุ่มใหม่ หรือเข้าร่วมด้วยรหัสเชิญ/คำเชิญ '
           'แล้วจะโพสต์และแชร์ในแอปได้',
         ),
         actions: [
@@ -369,7 +379,7 @@ class _FeedPageState extends State<FeedPage> {
           ),
           FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('ไปที่ครอบครัว'),
+            child: const Text('ไปที่กลุ่มสมาชิก'),
           ),
         ],
       ),
@@ -623,6 +633,15 @@ class _FeedPageState extends State<FeedPage> {
           feed.isLoading = false;
         });
       }
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant FeedPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (categoryFromParent && widget.category != oldWidget.category) {
+      changeFilter(widget.category);
     }
   }
 
@@ -905,6 +924,10 @@ class _FeedPageState extends State<FeedPage> {
 
         dismissKeyboard();
 
+        // กรองหมวดอื่นอยู่ → กลับไป "ทั้งหมด" ให้เห็นโพสต์ที่เพิ่งแชร์
+        final bool clearFilter =
+            filterCategory != null && filterCategory != category;
+
         updateComposer(() {
           pickedImages.clear();
 
@@ -914,12 +937,13 @@ class _FeedPageState extends State<FeedPage> {
 
           composeShowOnMap = false;
 
-          // กรองหมวดอื่นอยู่ → กลับไป "ทั้งหมด" ให้เห็นโพสต์ที่เพิ่งแชร์
-          if (filterCategory != null && filterCategory != category) {
+          if (clearFilter) {
             filterCategory = null;
             feedGeneration++;
           }
         });
+
+        if (clearFilter) widget.onCategoryChanged?.call(null);
 
         closeComposer();
 
@@ -935,8 +959,8 @@ class _FeedPageState extends State<FeedPage> {
           target == FeedScope.community
               ? 'แชร์ในชุมชนแล้ว'
               : showOnMap
-              ? 'แชร์ให้ครอบครัวแล้ว และแสดงบนแผนที่ 12 ชั่วโมง'
-              : 'แชร์ให้ครอบครัวแล้ว',
+              ? 'แชร์ให้กลุ่มแล้ว และแสดงบนแผนที่ 12 ชั่วโมง'
+              : 'แชร์ให้กลุ่มแล้ว',
         );
       } else if (result['code'] == 'terms_required') {
         setState(() {
@@ -1826,7 +1850,7 @@ class _FeedPageState extends State<FeedPage> {
 
         return FloatingActionButton(
           heroTag: null,
-          tooltip: community ? 'โพสต์ในชุมชน' : 'โพสต์ถึงครอบครัว',
+          tooltip: community ? 'โพสต์ในชุมชน' : 'โพสต์ถึงกลุ่ม',
           backgroundColor: community ? communityColor : AppColors.primary,
           foregroundColor: Colors.white,
           shape: const CircleBorder(),
@@ -2100,7 +2124,7 @@ class _FeedPageState extends State<FeedPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    community ? 'โพสต์ในชุมชน' : 'โพสต์ถึงครอบครัว',
+                    community ? 'โพสต์ในชุมชน' : 'โพสต์ถึงกลุ่ม',
                     style: TextStyle(
                       color: AppColors.navy,
                       fontSize: 17,
@@ -2118,7 +2142,7 @@ class _FeedPageState extends State<FeedPage> {
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        community ? 'ทุกคนในชุมชนเห็น' : 'เฉพาะครอบครัว',
+                        community ? 'ทุกคนในชุมชนเห็น' : 'เฉพาะกลุ่ม',
                         style: TextStyle(color: AppColors.muted, fontSize: 12),
                       ),
                     ],
@@ -2165,8 +2189,8 @@ class _FeedPageState extends State<FeedPage> {
 
                 decoration: InputDecoration(
                   hintText: scope == FeedScope.community
-                      ? 'แชร์เรื่องราวให้ทุกครอบครัวในชุมชน...'
-                      : 'มีอะไรอยากเล่าให้ครอบครัวฟังไหม?',
+                      ? 'แชร์เรื่องราวให้ทุกคนในชุมชน...'
+                      : 'มีอะไรอยากเล่าให้คนในกลุ่มฟังไหม?',
                   filled: true,
                   fillColor: AppColors.fill,
                   contentPadding: const EdgeInsets.all(16),
@@ -2316,7 +2340,7 @@ class _FeedPageState extends State<FeedPage> {
                       ),
                     ),
                     Text(
-                      'ครอบครัวเห็นข้างตำแหน่งของคุณ 12 ชั่วโมง',
+                      'สมาชิกในกลุ่มเห็นข้างตำแหน่งของคุณ 12 ชั่วโมง',
                       style: TextStyle(color: AppColors.muted, fontSize: 11.5),
                     ),
                   ],
@@ -2852,27 +2876,10 @@ class _FeedPageState extends State<FeedPage> {
   // เลือกหมวดของโพสต์ชุมชนที่กำลังเขียน
   // กรองฟีดชุมชนตามหมวด ("ทั้งหมด" + 5 หมวด)
   Widget buildCategoryFilter() {
-    return buildChipStrip([
-      CategoryChoiceChip(
-        label: 'ทั้งหมด',
-        icon: Icons.apps_rounded,
-        color: communityColor,
-        selected: filterCategory == null,
-        onTap: () {
-          changeFilter(null);
-        },
-      ),
-      for (final category in postCategories)
-        CategoryChoiceChip(
-          label: category.label,
-          icon: category.icon,
-          color: category.color,
-          selected: filterCategory == category.key,
-          onTap: () {
-            changeFilter(category.key);
-          },
-        ),
-    ]);
+    return CategoryFilterStrip(
+      selected: filterCategory,
+      onChanged: changeFilter,
+    );
   }
 
   // แถวชิปเลื่อนซ้าย-ขวาได้
@@ -2942,9 +2949,9 @@ class _FeedPageState extends State<FeedPage> {
         children: [
           // สำหรับคุณ / ล่าสุด / วิดีโอ อยู่ที่แถบด้านบนของหน้าหลัก
           // ผู้ใช้ที่บล็อก: ตั้งค่า → ความเป็นส่วนตัว
-          buildCategoryFilter(),
+          if (!categoryFromParent) buildCategoryFilter(),
           if (forYou && suggestions.isNotEmpty) ...[
-            const SizedBox(height: 16),
+            if (!categoryFromParent) const SizedBox(height: 16),
             buildSuggestions(),
           ],
         ],
@@ -2954,7 +2961,7 @@ class _FeedPageState extends State<FeedPage> {
     return Row(
       children: [
         Text(
-          'ล่าสุดในครอบครัว',
+          'ล่าสุดในกลุ่ม',
           style: TextStyle(
             color: AppColors.navy,
             fontSize: 19,
@@ -3351,7 +3358,7 @@ class _FeedPageState extends State<FeedPage> {
                                 Icon(
                                   community
                                       ? Icons.public_rounded
-                                      : Icons.family_restroom_rounded,
+                                      : Icons.groups_rounded,
                                   size: 13,
                                   color: AppColors.muted,
                                 ),
@@ -3361,7 +3368,7 @@ class _FeedPageState extends State<FeedPage> {
                                 child: Text(
                                   category != null
                                       ? formatDate(post['created_at'])
-                                      : '${community ? 'ชุมชน' : 'ครอบครัว'} · '
+                                      : '${community ? 'ชุมชน' : 'กลุ่ม'} · '
                                             '${formatDate(post['created_at'])}',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
@@ -4111,7 +4118,7 @@ class _FeedPageState extends State<FeedPage> {
         icon: Icons.edit_note_rounded,
         color: AppColors.primary,
         title: 'ยังไม่มีโพสต์',
-        message: 'โพสต์ที่คุณแชร์ทั้งในครอบครัวและชุมชนจะแสดงที่นี่',
+        message: 'โพสต์ที่คุณแชร์ทั้งในกลุ่มและชุมชนจะแสดงที่นี่',
       );
     }
 
@@ -4151,15 +4158,15 @@ class _FeedPageState extends State<FeedPage> {
         icon: Icons.public_rounded,
         color: communityColor,
         title: 'ชุมชนยังเงียบอยู่',
-        message: 'เป็นคนแรกที่แชร์เรื่องราวให้ทุกครอบครัวเห็น',
+        message: 'เป็นคนแรกที่แชร์เรื่องราวให้ทุกคนเห็น',
       );
     }
 
     return buildStateCard(
       icon: Icons.forum_outlined,
       color: AppColors.primary,
-      title: 'วงโคจรยังเงียบอยู่',
-      message: 'เริ่มต้นแชร์เรื่องราวแรกของครอบครัวกันเลย',
+      title: 'กลุ่มยังเงียบอยู่',
+      message: 'เริ่มต้นแชร์เรื่องราวแรกของกลุ่มกันเลย',
     );
   }
 

@@ -57,7 +57,7 @@ Future<bool> showCommunityRulesDialog(BuildContext context) async {
             children: [
               Text(
                 'โพสต์ชุมชนจะเห็นได้โดยผู้ใช้ทุกคนในแอป '
-                'ไม่ใช่แค่ครอบครัวของคุณ',
+                'ไม่ใช่แค่กลุ่มของคุณ',
                 textAlign: TextAlign.center,
               ),
               SizedBox(height: 16),
@@ -75,7 +75,7 @@ Future<bool> showCommunityRulesDialog(BuildContext context) async {
               ),
               _RuleRow(
                 icon: Icons.lock_outline_rounded,
-                text: 'อย่าโพสต์ที่อยู่ เบอร์โทร หรือตำแหน่งของครอบครัว',
+                text: 'อย่าโพสต์ที่อยู่ เบอร์โทร หรือตำแหน่งของกลุ่ม',
               ),
               SizedBox(height: 10),
               Text(

@@ -736,7 +736,7 @@ class _MyShopPageState extends State<MyShopPage> {
       (Icons.verified_outlined, 'ผู้ดูแลตรวจสอบร้าน แจ้งผลในหน้าการแจ้งเตือน'),
       (
         Icons.inventory_2_outlined,
-        'ลงสินค้าได้ 30 ชิ้น ให้ทุกครอบครัวในแอปเห็น',
+        'ลงสินค้าได้ 30 ชิ้น ให้ทุกคนในแอปเห็น',
       ),
     ];
 
@@ -770,7 +770,7 @@ class _MyShopPageState extends State<MyShopPage> {
         ),
         const SizedBox(height: 6),
         Text(
-          'ฟรีช่วงเปิดตัว ขายของกิน ของใช้ หรือบริการให้ครอบครัวในชุมชน',
+          'ฟรีช่วงเปิดตัว ขายของกิน ของใช้ หรือบริการให้คนในชุมชน',
           textAlign: TextAlign.center,
           style: TextStyle(
             color: AppColors.muted,

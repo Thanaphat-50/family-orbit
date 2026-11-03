@@ -36,7 +36,7 @@ class _SettingsPageState extends State<SettingsPage> {
   static const List<_NotificationOption> notificationOptions = [
     _NotificationOption(
       type: 'new_post',
-      title: 'โพสต์ใหม่ในครอบครัว',
+      title: 'โพสต์ใหม่ในกลุ่ม',
       icon: Icons.dynamic_feed_rounded,
     ),
     _NotificationOption(
@@ -46,12 +46,12 @@ class _SettingsPageState extends State<SettingsPage> {
     ),
     _NotificationOption(
       type: 'new_activity',
-      title: 'กิจกรรมใหม่ในครอบครัว',
+      title: 'กิจกรรมใหม่ในกลุ่ม',
       icon: Icons.event_available_rounded,
     ),
     _NotificationOption(
       type: 'member_joined',
-      title: 'มีสมาชิกใหม่เข้าครอบครัว',
+      title: 'มีสมาชิกใหม่เข้ากลุ่ม',
       icon: Icons.person_add_alt_1_rounded,
     ),
     _NotificationOption(
@@ -380,7 +380,7 @@ class _SettingsPageState extends State<SettingsPage> {
           return AlertDialog(
             title: const Text('ปิดการแชร์ตำแหน่ง?'),
             content: const Text(
-              'ครอบครัวจะไม่เห็นตำแหน่งของคุณ และตำแหน่งล่าสุดที่บันทึกไว้จะถูกลบ '
+              'สมาชิกในกลุ่มจะไม่เห็นตำแหน่งของคุณ และตำแหน่งล่าสุดที่บันทึกไว้จะถูกลบ '
               'เปิดกลับได้ทุกเมื่อ',
             ),
             actions: [
@@ -820,7 +820,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       'ทีมงานจะลบบัญชีและข้อมูลต่อไปนี้ให้ภายใน 30 วัน '
                       'และกู้คืนไม่ได้\n'
                       '• บัญชีและรูปโปรไฟล์\n'
-                      '• การเป็นสมาชิกครอบครัวและตำแหน่ง\n'
+                      '• การเป็นสมาชิกกลุ่มและตำแหน่ง\n'
                       '• โพสต์ ความคิดเห็น แชท และกิจกรรมทั้งหมด\n'
                       '• ร้านค้า สินค้า และรูปทั้งหมด',
 
@@ -1374,12 +1374,12 @@ class _SettingsPageState extends State<SettingsPage> {
         buildSwitchRow(
           icon: Icons.location_on_outlined,
           color: AppColors.success,
-          title: 'แชร์ตำแหน่งกับครอบครัว',
+          title: 'แชร์ตำแหน่งกับกลุ่ม',
           subtitle: !locationSharing
-              ? 'ปิดอยู่ ครอบครัวไม่เห็นตำแหน่งของคุณ'
+              ? 'ปิดอยู่ สมาชิกในกลุ่มไม่เห็นตำแหน่งของคุณ'
               : backgroundLocation
-              ? 'ครอบครัวเห็นตำแหน่งของคุณ แม้ปิดแอป'
-              : 'ครอบครัวเห็นตำแหน่งล่าสุดของคุณขณะเปิดแอป',
+              ? 'สมาชิกในกลุ่มเห็นตำแหน่งของคุณ แม้ปิดแอป'
+              : 'สมาชิกในกลุ่มเห็นตำแหน่งล่าสุดของคุณขณะเปิดแอป',
           value: locationSharing,
           busy: savingKeys.contains('location_sharing'),
           onChanged: setLocationSharing,
@@ -1391,7 +1391,7 @@ class _SettingsPageState extends State<SettingsPage> {
             title: 'แชร์แม้ไม่ได้เปิดแอป',
             subtitle: backgroundLocation
                 ? 'ส่งเมื่อคุณขยับ และอย่างน้อยทุก 5 นาที (มีแจ้งเตือนค้างไว้)'
-                : 'ครอบครัวเห็นตำแหน่งปัจจุบันแม้คุณปิดแอป',
+                : 'สมาชิกในกลุ่มเห็นตำแหน่งปัจจุบันแม้คุณปิดแอป',
             value: locationSharing && backgroundLocation,
             busy: backgroundBusy || !locationSharing,
             onChanged: setBackgroundLocation,

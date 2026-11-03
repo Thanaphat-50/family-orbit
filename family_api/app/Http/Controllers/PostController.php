@@ -62,7 +62,7 @@ class PostController extends Controller
         if (!$membership && !in_array($request->query('scope'), ['community', 'user'], true)) {
             return response()->json([
                 'status' => false,
-                'message' => 'คุณยังไม่ได้อยู่ในครอบครัว',
+                'message' => 'คุณยังไม่ได้อยู่ในกลุ่ม',
                 'posts' => [],
             ], 403);
         }
@@ -323,7 +323,7 @@ class PostController extends Controller
         if (!$membership && !$post->isCommunity()) {
             return response()->json([
                 'status' => false,
-                'message' => 'คุณยังไม่ได้อยู่ในครอบครัว',
+                'message' => 'คุณยังไม่ได้อยู่ในกลุ่ม',
             ], 403);
         }
 
@@ -415,7 +415,7 @@ class PostController extends Controller
             return response()->json([
                 'status' => false,
                 'code' => 'family_required',
-                'message' => 'สร้างหรือเข้าร่วมครอบครัวก่อน จึงจะโพสต์ได้',
+                'message' => 'สร้างหรือเข้าร่วมกลุ่มก่อน จึงจะโพสต์ได้',
             ], 403);
         }
 
@@ -563,7 +563,7 @@ class PostController extends Controller
         if (!FamilyMember::where('user_id', $user->id)->exists()) {
             return response()->json([
                 'status' => false,
-                'message' => 'คุณยังไม่ได้อยู่ในครอบครัว',
+                'message' => 'คุณยังไม่ได้อยู่ในกลุ่ม',
             ], 403);
         }
 
@@ -713,7 +713,7 @@ class PostController extends Controller
                         'title' => 'โพสต์ใหม่',
                         'message' =>
                             $user->name .
-                            ($sharedPostId ? ' แชร์โพสต์ให้ครอบครัว' : ' สร้างโพสต์ใหม่'),
+                            ($sharedPostId ? ' แชร์โพสต์ให้กลุ่ม' : ' สร้างโพสต์ใหม่'),
                         'data' => [
                             'post_id' => $post->id,
                         ],
@@ -756,7 +756,7 @@ class PostController extends Controller
             return response()->json([
                 'status' => false,
                 'code' => 'family_required',
-                'message' => 'สร้างหรือเข้าร่วมครอบครัวก่อน จึงจะแชร์ในแอปได้',
+                'message' => 'สร้างหรือเข้าร่วมกลุ่มก่อน จึงจะแชร์ในแอปได้',
             ], 403);
         }
 
@@ -817,7 +817,7 @@ class PostController extends Controller
         $messages = [
             'external' => 'แชร์แล้ว',
             'community' => 'แชร์ในชุมชนแล้ว',
-            'family' => 'ส่งให้ครอบครัวแล้ว',
+            'family' => 'ส่งให้กลุ่มแล้ว',
         ];
 
         return response()->json([
@@ -907,7 +907,7 @@ class PostController extends Controller
                 return response()->json([
                     'status' => false,
                     'message' =>
-                        'คุณไม่ได้อยู่ในครอบครัวของโพสต์นี้แล้ว',
+                        'คุณไม่ได้อยู่ในกลุ่มของโพสต์นี้แล้ว',
                 ], 403);
             }
         }

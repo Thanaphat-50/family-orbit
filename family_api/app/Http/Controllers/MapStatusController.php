@@ -24,7 +24,7 @@ class MapStatusController extends Controller
         if (!$post->canShowOnMap()) {
             return response()->json([
                 'status' => false,
-                'message' => 'แสดงบนแผนที่ได้เฉพาะโพสต์ครอบครัวที่มีข้อความ',
+                'message' => 'แสดงบนแผนที่ได้เฉพาะโพสต์ในกลุ่มที่มีข้อความ',
             ], 422);
         }
 
@@ -32,7 +32,7 @@ class MapStatusController extends Controller
 
         return response()->json([
             'status' => true,
-            'message' => 'แสดงข้อความนี้บนแผนที่แล้ว ครอบครัวจะเห็นข้างตำแหน่งของคุณ '
+            'message' => 'แสดงข้อความนี้บนแผนที่แล้ว สมาชิกในกลุ่มจะเห็นข้างตำแหน่งของคุณ '
                 . Post::MAP_STATUS_HOURS . ' ชั่วโมง',
             'on_map' => true,
         ]);
@@ -71,7 +71,7 @@ class MapStatusController extends Controller
 
         return response()->json([
             'status' => false,
-            'message' => 'ตั้งค่าได้เฉพาะโพสต์ครอบครัวของตัวเอง',
+            'message' => 'ตั้งค่าได้เฉพาะโพสต์ในกลุ่มของตัวเอง',
         ], 403);
     }
 }

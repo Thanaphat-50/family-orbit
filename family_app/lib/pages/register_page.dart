@@ -243,7 +243,7 @@ class _RegisterPageState
                     ),
 
                     Text(
-                      'สร้างวงโคจรของคุณ',
+                      'สร้างบัญชีของคุณ',
                       textAlign:
                           TextAlign.center,
                       style:

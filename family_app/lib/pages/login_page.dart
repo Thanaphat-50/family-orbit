@@ -390,7 +390,7 @@ class _LoginPageState
                     ),
 
                     Text(
-                      'เชื่อมต่อ พูดคุย แชร์กิจกรรม\nและดูแลสมาชิกในครอบครัวได้ในที่เดียว',
+                      'เชื่อมต่อ พูดคุย แชร์กิจกรรม\nและดูแลสมาชิกในกลุ่มได้ในที่เดียว',
                       textAlign:
                           TextAlign.center,
                       style:
@@ -700,7 +700,7 @@ class _LoginPageState
                     ),
 
                     Text(
-                      'Your family. Your circle.',
+                      'Your people. Your circle.',
                       textAlign:
                           TextAlign.center,
                       style:

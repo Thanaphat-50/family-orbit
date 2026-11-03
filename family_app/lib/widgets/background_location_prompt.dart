@@ -22,9 +22,9 @@ Future<bool> enableBackgroundLocation(BuildContext context) async {
       title: const Text('แชร์ตำแหน่งแม้ไม่ได้เปิดแอป'),
       content: SingleChildScrollView(
         child: Text(
-          '${AppInfo.name} จะเก็บตำแหน่งของคุณและส่งให้สมาชิกในครอบครัวเห็น '
+          '${AppInfo.name} จะเก็บตำแหน่งของคุณและส่งให้สมาชิกในกลุ่มเห็น '
           'แม้ตอนปิดแอปหรือไม่ได้ใช้งานอยู่\n\n'
-          '• ครอบครัวรู้ว่าคุณอยู่ที่ไหน และนำทางไปหาได้\n'
+          '• สมาชิกในกลุ่มรู้ว่าคุณอยู่ที่ไหน และนำทางไปหาได้\n'
           '• ส่งเมื่อคุณขยับ และอย่างน้อยทุก 5 นาที\n'
           '• มีแจ้งเตือน "$locationSharingTitle" ค้างไว้ระหว่างทำงาน\n'
           '• ปิดได้ทุกเมื่อที่ ตั้งค่า\n\n'
@@ -55,7 +55,7 @@ Future<bool> enableBackgroundLocation(BuildContext context) async {
       ..showSnackBar(
         SnackBar(
           content: Text(
-            problem ?? 'เปิดแล้ว ครอบครัวจะเห็นตำแหน่งของคุณแม้ปิดแอป',
+            problem ?? 'เปิดแล้ว สมาชิกในกลุ่มจะเห็นตำแหน่งของคุณแม้ปิดแอป',
           ),
         ),
       );

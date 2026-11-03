@@ -703,7 +703,7 @@ class _ChatRoomPageState extends State<ChatRoomPage>
         child: SafeArea(
           top: false,
           child: Text(
-            'ส่งข้อความไม่ได้ เพราะไม่ได้อยู่ครอบครัวเดียวกันแล้ว',
+            'ส่งข้อความไม่ได้ เพราะไม่ได้อยู่กลุ่มเดียวกันแล้ว',
             textAlign: TextAlign.center,
             style: TextStyle(color: AppColors.muted, fontSize: 13),
           ),
@@ -894,7 +894,7 @@ class _ChatRoomPageState extends State<ChatRoomPage>
                         ),
                       ),
                       Text(
-                        canSend ? 'คนในครอบครัว · แชทส่วนตัว' : 'แชทส่วนตัว',
+                        canSend ? 'สมาชิกในกลุ่ม · แชทส่วนตัว' : 'แชทส่วนตัว',
                         style: TextStyle(
                           color: AppColors.muted,
                           fontSize: 11.5,

@@ -45,7 +45,7 @@ class AccountDeletionService
             ->exists();
 
         return $hasOtherMembers
-            ? 'คุณเป็น Owner ของครอบครัวที่ยังมีสมาชิกอยู่ '
+            ? 'คุณเป็นเจ้าของกลุ่มที่ยังมีสมาชิกอยู่ '
                 . 'กรุณาโอนสิทธิ์ Owner ให้สมาชิกคนอื่นก่อนลบบัญชี'
             : null;
     }

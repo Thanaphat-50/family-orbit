@@ -75,7 +75,7 @@ class CommentController extends Controller
             return response()->json([
                 'status' => false,
                 'message' =>
-                    'คุณยังไม่ได้อยู่ในครอบครัว',
+                    'คุณยังไม่ได้อยู่ในกลุ่ม',
             ], 403);
         }
 
@@ -265,7 +265,7 @@ class CommentController extends Controller
             return response()->json([
                 'status' => false,
                 'message' =>
-                    'คุณไม่ได้อยู่ในครอบครัวของความคิดเห็นนี้แล้ว',
+                    'คุณไม่ได้อยู่ในกลุ่มของความคิดเห็นนี้แล้ว',
             ], 403);
         }
 

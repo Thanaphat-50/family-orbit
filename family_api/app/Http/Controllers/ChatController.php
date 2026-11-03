@@ -423,7 +423,7 @@ class ChatController extends Controller
     {
         return response()->json([
             'status' => false,
-            'message' => 'แชทได้เฉพาะคนในครอบครัวเดียวกัน',
+            'message' => 'แชทได้เฉพาะสมาชิกในกลุ่มเดียวกัน',
         ], 403);
     }
 

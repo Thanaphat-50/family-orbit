@@ -83,8 +83,8 @@ class InvitationCard extends StatelessWidget {
     final dynamic family = invitation['family'];
 
     final String familyName = family is Map
-        ? (family['name']?.toString() ?? 'ครอบครัว')
-        : 'ครอบครัว';
+        ? (family['name']?.toString() ?? 'กลุ่ม')
+        : 'กลุ่ม';
 
     final int members = family is Map && family['members_count'] is num
         ? (family['members_count'] as num).toInt()
@@ -93,12 +93,12 @@ class InvitationCard extends StatelessWidget {
     final dynamic face = incoming ? invitation['creator'] : invitation['user'];
 
     final String title = incoming
-        ? 'ครอบครัว $familyName'
+        ? 'กลุ่ม $familyName'
         : '${_nameOf(invitation['user'])} ขอเข้าร่วม';
 
     final String detail = incoming
         ? '${_nameOf(invitation['creator'])} ชวนคุณ · สมาชิก $members คน'
-        : 'ต้องการเข้าร่วมครอบครัวของคุณ';
+        : 'ต้องการเข้าร่วมกลุ่มของคุณ';
 
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
@@ -178,8 +178,8 @@ class PendingInvitationTile extends StatelessWidget {
     final dynamic owner = family is Map ? family['owner'] : null;
 
     final String familyName = family is Map
-        ? (family['name']?.toString() ?? 'ครอบครัว')
-        : 'ครอบครัว';
+        ? (family['name']?.toString() ?? 'กลุ่ม')
+        : 'กลุ่ม';
 
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 6, 10),
@@ -197,7 +197,7 @@ class PendingInvitationTile extends StatelessWidget {
               children: [
                 Text(
                   myRequest
-                      ? 'ครอบครัว $familyName'
+                      ? 'กลุ่ม $familyName'
                       : _nameOf(invitation['user']),
                   style: TextStyle(
                     color: AppColors.navy,
@@ -232,7 +232,7 @@ Future<String?> askInviteEmail(BuildContext context) async {
   final String? email = await showDialog<String>(
     context: context,
     builder: (dialogContext) => AlertDialog(
-      title: const Text('ชวนเข้าครอบครัว'),
+      title: const Text('ชวนเข้ากลุ่ม'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,

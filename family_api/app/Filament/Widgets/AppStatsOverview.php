@@ -40,7 +40,7 @@ class AppStatsOverview extends StatsOverviewWidget
             Stat::make('ผู้ใช้ทั้งหมด', User::count())
                 ->description('สมัครใหม่ 7 วันล่าสุด: ' . User::where('created_at', '>=', now()->subDays(7))->count()),
 
-            Stat::make('ครอบครัว', Family::count()),
+            Stat::make('กลุ่ม', Family::count()),
 
             Stat::make('โพสต์ชุมชน', Post::where('visibility', 'community')->count()),
 
