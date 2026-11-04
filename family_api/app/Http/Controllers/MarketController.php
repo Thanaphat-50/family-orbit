@@ -200,10 +200,8 @@ class MarketController extends Controller
     }
 
     // =====================================================
-    // GET /api/market/featured-products?category=&fill=1&limit=
-    // สินค้าช่องแนะนำ (ชำระเงินแล้ว) สลับลำดับทุกครั้ง ขึ้นก่อนเสมอ
-    // fill=1 → เติมด้วยสินค้ายอดนิยม (คนเข้าดูเยอะ) จนครบ limit
-    //          ป้าย "แนะนำ" (is_featured) ขึ้นเฉพาะสินค้าที่ชำระเงิน
+    // GET /api/market/featured-products?category=
+    // สินค้าช่องแนะนำ (ชำระเงินแล้วเท่านั้น) สลับลำดับทุกครั้ง
     // ไม่ระบุหมวด → รวมทุกหมวด
     // =====================================================
 
@@ -211,36 +209,17 @@ class MarketController extends Controller
     {
         $data = $request->validate([
             'category' => ['nullable', Rule::in(array_keys(config('market.categories')))],
-            'fill' => 'nullable|boolean',
-            'limit' => 'nullable|integer|min:1|max:60',
         ]);
 
         $category = $data['category'] ?? null;
 
-        $inCategory = fn (Builder $query) => $query->when(
-            $category,
-            fn (Builder $inner, string $value) => $inner->where('category', $value)
-        );
-
-        $products = $inCategory($this->visibleProductsFor($request->user())->featuredNow())
+        $products = $this->visibleProductsFor($request->user())
+            ->featuredNow()
+            ->when($category, fn (Builder $query, string $value) => $query->where('category', $value))
             ->with(['images', 'shop'])
             ->inRandomOrder()
             ->limit($category ? ProductPromotion::slotsPerCategory() : 100)
             ->get();
-
-        $limit = (int) ($data['limit'] ?? 10);
-
-        if ($request->boolean('fill') && $products->count() < $limit) {
-            $popular = $inCategory($this->visibleProductsFor($request->user()))
-                ->whereNotIn('id', $products->pluck('id'))
-                ->with(['images', 'shop'])
-                ->orderByDesc('views')
-                ->latest()
-                ->limit($limit - $products->count())
-                ->get();
-
-            $products = $products->concat($popular);
-        }
 
         return response()->json([
             'status' => true,

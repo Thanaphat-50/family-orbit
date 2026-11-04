@@ -470,6 +470,27 @@ Route::middleware('auth:sanctum')->group(function () {
         'cancel'
     ]);
 
+    // ช่องร้านแนะนำ (แบนเนอร์ใหญ่ ราคาแพงกว่า)
+    Route::get('/my-shop/promotion', [
+        MyPromotionController::class,
+        'showShop'
+    ]);
+
+    Route::post('/my-shop/promotion', [
+        MyPromotionController::class,
+        'storeShop'
+    ])->middleware('throttle:ugc');
+
+    Route::post('/my-shop/shop-promotions/{shopPromotion}/slip', [
+        MyPromotionController::class,
+        'uploadShopSlip'
+    ])->middleware('throttle:ugc');
+
+    Route::post('/my-shop/shop-promotions/{shopPromotion}/cancel', [
+        MyPromotionController::class,
+        'cancelShop'
+    ]);
+
     Route::get('/activities', [
         ActivityController::class,
         'index'

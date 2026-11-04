@@ -414,28 +414,26 @@ class MarketService {
   // ช่องแนะนำสินค้า (โอนพร้อมเพย์ + แนบสลิป)
   // =====================================================
 
-  static Future<Map<String, dynamic>> getPromotionInfo(int productId) async {
+  // productId = null → ช่องร้านแนะนำของร้านฉัน
+  static Future<Map<String, dynamic>> getPromotionInfo(int? productId) async {
     final headers = await _headers();
 
     final response = await ApiHelper.request(
-      () => http.get(
-        Uri.parse('$baseUrl/my-shop/products/$productId/promotion'),
-        headers: headers,
-      ),
+      () => http.get(_promotionUri(productId), headers: headers),
     );
 
     return ApiHelper.decode(response);
   }
 
   static Future<Map<String, dynamic>> createPromotion(
-    int productId,
+    int? productId,
     String plan,
   ) async {
     final headers = await _headers();
 
     final response = await ApiHelper.request(
       () => http.post(
-        Uri.parse('$baseUrl/my-shop/products/$productId/promotion'),
+        _promotionUri(productId),
         headers: {...headers, 'Content-Type': 'application/json'},
         body: jsonEncode({'plan': plan}),
       ),
@@ -444,13 +442,15 @@ class MarketService {
     return ApiHelper.decode(response);
   }
 
+  // shop = true → คำสั่งซื้อช่องร้านแนะนำ
   static Future<Map<String, dynamic>> uploadPromotionSlip(
     int promotionId,
-    String slipPath,
-  ) async {
+    String slipPath, {
+    bool shop = false,
+  }) async {
     final request = http.MultipartRequest(
       'POST',
-      Uri.parse('$baseUrl/my-shop/promotions/$promotionId/slip'),
+      _orderUri(promotionId, 'slip', shop),
     )..headers.addAll(await _headers());
 
     request.files.add(await http.MultipartFile.fromPath('slip', slipPath));
@@ -458,14 +458,14 @@ class MarketService {
     return _sendUpload(request);
   }
 
-  static Future<Map<String, dynamic>> cancelPromotion(int promotionId) async {
+  static Future<Map<String, dynamic>> cancelPromotion(
+    int promotionId, {
+    bool shop = false,
+  }) async {
     final headers = await _headers();
 
     final response = await ApiHelper.request(
-      () => http.post(
-        Uri.parse('$baseUrl/my-shop/promotions/$promotionId/cancel'),
-        headers: headers,
-      ),
+      () => http.post(_orderUri(promotionId, 'cancel', shop), headers: headers),
     );
 
     return ApiHelper.decode(response);
@@ -485,6 +485,18 @@ class MarketService {
   // =====================================================
   // HELPERS
   // =====================================================
+
+  static Uri _promotionUri(int? productId) => Uri.parse(
+    productId == null
+        ? '$baseUrl/my-shop/promotion'
+        : '$baseUrl/my-shop/products/$productId/promotion',
+  );
+
+  static Uri _orderUri(int promotionId, String action, bool shop) => Uri.parse(
+    shop
+        ? '$baseUrl/my-shop/shop-promotions/$promotionId/$action'
+        : '$baseUrl/my-shop/promotions/$promotionId/$action',
+  );
 
   static Future<void> _addVideo(
     http.MultipartRequest request,

@@ -183,7 +183,7 @@ class _MyShopPageState extends State<MyShopPage> {
       MaterialPageRoute(
         builder: (context) => PromotionPage(
           productId: id,
-          productTitle: product['title']?.toString() ?? '',
+          title: product['title']?.toString() ?? '',
         ),
       ),
     );
@@ -297,7 +297,6 @@ class _MyShopPageState extends State<MyShopPage> {
   BoxDecoration cardDecoration() {
     return AppDecorations.card(radius: 24);
   }
-
 
   // =====================================================
   // หัวร้าน
@@ -429,11 +428,9 @@ class _MyShopPageState extends State<MyShopPage> {
     final ShopStatusStyle style = shopStatusStyle(status);
 
     final String message = switch (status) {
-      'active' =>
-        'ร้านของคุณแสดงในหน้าร้านค้าแล้ว ผู้ซื้อติดต่อคุณได้ทางโทรศัพท์และ LINE',
+      'active' => 'ร้านของคุณแสดงในหน้าร้านค้าแล้ว ผู้ซื้อติดต่อคุณได้ทางโทรศัพท์และ LINE',
       'rejected' => 'แก้ไขข้อมูลร้านตามเหตุผลด้านล่าง แล้วกดส่งตรวจอีกครั้ง',
-      'suspended' =>
-        'ร้านถูกซ่อนจากหน้าร้านค้าชั่วคราว ติดต่อผู้ดูแลหากคิดว่าเป็นความผิดพลาด',
+      'suspended' => 'ร้านถูกซ่อนจากหน้าร้านค้าชั่วคราว ติดต่อผู้ดูแลหากคิดว่าเป็นความผิดพลาด',
       _ => 'ผู้ดูแลกำลังตรวจสอบร้านของคุณ เมื่อมีผลจะแจ้งในหน้าการแจ้งเตือน',
     };
 
@@ -491,6 +488,66 @@ class _MyShopPageState extends State<MyShopPage> {
   // =====================================================
   // ข้อมูลติดต่อ
   // =====================================================
+
+  // ช่องร้านแนะนำ (แบนเนอร์ใหญ่บนสุดของหน้าร้านค้า)
+  Widget buildShopPromotionCard(Map<String, dynamic> data) {
+    final bool featured = data['is_featured'] == true;
+
+    return Material(
+      color: featuredColor.withValues(alpha: 0.08),
+      borderRadius: BorderRadius.circular(24),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(24),
+        onTap: () async {
+          final dynamic updated = await Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => PromotionPage(
+                title: data['name']?.toString() ?? 'ร้านของฉัน',
+              ),
+            ),
+          );
+
+          if (updated == true && mounted) {
+            changed = true;
+
+            await loadShop();
+          }
+        },
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 10, 14),
+          child: Row(
+            children: [
+              const Icon(Icons.star_rounded, color: featuredColor, size: 28),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      featured ? 'ต่ออายุร้านแนะนำ' : 'ขึ้นร้านแนะนำ',
+                      style: TextStyle(
+                        color: AppColors.navy,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      featured
+                          ? 'แนะนำอยู่ถึง ${formatDateTime(data['featured_until'])}'
+                          : 'แบนเนอร์ใหญ่บนสุดของหน้าร้านค้า ให้ลูกค้าเห็นร้านก่อน',
+                      style: TextStyle(color: AppColors.muted, fontSize: 12.5),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded, color: featuredColor),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   Widget buildContactCard(Map<String, dynamic> data) {
     final String? line = data['line_id']?.toString();
@@ -737,10 +794,7 @@ class _MyShopPageState extends State<MyShopPage> {
                 PopupMenuButton<String>(
                   tooltip: 'ตัวเลือกสินค้า',
                   enabled: !busy,
-                  icon: Icon(
-                    Icons.more_vert_rounded,
-                    color: AppColors.muted,
-                  ),
+                  icon: Icon(Icons.more_vert_rounded, color: AppColors.muted),
                   onSelected: (value) {
                     switch (value) {
                       case 'edit':
@@ -799,10 +853,7 @@ class _MyShopPageState extends State<MyShopPage> {
     const steps = [
       (Icons.edit_note_rounded, 'กรอกข้อมูลร้าน เบอร์โทร และพื้นที่ขาย'),
       (Icons.bolt_rounded, 'เปิดขายได้ทันที ไม่ต้องรออนุมัติ'),
-      (
-        Icons.inventory_2_outlined,
-        'ลงสินค้าได้ 30 ชิ้น ให้ทุกคนในแอปเห็น',
-      ),
+      (Icons.inventory_2_outlined, 'ลงสินค้าได้ 30 ชิ้น ให้ทุกคนในแอปเห็น'),
     ];
 
     return ListView(
@@ -949,6 +1000,10 @@ class _MyShopPageState extends State<MyShopPage> {
                     buildHeader(data),
                     const SizedBox(height: 14),
                     buildStatusCard(data),
+                    if (data['status'] == 'active') ...[
+                      const SizedBox(height: 14),
+                      buildShopPromotionCard(data),
+                    ],
                     const SizedBox(height: 24),
                     ...buildProductsSection(data),
                     const SizedBox(height: 24),

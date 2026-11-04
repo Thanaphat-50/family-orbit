@@ -5,24 +5,25 @@ namespace App\Http\Controllers;
 use App\Models\Product;
 use App\Models\ProductPromotion;
 use App\Models\Shop;
-use App\Support\MediaStorage;
+use App\Models\ShopPromotion;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
-use RuntimeException;
 use Throwable;
 
 // =======================================================
-// ช่องแนะนำสินค้า (ฝั่งผู้ขาย)
+// ช่องแนะนำแบบชำระเงิน (ฝั่งผู้ขาย)
+// - สินค้าแนะนำ: ช่องเล็ก ราคาถูก จำกัดต่อหมวด
+// - ร้านแนะนำ: แบนเนอร์ใหญ่บนสุด ราคาแพงกว่า จำกัดรวมทั้งแอป
 // เลือกแพ็กเกจ → โอนพร้อมเพย์ตาม QR → แนบสลิป → Admin ตรวจ → ขึ้นช่องแนะนำ
-// ช่องจำกัดต่อหมวด / ต่ออายุได้ (นับต่อจากวันหมดเดิม)
+// ต่ออายุได้ (นับต่อจากวันหมดเดิม)
 // =======================================================
 
 class MyPromotionController extends Controller
 {
     // =====================================================
     // GET /api/my-shop/products/{product}/promotion
-    // แพ็กเกจ + ช่องว่างในหมวด + คำสั่งซื้อที่ค้างอยู่
     // =====================================================
 
     public function show(Request $request, Product $product)
@@ -35,27 +36,26 @@ class MyPromotionController extends Controller
 
         ProductPromotion::expireStale();
 
+        $label = config('market.categories')[$product->category] ?? $product->category;
+
         $total = ProductPromotion::slotsPerCategory();
         $used = ProductPromotion::usedSlots($product->category, $product->id);
 
-        return response()->json([
-            'status' => true,
-            'payment_enabled' => ProductPromotion::paymentEnabled(),
-            'plans' => ProductPromotion::plansPayload(),
-            'category' => $product->category,
-            'category_label' => config('market.categories')[$product->category] ?? $product->category,
-            'slots' => [
-                'total' => $total,
-                'used' => $used,
-                'available' => $product->isFeatured() || $used < $total,
-            ],
-            'featured_until' => $product->featured_until,
-            'is_featured' => $product->isFeatured(),
-            'open_order' => $this->openOrder($product)?->toSellerPayload(),
-            'history' => $product->promotions()->latest()->limit(5)->get()
-                ->map(fn (ProductPromotion $promotion) => $promotion->toSellerPayload())
-                ->values(),
-        ]);
+        return $this->info(
+            ProductPromotion::class,
+            featured: $product->isFeatured(),
+            featuredUntil: $product->featured_until,
+            used: $used,
+            total: $total,
+            openOrder: $product->promotions()->open()->latest()->first()?->setRelation('product', $product),
+            history: $product->promotions()->latest()->limit(5)->get(),
+            extra: [
+                'category' => $product->category,
+                'category_label' => $label,
+                'slot_label' => "ช่องสินค้าแนะนำหมวด \"{$label}\"",
+                'placement_label' => "ขึ้นในช่อง \"สินค้าแนะนำ\" ของหน้าร้านค้า และหมวด \"{$label}\"",
+            ]
+        );
     }
 
     // =====================================================
@@ -70,34 +70,20 @@ class MyPromotionController extends Controller
             return $this->notFound();
         }
 
-        $data = $request->validate([
-            'plan' => ['required', Rule::in(array_keys(config('market.promotion_plans')))],
-        ], [
-            'plan.*' => 'กรุณาเลือกแพ็กเกจ',
-        ]);
+        $plan = $this->validatePlan($request, ProductPromotion::class);
 
-        if (!$shop->isActive()) {
-            return $this->fail('ร้านต้องได้รับอนุมัติก่อน จึงจะซื้อช่องแนะนำได้', 422);
+        if ($error = $this->cannotBuy($shop)) {
+            return $error;
         }
 
         if ($product->status !== Product::STATUS_ACTIVE || $product->hidden_at !== null) {
             return $this->fail('สินค้านี้ถูกซ่อนอยู่ แสดงสินค้าก่อนจึงจะซื้อช่องแนะนำได้', 422);
         }
 
-        if (!ProductPromotion::paymentEnabled()) {
-            return $this->fail('ยังไม่เปิดรับชำระเงินค่าช่องแนะนำ', 422);
-        }
-
         ProductPromotion::expireStale();
 
-        if ($open = $this->openOrder($product)) {
-            return response()->json([
-                'status' => false,
-                'message' => $open->status === ProductPromotion::STATUS_PENDING_REVIEW
-                    ? 'สินค้านี้มีสลิปรอตรวจอยู่แล้ว'
-                    : 'สินค้านี้มีรายการรอชำระอยู่แล้ว',
-                'order' => $open->toSellerPayload(),
-            ], 409);
+        if ($open = $product->promotions()->open()->latest()->first()) {
+            return $this->alreadyOpen($open->setRelation('product', $product));
         }
 
         $total = ProductPromotion::slotsPerCategory();
@@ -108,28 +94,92 @@ class MyPromotionController extends Controller
             return $this->fail("ช่องแนะนำหมวด \"{$label}\" เต็มแล้ว ({$total} ช่อง) ลองใหม่ภายหลัง", 409);
         }
 
-        $plan = config('market.promotion_plans')[$data['plan']];
-
         $order = ProductPromotion::create([
             'product_id' => $product->id,
             'user_id' => $request->user()->id,
-            'plan' => $data['plan'],
-            'days' => (int) $plan['days'],
-            'amount' => (int) $plan['price'],
+            'plan' => $plan['key'],
+            'days' => $plan['days'],
+            'amount' => $plan['price'],
             'category' => $product->category,
             'status' => ProductPromotion::STATUS_AWAITING_PAYMENT,
         ]);
 
-        return response()->json([
-            'status' => true,
-            'message' => 'สร้างรายการแล้ว โอนตาม QR แล้วแนบสลิปภายใน '
-                . config('market.promotion_payment_hours') . ' ชั่วโมง',
-            'order' => $order->setRelation('product', $product)->toSellerPayload(),
-        ], 201);
+        return $this->created($order->setRelation('product', $product));
     }
 
     // =====================================================
-    // GET /api/my-shop/promotions
+    // GET /api/my-shop/promotion — ช่องร้านแนะนำของร้านฉัน
+    // =====================================================
+
+    public function showShop(Request $request)
+    {
+        $shop = $this->myShop($request);
+
+        if (!$shop) {
+            return $this->fail('คุณยังไม่มีร้าน', 404);
+        }
+
+        ShopPromotion::expireStale();
+
+        return $this->info(
+            ShopPromotion::class,
+            featured: $shop->isFeatured(),
+            featuredUntil: $shop->featured_until,
+            used: ShopPromotion::usedSlots($shop->id),
+            total: ShopPromotion::slots(),
+            openOrder: $shop->promotions()->open()->latest()->first()?->setRelation('shop', $shop),
+            history: $shop->promotions()->latest()->limit(5)->get(),
+            extra: [
+                'slot_label' => 'ช่องร้านแนะนำ',
+                'placement_label' => 'ขึ้นในช่อง "ร้านแนะนำ" (แบนเนอร์ใหญ่) ด้านบนสุดของหน้าร้านค้า',
+            ]
+        );
+    }
+
+    // =====================================================
+    // POST /api/my-shop/promotion {plan}
+    // =====================================================
+
+    public function storeShop(Request $request)
+    {
+        $shop = $this->myShop($request);
+
+        if (!$shop) {
+            return $this->fail('คุณยังไม่มีร้าน', 404);
+        }
+
+        $plan = $this->validatePlan($request, ShopPromotion::class);
+
+        if ($error = $this->cannotBuy($shop)) {
+            return $error;
+        }
+
+        ShopPromotion::expireStale();
+
+        if ($open = $shop->promotions()->open()->latest()->first()) {
+            return $this->alreadyOpen($open->setRelation('shop', $shop));
+        }
+
+        $total = ShopPromotion::slots();
+
+        if (!$shop->isFeatured() && ShopPromotion::usedSlots($shop->id) >= $total) {
+            return $this->fail("ช่องร้านแนะนำเต็มแล้ว ({$total} ช่อง) ลองใหม่ภายหลัง", 409);
+        }
+
+        $order = ShopPromotion::create([
+            'shop_id' => $shop->id,
+            'user_id' => $request->user()->id,
+            'plan' => $plan['key'],
+            'days' => $plan['days'],
+            'amount' => $plan['price'],
+            'status' => ShopPromotion::STATUS_AWAITING_PAYMENT,
+        ]);
+
+        return $this->created($order->setRelation('shop', $shop));
+    }
+
+    // =====================================================
+    // GET /api/my-shop/promotions — รายการสินค้าแนะนำที่สั่งซื้อ
     // =====================================================
 
     public function index(Request $request)
@@ -150,10 +200,119 @@ class MyPromotionController extends Controller
 
     // =====================================================
     // POST /api/my-shop/promotions/{promotion}/slip (multipart slip)
+    // POST /api/my-shop/shop-promotions/{shopPromotion}/slip
     // แนบสลิปได้ตอนรอชำระ หรือเปลี่ยนสลิปตอนรอตรวจ
     // =====================================================
 
     public function uploadSlip(Request $request, ProductPromotion $promotion)
+    {
+        return $this->attachSlip($request, $promotion->load('product:id,title'));
+    }
+
+    public function uploadShopSlip(Request $request, ShopPromotion $shopPromotion)
+    {
+        return $this->attachSlip($request, $shopPromotion->load('shop:id,name'));
+    }
+
+    // =====================================================
+    // POST /api/my-shop/promotions/{promotion}/cancel
+    // POST /api/my-shop/shop-promotions/{shopPromotion}/cancel
+    // =====================================================
+
+    public function cancel(Request $request, ProductPromotion $promotion)
+    {
+        return $this->cancelOrder($request, $promotion->load('product:id,title'));
+    }
+
+    public function cancelShop(Request $request, ShopPromotion $shopPromotion)
+    {
+        return $this->cancelOrder($request, $shopPromotion->load('shop:id,name'));
+    }
+
+    // =====================================================
+    // HELPERS (ProductPromotion / ShopPromotion ใช้ร่วมกัน)
+    // =====================================================
+
+    private function info(
+        string $model,
+        bool $featured,
+        $featuredUntil,
+        int $used,
+        int $total,
+        ?Model $openOrder,
+        $history,
+        array $extra
+    ) {
+        return response()->json([
+            'status' => true,
+            'payment_enabled' => $model::paymentEnabled(),
+            'plans' => $model::plansPayload(),
+            'slots' => [
+                'total' => $total,
+                'used' => $used,
+                'available' => $featured || $used < $total,
+            ],
+            'featured_until' => $featuredUntil,
+            'is_featured' => $featured,
+            'open_order' => $openOrder?->toSellerPayload(),
+            'history' => $history->map(fn (Model $promotion) => $promotion->toSellerPayload())->values(),
+            ...$extra,
+        ]);
+    }
+
+    // แพ็กเกจที่เลือก → ['key', 'days', 'price']
+    private function validatePlan(Request $request, string $model): array
+    {
+        $plans = config($model::plansConfigKey());
+
+        $data = $request->validate([
+            'plan' => ['required', Rule::in(array_keys($plans))],
+        ], [
+            'plan.*' => 'กรุณาเลือกแพ็กเกจ',
+        ]);
+
+        return [
+            'key' => $data['plan'],
+            'days' => (int) $plans[$data['plan']]['days'],
+            'price' => (int) $plans[$data['plan']]['price'],
+        ];
+    }
+
+    private function cannotBuy(Shop $shop)
+    {
+        if (!$shop->isActive()) {
+            return $this->fail('ร้านต้องเปิดขายอยู่ จึงจะซื้อช่องแนะนำได้', 422);
+        }
+
+        if (!ProductPromotion::paymentEnabled()) {
+            return $this->fail('ยังไม่เปิดรับชำระเงินค่าช่องแนะนำ', 422);
+        }
+
+        return null;
+    }
+
+    private function alreadyOpen(Model $open)
+    {
+        return response()->json([
+            'status' => false,
+            'message' => $open->status === ProductPromotion::STATUS_PENDING_REVIEW
+                ? 'มีสลิปรอตรวจอยู่แล้ว'
+                : 'มีรายการรอชำระอยู่แล้ว',
+            'order' => $open->toSellerPayload(),
+        ], 409);
+    }
+
+    private function created(Model $order)
+    {
+        return response()->json([
+            'status' => true,
+            'message' => 'สร้างรายการแล้ว โอนตาม QR แล้วแนบสลิปภายใน '
+                . config('market.promotion_payment_hours') . ' ชั่วโมง',
+            'order' => $order->toSellerPayload(),
+        ], 201);
+    }
+
+    private function attachSlip(Request $request, Model $promotion)
     {
         if ((int) $promotion->user_id !== (int) $request->user()->id) {
             return $this->orderNotFound();
@@ -176,39 +335,24 @@ class MyPromotionController extends Controller
         ]);
 
         try {
-            $path = $request->file('slip')->store('promotion_slips/' . $promotion->user_id, MediaStorage::disk())
-                ?: throw new RuntimeException('Could not store the slip.');
+            $promotion->attachSlip($request->file('slip'));
         } catch (Throwable $e) {
             Log::error('Promotion slip upload failed', [
-                'promotion_id' => $promotion->id,
+                'promotion' => $promotion::class . '#' . $promotion->id,
                 'error' => $e->getMessage(),
             ]);
 
             return $this->fail('อัปโหลดสลิปไม่สำเร็จ กรุณาลองอีกครั้ง', 500);
         }
 
-        $old = $promotion->slip_path;
-
-        $promotion->forceFill([
-            'slip_path' => $path,
-            'slip_uploaded_at' => now(),
-            'status' => ProductPromotion::STATUS_PENDING_REVIEW,
-        ])->save();
-
-        MediaStorage::delete([$old]);
-
         return response()->json([
             'status' => true,
             'message' => 'ส่งสลิปแล้ว รอทีมงานตรวจสอบ',
-            'order' => $promotion->load('product:id,title')->toSellerPayload(),
+            'order' => $promotion->toSellerPayload(),
         ]);
     }
 
-    // =====================================================
-    // POST /api/my-shop/promotions/{promotion}/cancel
-    // =====================================================
-
-    public function cancel(Request $request, ProductPromotion $promotion)
+    private function cancelOrder(Request $request, Model $promotion)
     {
         if ((int) $promotion->user_id !== (int) $request->user()->id) {
             return $this->orderNotFound();
@@ -223,29 +367,13 @@ class MyPromotionController extends Controller
         return response()->json([
             'status' => true,
             'message' => 'ยกเลิกรายการแล้ว',
-            'order' => $promotion->load('product:id,title')->toSellerPayload(),
+            'order' => $promotion->toSellerPayload(),
         ]);
     }
-
-    // =====================================================
-    // HELPERS
-    // =====================================================
 
     private function myShop(Request $request): ?Shop
     {
         return Shop::where('user_id', $request->user()->id)->first();
-    }
-
-    // รายการที่ยังไม่จบ: รอชำระ (ยังไม่หมดเวลา) / รอตรวจสลิป
-    private function openOrder(Product $product): ?ProductPromotion
-    {
-        return $product->promotions()
-            ->where(fn ($query) => $query
-                ->where('status', ProductPromotion::STATUS_PENDING_REVIEW)
-                ->orWhere(fn ($awaiting) => $awaiting->awaitingInTime()))
-            ->latest()
-            ->first()
-            ?->setRelation('product', $product);
     }
 
     private function fail(string $message, int $status)

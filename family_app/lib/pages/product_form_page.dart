@@ -261,7 +261,7 @@ class _ProductFormPageState extends State<ProductFormPage> {
             MaterialPageRoute(
               builder: (context) => PromotionPage(
                 productId: productId,
-                productTitle: titleController.text.trim(),
+                title: titleController.text.trim(),
               ),
             ),
           );

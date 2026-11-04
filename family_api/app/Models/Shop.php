@@ -89,6 +89,11 @@ class Shop extends Model
         return $this->hasMany(ShopReview::class);
     }
 
+    public function promotions()
+    {
+        return $this->hasMany(ShopPromotion::class);
+    }
+
     public function getVideoUrlAttribute(): ?string
     {
         return MediaStorage::url($this->video_path);
@@ -233,7 +238,7 @@ class Shop extends Model
         });
 
         static::deleting(function (Shop $shop) {
-            $shop->loadMissing(['images', 'products.images', 'products.promotions']);
+            $shop->loadMissing(['images', 'promotions', 'products.images', 'products.promotions']);
         });
 
         static::deleted(function (Shop $shop) {
@@ -242,6 +247,7 @@ class Shop extends Model
                 $shop->video_path,
                 $shop->video_thumbnail_path,
                 ...$shop->images->pluck('path')->all(),
+                ...$shop->promotions->pluck('slip_path')->all(),
                 ...$shop->products->flatMap(fn (Product $product) => $product->mediaPaths())->all(),
             ];
 
@@ -264,6 +270,7 @@ class Shop extends Model
             ...$products->flatMap(fn (Product $product) => [$product->video_path, $product->video_thumbnail_path])->all(),
             ...ProductImage::whereIn('product_id', $products->pluck('id'))->pluck('path')->all(),
             ...ProductPromotion::where('user_id', $userId)->pluck('slip_path')->all(),
+            ...ShopPromotion::where('user_id', $userId)->pluck('slip_path')->all(),
         ];
     }
 }

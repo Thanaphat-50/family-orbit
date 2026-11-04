@@ -17,14 +17,11 @@ import '../widgets/featured_shops_banner.dart';
 // =======================================================
 
 class PromotionPage extends StatefulWidget {
-  final int productId;
-  final String productTitle;
+  // null = ช่องร้านแนะนำ (แบนเนอร์ใหญ่) / มีค่า = ช่องสินค้าแนะนำของสินค้านี้
+  final int? productId;
+  final String title;
 
-  const PromotionPage({
-    super.key,
-    required this.productId,
-    required this.productTitle,
-  });
+  const PromotionPage({super.key, this.productId, required this.title});
 
   @override
   State<PromotionPage> createState() => _PromotionPageState();
@@ -141,7 +138,11 @@ class _PromotionPageState extends State<PromotionPage> {
     setState(() => isWorking = true);
 
     try {
-      final result = await MarketService.uploadPromotionSlip(id, file.path);
+      final result = await MarketService.uploadPromotionSlip(
+        id,
+        file.path,
+        shop: widget.productId == null,
+      );
 
       if (!mounted) return;
 
@@ -190,7 +191,10 @@ class _PromotionPageState extends State<PromotionPage> {
     setState(() => isWorking = true);
 
     try {
-      final result = await MarketService.cancelPromotion(id);
+      final result = await MarketService.cancelPromotion(
+        id,
+        shop: widget.productId == null,
+      );
 
       if (!mounted) return;
 
@@ -300,7 +304,7 @@ class _PromotionPageState extends State<PromotionPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  widget.productTitle,
+                  widget.title,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -313,7 +317,7 @@ class _PromotionPageState extends State<PromotionPage> {
                 Text(
                   featured
                       ? 'แนะนำอยู่ถึง ${formatDateTime(info?['featured_until'])}'
-                      : 'ขึ้นด้านบนของหน้าร้านค้าและหมวด "${info?['category_label'] ?? ''}"',
+                      : info?['placement_label']?.toString() ?? '',
                   style: TextStyle(
                     color: featured ? AppColors.success : AppColors.muted,
                     fontSize: 12.5,
@@ -352,7 +356,7 @@ class _PromotionPageState extends State<PromotionPage> {
         ),
         const SizedBox(height: 4),
         Text(
-          'ช่องแนะนำหมวด "${info?['category_label'] ?? ''}" ใช้ไป ${slots['used'] ?? 0}/${slots['total'] ?? 0} ช่อง',
+          '${info?['slot_label'] ?? 'ช่องแนะนำ'} ใช้ไป ${slots['used'] ?? 0}/${slots['total'] ?? 0} ช่อง',
           style: TextStyle(color: AppColors.muted, fontSize: 12.5),
         ),
         const SizedBox(height: 12),
@@ -511,7 +515,7 @@ class _PromotionPageState extends State<PromotionPage> {
       'เลือกแพ็กเกจ แล้วกด "ไปชำระเงิน"',
       'สแกน QR พร้อมเพย์ด้วยแอปธนาคาร (หรือบันทึกรูป QR แล้วสแกนจากรูป)',
       'กลับมาแนบสลิปการโอนในหน้านี้',
-      'ทีมงานตรวจสลิป แล้วสินค้าขึ้นช่องแนะนำทันที',
+      'ทีมงานตรวจสลิป แล้วขึ้นช่องแนะนำทันที',
     ];
 
     return card(

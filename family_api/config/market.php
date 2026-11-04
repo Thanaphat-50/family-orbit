@@ -81,6 +81,26 @@ return [
 
     'featured_slots_per_category' => (int) env('MARKET_FEATURED_SLOTS_PER_CATEGORY', 10),
 
+    // ช่อง "ร้านแนะนำ" (แบนเนอร์ใหญ่บนสุด) ราคาแพงกว่าช่องสินค้า
+    // จำนวนช่องรวมใช้ featured_slots ด้านบน
+    'shop_promotion_plans' => [
+        'day' => [
+            'label' => '1 วัน',
+            'days' => 1,
+            'price' => (int) env('PROMO_SHOP_PRICE_DAY', 149),
+        ],
+        'month' => [
+            'label' => '1 เดือน',
+            'days' => 30,
+            'price' => (int) env('PROMO_SHOP_PRICE_MONTH', 2490),
+        ],
+        'year' => [
+            'label' => '1 ปี',
+            'days' => 365,
+            'price' => (int) env('PROMO_SHOP_PRICE_YEAR', 22900),
+        ],
+    ],
+
     // แนบสลิปภายในกี่ชั่วโมงหลังสั่งซื้อ (เกินแล้วยกเลิกเอง ช่องที่จองไว้คืน)
     'promotion_payment_hours' => (int) env('PROMO_PAYMENT_HOURS', 24),
 

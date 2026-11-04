@@ -9,6 +9,7 @@ import '../widgets/post_categories.dart';
 import 'featured_products_page.dart';
 import 'market_product_page.dart';
 import 'market_shop_page.dart';
+import 'my_shop_page.dart';
 
 // =======================================================
 // หน้าร้านค้า
@@ -38,6 +39,10 @@ class _ShopPageState extends State<ShopPage> {
 
   // สินค้าช่องแนะนำของหมวดที่เลือก (ไม่เลือก = ทุกหมวด)
   List<Map<String, dynamic>> featuredProducts = [];
+
+  // โหลดช่องแนะนำเสร็จแล้ว (ยังไม่เสร็จ → ไม่ขึ้น "ช่องว่างอยู่")
+  bool featuredShopsReady = false;
+  bool featuredProductsReady = false;
 
   bool isLoading = true;
   bool isLoadingMore = false;
@@ -82,7 +87,6 @@ class _ShopPageState extends State<ShopPage> {
     try {
       final result = await MarketService.getFeaturedProducts(
         category: selected,
-        fill: true,
       );
 
       if (!mounted || result['status'] != true || selected != category) return;
@@ -95,6 +99,10 @@ class _ShopPageState extends State<ShopPage> {
       });
     } catch (_) {
       // ส่วนเสริม โหลดไม่ได้ก็ซ่อนไว้
+    } finally {
+      if (mounted && selected == category) {
+        setState(() => featuredProductsReady = true);
+      }
     }
   }
 
@@ -185,6 +193,8 @@ class _ShopPageState extends State<ShopPage> {
       });
     } catch (_) {
       // แบนเนอร์เป็นส่วนเสริม โหลดไม่ได้ก็ซ่อนไว้
+    } finally {
+      if (mounted) setState(() => featuredShopsReady = true);
     }
   }
 
@@ -198,6 +208,7 @@ class _ShopPageState extends State<ShopPage> {
       isLoadingMore = false;
       loadError = null;
       featuredProducts = [];
+      featuredProductsReady = false;
     });
 
     loadProducts();
@@ -398,6 +409,56 @@ class _ShopPageState extends State<ShopPage> {
     );
   }
 
+  Widget buildFeaturedTitle(String title) {
+    return Row(
+      children: [
+        const Icon(Icons.star_rounded, color: featuredColor, size: 22),
+        const SizedBox(width: 4),
+        Text(
+          title,
+          style: TextStyle(
+            color: AppColors.navy,
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ยังไม่มีใครซื้อช่องนี้ → บอกผู้ขายว่าขึ้นตรงนี้ได้ (กดไปร้านของฉัน)
+  Widget buildEmptySlot(String text) {
+    return Material(
+      color: featuredColor.withValues(alpha: 0.06),
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: () => Navigator.of(context)
+            .push(MaterialPageRoute(builder: (context) => const MyShopPage())),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: featuredColor.withValues(alpha: 0.35)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.campaign_outlined, color: featuredColor),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  '$text · ร้านของคุณขึ้นตรงนี้ได้',
+                  style: TextStyle(color: AppColors.navy, fontSize: 13),
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded, color: featuredColor),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget buildSectionTitle(String title) {
     return Text(
       title,
@@ -517,31 +578,32 @@ class _ShopPageState extends State<ShopPage> {
                 buildSearchField(),
                 const SizedBox(height: 10),
                 buildFilters(),
-                if (showFeaturedProducts) ...[
+                // 1) ร้านแนะนำ: แบนเนอร์ใหญ่ (ช่องราคาแพงกว่า)
+                if (!isFiltering && (showFeatured || featuredShopsReady)) ...[
                   const SizedBox(height: 20),
-                  buildFeaturedProducts(),
-                ],
-                if (showFeatured) ...[
-                  const SizedBox(height: 20),
-                  Row(
-                    children: [
-                      Icon(Icons.star_rounded, color: featuredColor, size: 22),
-                      SizedBox(width: 4),
-                      Text(
-                        'ร้านแนะนำ',
-                        style: TextStyle(
-                          color: AppColors.navy,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ],
-                  ),
+                  buildFeaturedTitle('ร้านแนะนำ'),
                   const SizedBox(height: 10),
-                  FeaturedShopsBanner(
-                    shops: featuredShops,
-                    onOpenShop: openShop,
-                  ),
+                  showFeatured
+                      ? FeaturedShopsBanner(
+                          shops: featuredShops,
+                          onOpenShop: openShop,
+                        )
+                      : buildEmptySlot('ช่องร้านแนะนำว่างอยู่'),
+                ],
+                // 2) สินค้าแนะนำ: ช่องเล็ก (ราคาถูกกว่า) ไม่แสดงตอนค้นหาด้วยคำ
+                if (query.isEmpty &&
+                    (showFeaturedProducts || featuredProductsReady)) ...[
+                  const SizedBox(height: 20),
+                  showFeaturedProducts
+                      ? buildFeaturedProducts()
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            buildFeaturedTitle('สินค้าแนะนำ'),
+                            const SizedBox(height: 10),
+                            buildEmptySlot('ช่องสินค้าแนะนำว่างอยู่'),
+                          ],
+                        ),
                 ],
                 const SizedBox(height: 22),
                 buildSectionTitle(isFiltering ? 'ผลการค้นหา' : 'สินค้าใหม่'),
