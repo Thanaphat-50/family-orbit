@@ -293,6 +293,7 @@ class _NotificationPageState extends State<NotificationPage> {
 
       // ผู้ดูแล: ระบบตรวจพบสินค้า/ร้านที่อาจผิดกฎหมาย → เปิดดูสินค้าหรือร้านนั้น
       case 'market_flag':
+      case 'market_report':
         final int? productId = dataId('product_id');
         final int? flaggedShopId = dataId('shop_id');
 
@@ -439,6 +440,11 @@ class _NotificationPageState extends State<NotificationPage> {
       case 'market_flag':
         return _NotificationStyle(
           icon: Icons.gpp_maybe_rounded,
+          color: AppColors.danger,
+        );
+      case 'market_report':
+        return _NotificationStyle(
+          icon: Icons.flag_rounded,
           color: AppColors.danger,
         );
       case 'promotion_status':

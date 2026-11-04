@@ -15,7 +15,7 @@ use Laravel\Sanctum\Sanctum;
 use Tests\Concerns\FakesImages;
 use Tests\TestCase;
 
-// ร้านเปิดขายได้ทันที + ตรวจสินค้าต้องห้ามอัตโนมัติ → แจ้งผู้ดูแล
+// ร้านเปิดขายได้ทันที + ตรวจสินค้าต้องห้ามอัตโนมัติ → ซ่อนไว้ก่อน + แจ้งผู้ดูแล
 class MarketScreeningTest extends TestCase
 {
     use FakesImages, RefreshDatabase;
@@ -113,17 +113,46 @@ class MarketScreeningTest extends TestCase
         $this->assertSame(['tobacco'], $flag->categories);
         $this->assertContains('บุหรี่', $flag->terms);
         $this->assertSame(MarketFlag::STATUS_OPEN, $flag->status);
+        $this->assertTrue($flag->auto_hidden);
 
         foreach ([$adminA, $adminB] as $admin) {
             $notification = AppNotification::where('user_id', $admin->id)->where('type', 'market_flag')->sole();
 
             $this->assertSame('ตรวจพบสินค้าที่อาจผิดกฎหมาย', $notification->title);
             $this->assertStringContainsString('บุหรี่ / บุหรี่ไฟฟ้า', $notification->message);
+            $this->assertStringContainsString('ซ่อนสินค้าไว้แล้ว', $notification->message);
         }
 
-        // ผู้ขายและผู้ซื้อไม่ได้รับแจ้งเตือนนี้ และสินค้ายังไม่ถูกซ่อนเอง
+        // สินค้าถูกซ่อนทันที ผู้ซื้อมองไม่เห็น / เจ้าของร้านได้รับแจ้งว่าถูกซ่อนชั่วคราว
+        $this->assertNotNull(Product::sole()->hidden_at);
         $this->assertSame(0, AppNotification::where('user_id', $owner->id)->where('type', 'market_flag')->count());
-        $this->assertNull(Product::sole()->hidden_at);
+        $this->assertSame(
+            'สินค้าถูกซ่อนชั่วคราว',
+            AppNotification::where('user_id', $owner->id)->where('type', 'shop_status')->sole()->title
+        );
+
+        Sanctum::actingAs(User::factory()->create());
+
+        $this->getJson('/api/market/products')->assertOk()->assertJsonCount(0, 'products');
+    }
+
+    public function test_seller_sees_why_a_new_product_is_hidden(): void
+    {
+        $owner = User::factory()->create();
+        $this->activeShop($owner);
+
+        Sanctum::actingAs($owner);
+
+        $this->postJson('/api/my-shop/products', [
+            'title' => 'งาช้างแท้',
+            'price' => '100',
+            'category' => 'other',
+            'images' => [$this->fakePng()],
+        ])
+            ->assertCreated()
+            ->assertJsonPath('message', 'เพิ่มสินค้าแล้ว แต่ระบบพบคำที่อาจผิดกฎ สินค้าถูกซ่อนไว้รอทีมงานตรวจสอบ');
+
+        $this->assertNotNull(Product::sole()->hidden_at);
     }
 
     public function test_harmless_phrases_and_place_names_are_not_flagged(): void
@@ -154,12 +183,21 @@ class MarketScreeningTest extends TestCase
             'phone' => '0812345678',
             'province' => 'เชียงใหม่',
             'accept_terms' => '1',
-        ])->assertCreated();
+        ])
+            ->assertCreated()
+            ->assertJsonPath('shop.status', Shop::STATUS_SUSPENDED)
+            ->assertJsonPath('message', Shop::AUTO_SCREEN_REASON);
 
         $flag = MarketFlag::sole();
 
         $this->assertSame(Shop::class, $flag->flaggable_type);
         $this->assertSame(['gambling'], $flag->categories);
+        $this->assertTrue($flag->auto_hidden);
+
+        // ผู้ดูแลตรวจแล้วไม่ผิดกฎ → เปิดร้านคืน
+        $flag->dismiss(User::where('is_admin', true)->first());
+
+        $this->assertSame(Shop::STATUS_ACTIVE, Shop::sole()->status);
     }
 
     // =====================================================
@@ -183,18 +221,28 @@ class MarketScreeningTest extends TestCase
 
         $flag = MarketFlag::sole();
 
-        $flag->close($admin, MarketFlag::STATUS_DISMISSED);
+        $this->assertNotNull($product->refresh()->hidden_at);
 
-        // แก้ราคา → ไม่ตรวจใหม่ / แก้รายละเอียดแต่คำต้องห้ามเหมือนเดิม → ไม่แจ้งซ้ำ
+        // ไม่ผิดกฎ (แก้วเบียร์) → แสดงคืน + แจ้งเจ้าของร้าน
+        $flag->dismiss($admin);
+
+        $this->assertNull($product->refresh()->hidden_at);
+        $this->assertTrue(
+            AppNotification::where('user_id', $owner->id)->where('title', 'สินค้าแสดงตามปกติแล้ว')->exists()
+        );
+
+        // แก้ราคา → ไม่ตรวจใหม่ / แก้รายละเอียดแต่คำต้องห้ามเหมือนเดิม → ไม่แจ้งซ้ำ ไม่ซ่อนซ้ำ
         $product->update(['price' => 120]);
         $product->update(['description' => 'มีหลายขนาด']);
 
         $this->assertSame(1, MarketFlag::count());
         $this->assertSame(1, AppNotification::where('type', 'market_flag')->count());
+        $this->assertNull($product->refresh()->hidden_at);
 
-        // เพิ่มคำต้องห้ามใหม่ → แจ้งอีกครั้ง
+        // เพิ่มคำต้องห้ามใหม่ → ซ่อน + แจ้งอีกครั้ง
         $product->update(['description' => 'แถมบุหรี่']);
 
+        $this->assertNotNull($product->refresh()->hidden_at);
         $this->assertSame(2, MarketFlag::count());
         $this->assertSame(MarketFlag::STATUS_OPEN, MarketFlag::latest('id')->first()->status);
         $this->assertSame(2, AppNotification::where('type', 'market_flag')->count());

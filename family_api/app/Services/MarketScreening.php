@@ -14,7 +14,8 @@ use Illuminate\Support\Str;
 // ตรวจสินค้าต้องห้ามอัตโนมัติ (ร้านเปิดขายได้ทันที ไม่ต้องรออนุมัติ)
 // - เทียบชื่อ/รายละเอียดกับคำใน config('market.prohibited')
 // - ไม่สนช่องว่าง เครื่องหมาย ตัวพิมพ์ (กันเขียนแยกเลี่ยงคำ)
-// - พบ → บันทึก MarketFlag + แจ้งเตือนผู้ดูแลทุกคน (ไม่ซ่อนสินค้าเอง)
+// - พบ → ซ่อนสินค้า / ปิดร้านทันที + บันทึก MarketFlag + แจ้งผู้ดูแลทุกคนและเจ้าของร้าน
+//   (ผู้ดูแลกด "ไม่ผิดกฎ" → แสดงคืน)
 // - คำเดิมที่ผู้ดูแลตรวจแล้ว ไม่แจ้งซ้ำ
 // =======================================================
 
@@ -124,9 +125,38 @@ class MarketScreening
                 ...$values,
             ]);
 
+        $this->autoHide($flag, $item);
+
         $this->notifyAdmins($flag, $item);
 
         return $flag;
+    }
+
+    // ซ่อนสินค้า / ปิดร้านไว้ก่อน จนกว่าผู้ดูแลจะตรวจ + แจ้งเจ้าของร้าน
+    public function autoHide(MarketFlag $flag, Model $item): void
+    {
+        if ($item instanceof Product && $item->hidden_at === null) {
+            $item->forceFill(['hidden_at' => now()])->save();
+
+            AppNotification::create([
+                'user_id' => $item->shop->user_id,
+                'family_id' => null,
+                'type' => 'shop_status',
+                'title' => 'สินค้าถูกซ่อนชั่วคราว',
+                'message' => '"' . $item->title . '" มีคำที่อาจผิดกฎ (' . $flag->categoryLabels()
+                    . ') ทีมงานจะตรวจสอบ ถ้าไม่ผิดกฎจะแสดงตามปกติ',
+                'data' => ['shop_id' => $item->shop_id, 'product_id' => $item->id],
+                'is_read' => false,
+            ]);
+
+            $flag->forceFill(['auto_hidden' => true])->save();
+        }
+
+        if ($item instanceof Shop && $item->status === Shop::STATUS_ACTIVE) {
+            $item->suspend(Shop::AUTO_SCREEN_REASON);
+
+            $flag->forceFill(['auto_hidden' => true])->save();
+        }
     }
 
     private function notifyAdmins(MarketFlag $flag, Model $item): void
@@ -146,7 +176,8 @@ class MarketScreening
                 'message' => '"' . $name . '"'
                     . ($isProduct && $shopName ? ' (ร้าน ' . $shopName . ')' : '')
                     . ' เข้าข่าย ' . $flag->categoryLabels()
-                    . ' · คำที่พบ: ' . implode(', ', $flag->terms),
+                    . ' · คำที่พบ: ' . implode(', ', $flag->terms)
+                    . ($flag->auto_hidden ? ' · ' . ($isProduct ? 'ซ่อนสินค้า' : 'ปิดร้าน') . 'ไว้แล้ว รอคุณตรวจ' : ''),
                 'data' => [
                     'flag_id' => $flag->id,
                     'shop_id' => $flag->shop_id,

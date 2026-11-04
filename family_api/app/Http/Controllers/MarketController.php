@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AppNotification;
 use App\Models\Product;
 use App\Models\ProductPromotion;
 use App\Models\ProductReport;
@@ -11,6 +12,7 @@ use App\Models\ShopReport;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 // =======================================================
@@ -245,18 +247,29 @@ class MarketController extends Controller
         }
 
         // รายงานซ้ำไม่นับเพิ่ม
-        ProductReport::firstOrCreate(
+        $report = ProductReport::firstOrCreate(
             ['product_id' => $product->id, 'user_id' => $user->id],
             ['reason' => $data['reason'], 'details' => $data['details'] ?? null]
         );
 
+        $count = $product->reports()->count();
+
         // ซ่อนอัตโนมัติเมื่อถูกรายงานครบ (รอ Admin ตรวจ)
-        if (
-            $product->hidden_at === null
-            && $product->reports()->count() >= config('market.auto_hide_reports')
-        ) {
+        $hidden = $product->hidden_at === null && $count >= config('market.auto_hide_reports');
+
+        if ($hidden) {
             $product->hidden_at = now();
             $product->save();
+        }
+
+        if ($report->wasRecentlyCreated) {
+            $this->notifyAdmins(
+                'มีผู้รายงานสินค้า',
+                '"' . $product->title . '" (ร้าน ' . $product->shop->name . '): '
+                    . (config('market.report_reasons')[$data['reason']] ?? $data['reason'])
+                    . " · รวม {$count} คน" . ($hidden ? ' · ซ่อนสินค้าอัตโนมัติแล้ว' : ''),
+                ['shop_id' => $product->shop_id, 'product_id' => $product->id]
+            );
         }
 
         return response()->json([
@@ -286,10 +299,30 @@ class MarketController extends Controller
             ], 404);
         }
 
-        ShopReport::firstOrCreate(
+        $report = ShopReport::firstOrCreate(
             ['shop_id' => $shop->id, 'user_id' => $user->id],
             ['reason' => $data['reason'], 'details' => $data['details'] ?? null]
         );
+
+        if ($report->wasRecentlyCreated) {
+            $count = $shop->reports()->count();
+
+            // ถูกรายงานจากหลายคน → ปิดร้านชั่วคราวรอผู้ดูแล (แจ้งเจ้าของร้านด้วย)
+            $suspended = $count >= config('market.auto_suspend_shop_reports');
+
+            if ($suspended) {
+                $shop->suspend(Shop::AUTO_REPORT_REASON);
+            }
+
+            $this->notifyAdmins(
+                'มีผู้รายงานร้านค้า',
+                'ร้าน "' . $shop->name . '": '
+                    . (config('market.report_reasons')[$data['reason']] ?? $data['reason'])
+                    . (filled($data['details'] ?? null) ? ' — ' . Str::limit($data['details'], 120) : '')
+                    . " · รวม {$count} คน" . ($suspended ? ' · ปิดร้านชั่วคราวแล้ว' : ''),
+                ['shop_id' => $shop->id]
+            );
+        }
 
         return response()->json([
             'status' => true,
@@ -375,6 +408,22 @@ class MarketController extends Controller
             'products_count' => $productsCount,
             'has_video' => $shop->video_path !== null,
         ];
+    }
+
+    // แจ้งผู้ดูแลทุกคน (แจ้งเตือนในแอป + เด้งบนมือถือ)
+    private function notifyAdmins(string $title, string $message, array $data): void
+    {
+        foreach (User::where('is_admin', true)->pluck('id') as $adminId) {
+            AppNotification::create([
+                'user_id' => $adminId,
+                'family_id' => null,
+                'type' => 'market_report',
+                'title' => $title,
+                'message' => $message,
+                'data' => $data,
+                'is_read' => false,
+            ]);
+        }
     }
 
     private function validateReport(Request $request): array

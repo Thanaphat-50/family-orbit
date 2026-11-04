@@ -84,7 +84,9 @@ class MyShopController extends Controller
 
         return response()->json([
             'status' => true,
-            'message' => 'เปิดร้านแล้ว ลงสินค้าได้เลย',
+            'message' => $shop->status === Shop::STATUS_ACTIVE
+                ? 'เปิดร้านแล้ว ลงสินค้าได้เลย'
+                : Shop::AUTO_SCREEN_REASON,
             'shop' => $this->payload($shop),
         ], 201);
     }

@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import '../data/market_data.dart';
 import '../services/market_service.dart';
 import '../theme/app_theme.dart';
-import '../widgets/community_sheets.dart';
 import '../widgets/featured_shops_banner.dart';
+import '../widgets/market_sheets.dart';
 import '../widgets/market_widgets.dart';
 import '../widgets/shop_trust_widgets.dart';
 import 'market_product_page.dart';
@@ -90,19 +90,16 @@ class _MarketShopPageState extends State<MarketShopPage> {
   }
 
   Future<void> reportShop() async {
-    final String? reason = await showReportReasonSheet(
-      context,
-      title: 'รายงานร้านนี้',
-      reasons: marketReportReasons,
-    );
+    final report = await showMarketReportSheet(context, title: 'รายงานร้านนี้');
 
-    if (reason == null || !mounted) return;
+    if (report == null || !mounted) return;
 
     try {
       final result = await MarketService.report(
         target: 'shops',
         id: widget.shopId,
-        reason: reason,
+        reason: report.reason,
+        details: report.details,
       );
 
       if (mounted) {
@@ -317,7 +314,12 @@ class _MarketShopPageState extends State<MarketShopPage> {
                     ),
                   ),
                   SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+                    padding: EdgeInsets.fromLTRB(
+                      16,
+                      0,
+                      16,
+                      data['is_mine'] == true ? 32 : 8,
+                    ),
                     sliver: SliverGrid.builder(
                       gridDelegate:
                           const SliverGridDelegateWithFixedCrossAxisCount(
@@ -338,6 +340,25 @@ class _MarketShopPageState extends State<MarketShopPage> {
                       },
                     ),
                   ),
+                  if (data['is_mine'] != true)
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+                      sliver: SliverToBoxAdapter(
+                        child: Center(
+                          child: TextButton.icon(
+                            onPressed: reportShop,
+                            icon: Icon(
+                              Icons.flag_outlined,
+                              color: AppColors.danger,
+                            ),
+                            label: Text(
+                              'รายงานร้านนี้',
+                              style: TextStyle(color: AppColors.danger),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),

@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../data/market_data.dart';
 import '../services/market_service.dart';
 import '../theme/app_theme.dart';
-import '../widgets/community_sheets.dart';
+import '../widgets/market_sheets.dart';
 import '../widgets/market_widgets.dart';
 import '../widgets/photo_viewer.dart';
 import 'market_shop_page.dart';
@@ -77,19 +77,19 @@ class _MarketProductPageState extends State<MarketProductPage> {
   }
 
   Future<void> reportProduct() async {
-    final String? reason = await showReportReasonSheet(
+    final report = await showMarketReportSheet(
       context,
       title: 'รายงานสินค้านี้',
-      reasons: marketReportReasons,
     );
 
-    if (reason == null || !mounted) return;
+    if (report == null || !mounted) return;
 
     try {
       final result = await MarketService.report(
         target: 'products',
         id: widget.productId,
-        reason: reason,
+        reason: report.reason,
+        details: report.details,
       );
 
       if (!mounted) return;
@@ -266,10 +266,7 @@ class _MarketProductPageState extends State<MarketProductPage> {
                     const SizedBox(height: 2),
                     Text(
                       shopArea(data),
-                      style: TextStyle(
-                        color: AppColors.muted,
-                        fontSize: 12.5,
-                      ),
+                      style: TextStyle(color: AppColors.muted, fontSize: 12.5),
                     ),
                   ],
                 ),

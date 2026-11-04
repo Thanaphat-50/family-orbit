@@ -161,6 +161,7 @@ class MarketService {
     required String target,
     required int id,
     required String reason,
+    String? details,
   }) async {
     final headers = await _headers();
 
@@ -168,7 +169,10 @@ class MarketService {
       () => http.post(
         Uri.parse('$baseUrl/market/$target/$id/report'),
         headers: {...headers, 'Content-Type': 'application/json'},
-        body: jsonEncode({'reason': reason}),
+        body: jsonEncode({
+          'reason': reason,
+          if (details != null && details.isNotEmpty) 'details': details,
+        }),
       ),
     );
 

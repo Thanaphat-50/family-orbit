@@ -105,7 +105,9 @@ class MyProductController extends Controller
 
         return response()->json([
             'status' => true,
-            'message' => 'เพิ่มสินค้าแล้ว',
+            'message' => $product->hidden_at !== null
+                ? 'เพิ่มสินค้าแล้ว แต่ระบบพบคำที่อาจผิดกฎ สินค้าถูกซ่อนไว้รอทีมงานตรวจสอบ'
+                : 'เพิ่มสินค้าแล้ว',
             'product' => $this->sellerPayload($product->load('images')),
         ], 201);
     }
@@ -192,7 +194,9 @@ class MyProductController extends Controller
 
         return response()->json([
             'status' => true,
-            'message' => 'บันทึกสินค้าแล้ว',
+            'message' => $product->hidden_at !== null
+                ? 'บันทึกแล้ว สินค้าถูกซ่อนไว้รอทีมงานตรวจสอบ'
+                : 'บันทึกสินค้าแล้ว',
             'product' => $this->sellerPayload($product->unsetRelation('images')->load('images')),
         ]);
     }

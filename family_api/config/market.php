@@ -29,6 +29,9 @@ return [
 
     'auto_hide_reports' => (int) env('MARKET_AUTO_HIDE_REPORTS', 3),
 
+    // ร้านถูกรายงานจากผู้ใช้ต่างกันครบเท่านี้ → ปิดร้านชั่วคราว รอผู้ดูแลตรวจ
+    'auto_suspend_shop_reports' => (int) env('MARKET_AUTO_SUSPEND_SHOP_REPORTS', 5),
+
     // จำนวนร้านแนะนำ (ร้านที่เช่าพื้นที่) ที่เปิดพร้อมกันได้สูงสุด
     // จำกัดไว้ให้ร้านที่จ่ายเงินได้รับการมองเห็นจริง
     'featured_slots' => (int) env('MARKET_FEATURED_SLOTS', 10),

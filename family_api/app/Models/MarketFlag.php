@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 // =======================================================
 // รายการตรวจพบสินค้า/ร้านที่อาจผิดกฎหมาย (ระบบตรวจคำอัตโนมัติ)
 // open → dismissed (ผู้ดูแลดูแล้วไม่ผิดกฎ) / actioned (ซ่อนสินค้า / ระงับร้าน)
+// ตรวจพบ → ระบบซ่อนสินค้า / ปิดร้านเองทันที (auto_hidden) จนกว่าผู้ดูแลจะตรวจ
 // =======================================================
 
 class MarketFlag extends Model
@@ -31,6 +32,7 @@ class MarketFlag extends Model
         'fingerprint',
         'excerpt',
         'status',
+        'auto_hidden',
         'reviewed_by',
         'reviewed_at',
     ];
@@ -38,6 +40,7 @@ class MarketFlag extends Model
     protected $casts = [
         'categories' => 'array',
         'terms' => 'array',
+        'auto_hidden' => 'boolean',
         'reviewed_at' => 'datetime',
     ];
 
@@ -94,5 +97,37 @@ class MarketFlag extends Model
             'reviewed_by' => $admin->id,
             'reviewed_at' => now(),
         ])->save();
+    }
+
+    // ผู้ดูแลตรวจแล้วไม่ผิดกฎ → แสดงสินค้า / เปิดร้านคืน (ถ้าระบบเป็นคนซ่อน)
+    public function dismiss(User $admin): void
+    {
+        $this->close($admin, self::STATUS_DISMISSED);
+
+        if (!$this->auto_hidden) {
+            return;
+        }
+
+        $item = $this->flaggable;
+
+        if ($item instanceof Product && $item->hidden_at !== null) {
+            $item->forceFill(['hidden_at' => null])->save();
+
+            AppNotification::create([
+                'user_id' => $item->shop->user_id,
+                'family_id' => null,
+                'type' => 'shop_status',
+                'title' => 'สินค้าแสดงตามปกติแล้ว',
+                'message' => 'ทีมงานตรวจ "' . $item->title . '" แล้ว ไม่ผิดกฎ สินค้ากลับมาแสดงในหน้าร้านค้า',
+                'data' => ['shop_id' => $item->shop_id, 'product_id' => $item->id],
+                'is_read' => false,
+            ]);
+        }
+
+        if ($item instanceof Shop
+            && $item->status === Shop::STATUS_SUSPENDED
+            && $item->status_reason === Shop::AUTO_SCREEN_REASON) {
+            $item->approve();
+        }
     }
 }

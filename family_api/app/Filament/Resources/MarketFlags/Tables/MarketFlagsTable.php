@@ -43,6 +43,13 @@ class MarketFlagsTable
                 TextColumn::make('terms')
                     ->label('คำที่พบ')
                     ->state(fn (MarketFlag $record) => implode(', ', $record->terms ?? [])),
+                TextColumn::make('auto_hidden')
+                    ->label('ระบบซ่อนไว้')
+                    ->formatStateUsing(fn (bool $state, MarketFlag $record) => $state
+                        ? ($record->isProduct() ? 'ซ่อนสินค้าแล้ว' : 'ปิดร้านแล้ว')
+                        : '-')
+                    ->badge()
+                    ->color(fn (bool $state) => $state ? 'warning' : 'gray'),
                 TextColumn::make('status')
                     ->label('สถานะ')
                     ->formatStateUsing(fn (string $state) => MarketFlag::STATUS_LABELS[$state] ?? $state)
@@ -58,6 +65,15 @@ class MarketFlagsTable
                     ->sortable(),
             ])
             ->recordActions([
+                // ระบบซ่อน/ปิดไว้แล้ว และผิดกฎจริง → ปิดรายการ (ยังซ่อนต่อ)
+                Action::make('confirm')
+                    ->label('ผิดกฎจริง')
+                    ->icon(Heroicon::OutlinedShieldExclamation)
+                    ->color('danger')
+                    ->requiresConfirmation()
+                    ->modalDescription('สินค้า/ร้านจะถูกซ่อนต่อไป')
+                    ->visible(fn (MarketFlag $record) => $record->status === MarketFlag::STATUS_OPEN && $record->auto_hidden)
+                    ->action(fn (MarketFlag $record) => $record->close(Auth::user(), MarketFlag::STATUS_ACTIONED)),
                 // สินค้าผิดกฎ → ซ่อนจากหน้าร้านค้า (เหมือนปุ่มซ่อนในหน้าสินค้า)
                 Action::make('hideProduct')
                     ->label('ซ่อนสินค้า')
@@ -90,13 +106,17 @@ class MarketFlagsTable
 
                         $record->close(Auth::user(), MarketFlag::STATUS_ACTIONED);
                     }),
-                // ตรวจแล้วไม่ผิดกฎ (เช่น ปืนฉีดน้ำ) → คำเดิมจะไม่แจ้งซ้ำ
+                // ตรวจแล้วไม่ผิดกฎ (เช่น ร้านชื่อ "น้องเบียร์") → แสดงคืน + คำเดิมจะไม่แจ้งซ้ำ
                 Action::make('dismiss')
                     ->label('ไม่ผิดกฎ')
                     ->icon(Heroicon::OutlinedCheckCircle)
-                    ->color('gray')
+                    ->color('success')
+                    ->requiresConfirmation()
+                    ->modalDescription(fn (MarketFlag $record) => $record->auto_hidden
+                        ? 'สินค้า/ร้านจะกลับมาแสดงตามปกติ และแจ้งเจ้าของร้าน'
+                        : null)
                     ->visible(fn (MarketFlag $record) => $record->status === MarketFlag::STATUS_OPEN)
-                    ->action(fn (MarketFlag $record) => $record->close(Auth::user(), MarketFlag::STATUS_DISMISSED)),
+                    ->action(fn (MarketFlag $record) => $record->dismiss(Auth::user())),
             ])
             ->filters([
                 SelectFilter::make('status')

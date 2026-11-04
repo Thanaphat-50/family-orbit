@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../data/market_data.dart';
 import '../theme/app_theme.dart';
+import 'community_sheets.dart' show showReportReasonSheet;
 
 // =======================================================
 // กฎผู้ขาย
@@ -122,6 +123,61 @@ class _SellerRule extends StatelessWidget {
 // เลือกจังหวัด (มีช่องค้นหา)
 // คืนชื่อจังหวัด / null ถ้าปิดไปเฉย ๆ
 // =======================================================
+
+// =======================================================
+// รายงานร้าน / สินค้า: เลือกเหตุผล → เล่ารายละเอียด (ไม่บังคับ)
+// คืน (reason, details) / ยกเลิก → null
+// =======================================================
+
+Future<({String reason, String details})?> showMarketReportSheet(
+  BuildContext context, {
+  required String title,
+}) async {
+  final String? reason = await showReportReasonSheet(
+    context,
+    title: title,
+    reasons: marketReportReasons,
+    note: 'เจ้าของร้านจะไม่รู้ว่าใครเป็นคนรายงาน ทีมงานจะได้รับแจ้งทันที',
+  );
+
+  if (reason == null || !context.mounted) return null;
+
+  final TextEditingController controller = TextEditingController();
+
+  final bool? send = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: Text(marketReportReasons[reason] ?? 'รายงาน'),
+      content: TextField(
+        controller: controller,
+        autofocus: true,
+        minLines: 2,
+        maxLines: 5,
+        maxLength: 1000,
+        decoration: const InputDecoration(
+          hintText: 'เล่าสิ่งที่เกิดขึ้น เช่น โอนเงินแล้วไม่ได้ของ (ไม่บังคับ)',
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(false),
+          child: const Text('ยกเลิก'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(dialogContext).pop(true),
+          child: const Text('ส่งรายงาน'),
+        ),
+      ],
+    ),
+  );
+
+  final String details = controller.text.trim();
+
+  // รอหน้าต่างปิดเสร็จก่อนค่อยทิ้ง Controller
+  Future<void>.delayed(const Duration(milliseconds: 400), controller.dispose);
+
+  return send == true ? (reason: reason, details: details) : null;
+}
 
 Future<String?> showProvincePicker(BuildContext context, {String? selected}) {
   return showModalBottomSheet<String>(

@@ -16,6 +16,10 @@ class Shop extends Model
     public const STATUS_REJECTED = 'rejected';
     public const STATUS_SUSPENDED = 'suspended';
 
+    // เหตุผลที่ระบบปิดร้านเอง (ผู้ดูแลตรวจแล้วไม่ผิด → เปิดคืน)
+    public const AUTO_SCREEN_REASON = 'ระบบพบคำที่อาจผิดกฎในชื่อหรือคำอธิบายร้าน ปิดไว้ชั่วคราวรอทีมงานตรวจสอบ';
+    public const AUTO_REPORT_REASON = 'ร้านถูกรายงานจากผู้ใช้หลายคน ปิดไว้ชั่วคราวรอทีมงานตรวจสอบ';
+
     // ชื่อสถานะภาษาไทย (ใช้ในหน้า Admin และการแจ้งเตือน)
     public const STATUS_LABELS = [
         self::STATUS_PENDING => 'รออนุมัติ',
