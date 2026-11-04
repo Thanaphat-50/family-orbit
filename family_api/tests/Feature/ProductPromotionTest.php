@@ -193,6 +193,36 @@ class ProductPromotionTest extends TestCase
         $this->getJson('/api/market/featured-products')->assertJsonCount(0, 'products');
     }
 
+    // ช่องแนะนำว่าง → เติมสินค้ายอดนิยม (ที่ชำระเงินขึ้นก่อน และมีป้ายแนะนำ)
+    public function test_featured_list_is_filled_with_popular_products(): void
+    {
+        [$ownerA, $paid] = $this->sellerWithProduct();
+        [, $popular] = $this->sellerWithProduct();
+        [, $quiet] = $this->sellerWithProduct();
+
+        $popular->forceFill(['views' => 50])->save();
+        $quiet->forceFill(['views' => 2])->save();
+
+        $this->paidOrder($ownerA, $paid)->approve($this->admin());
+
+        Sanctum::actingAs(User::factory()->create());
+
+        $this->getJson('/api/market/featured-products?fill=1&limit=3')
+            ->assertOk()
+            ->assertJsonCount(3, 'products')
+            ->assertJsonPath('products.0.id', $paid->id)
+            ->assertJsonPath('products.0.is_featured', true)
+            ->assertJsonPath('products.1.id', $popular->id)
+            ->assertJsonPath('products.1.is_featured', false)
+            ->assertJsonPath('products.2.id', $quiet->id);
+
+        // ไม่ขอเติม → เฉพาะที่ชำระเงิน
+        $this->getJson('/api/market/featured-products')->assertJsonCount(1, 'products');
+
+        // หมวดอื่นไม่มีสินค้า → ว่าง
+        $this->getJson('/api/market/featured-products?fill=1&category=food')->assertJsonCount(0, 'products');
+    }
+
     public function test_renewing_continues_from_the_current_end(): void
     {
         [$owner, $product] = $this->sellerWithProduct();

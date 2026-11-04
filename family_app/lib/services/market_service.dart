@@ -336,13 +336,21 @@ class MarketService {
   // สินค้าช่องแนะนำ (category = null → ทุกหมวด)
   // =====================================================
 
+  // fill: เติมด้วยสินค้ายอดนิยมจนครบ limit (ป้าย "แนะนำ" เฉพาะที่ชำระเงิน)
   static Future<Map<String, dynamic>> getFeaturedProducts({
     String? category,
+    bool fill = false,
+    int? limit,
   }) async {
     final headers = await _headers();
 
-    final uri = Uri.parse('$baseUrl/market/featured-products')
-        .replace(queryParameters: {'category': ?category});
+    final uri = Uri.parse('$baseUrl/market/featured-products').replace(
+      queryParameters: {
+        'category': ?category,
+        if (fill) 'fill': '1',
+        if (limit != null) 'limit': '$limit',
+      },
+    );
 
     final response = await ApiHelper.request(
       () => http.get(uri, headers: headers),

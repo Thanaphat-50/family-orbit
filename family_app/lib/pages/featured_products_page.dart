@@ -49,6 +49,8 @@ class _FeaturedProductsPageState extends State<FeaturedProductsPage> {
     try {
       final result = await MarketService.getFeaturedProducts(
         category: category,
+        fill: true,
+        limit: 60,
       );
 
       if (!mounted || current != generation) return;

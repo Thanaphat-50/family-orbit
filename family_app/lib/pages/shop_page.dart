@@ -82,6 +82,7 @@ class _ShopPageState extends State<ShopPage> {
     try {
       final result = await MarketService.getFeaturedProducts(
         category: selected,
+        fill: true,
       );
 
       if (!mounted || result['status'] != true || selected != category) return;
@@ -359,14 +360,17 @@ class _ShopPageState extends State<ShopPage> {
                 ),
               ),
             ),
-            TextButton(
+            // ดูสินค้าแนะนำเพิ่มเติม (แยกตามหมวด)
+            IconButton(
+              tooltip: 'ดูสินค้าแนะนำเพิ่มเติม',
               onPressed: () => Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (context) =>
                       FeaturedProductsPage(initialCategory: category),
                 ),
               ),
-              child: const Text('ดูทั้งหมด'),
+              icon: const Icon(Icons.chevron_right_rounded, size: 30),
+              color: featuredColor,
             ),
           ],
         ),
