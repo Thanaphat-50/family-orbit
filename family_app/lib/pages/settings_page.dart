@@ -1412,7 +1412,7 @@ class _SettingsPageState extends State<SettingsPage> {
       Padding(
         padding: EdgeInsets.fromLTRB(6, 8, 6, 0),
         child: Text(
-          'ผลการตรวจสอบร้านค้าจะแจ้งเสมอ',
+          'สถานะร้านค้าและผลตรวจสลิปจะแจ้งเสมอ',
           style: TextStyle(color: AppColors.muted, fontSize: 12),
         ),
       ),

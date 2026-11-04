@@ -97,8 +97,6 @@ class ShopTrustCard extends StatelessWidget {
     final int ratingCount = (rating['count'] as num?)?.toInt() ?? 0;
 
     final List<(IconData, String, Color)> rows = [
-      if (trust['reviewed_by_admin'] == true)
-        (Icons.verified_rounded, 'ผ่านการตรวจสอบจากทีมงาน', AppColors.success),
       if (opened.isNotEmpty)
         (Icons.storefront_outlined, 'เปิดร้านมาแล้ว $opened', AppColors.navy),
       if (member.isNotEmpty)

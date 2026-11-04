@@ -68,7 +68,7 @@ class ShopTest extends TestCase
     }
 
     // =====================================================
-    // สมัครเปิดร้าน → รออนุมัติ
+    // เปิดร้าน → เปิดขายได้ทันที (ไม่ต้องรออนุมัติ)
     // =====================================================
 
     public function test_user_can_apply_for_a_shop(): void
@@ -85,7 +85,7 @@ class ShopTest extends TestCase
             'logo' => $this->fakePng('logo.png'),
         ]))
             ->assertCreated()
-            ->assertJsonPath('shop.status', Shop::STATUS_PENDING)
+            ->assertJsonPath('shop.status', Shop::STATUS_ACTIVE)
             ->assertJsonPath('shop.phone', '0812345678')
             ->assertJsonMissingPath('shop.logo_path');
 
@@ -94,7 +94,7 @@ class ShopTest extends TestCase
         $this->getJson('/api/my-shop')
             ->assertOk()
             ->assertJsonPath('shop.name', 'ร้านป้าแดง')
-            ->assertJsonPath('shop.status_label', 'รออนุมัติ');
+            ->assertJsonPath('shop.status_label', 'เปิดขาย');
 
         $this->assertNotNull(Shop::first()->terms_accepted_at);
     }
@@ -159,7 +159,7 @@ class ShopTest extends TestCase
             'logo' => $this->fakePng('new.png'),
         ]))
             ->assertOk()
-            ->assertJsonPath('shop.status', Shop::STATUS_PENDING)
+            ->assertJsonPath('shop.status', Shop::STATUS_ACTIVE)
             ->assertJsonPath('shop.status_reason', null)
             ->assertJsonPath('shop.name', 'ร้านผักป้าแดง สันทราย');
 

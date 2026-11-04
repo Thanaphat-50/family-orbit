@@ -366,7 +366,6 @@ class MarketController extends Controller
         $owner = $shop->owner;
 
         return [
-            'reviewed_by_admin' => $shop->isActive(),
             'approved_at' => $shop->approved_at,
             'member_since' => $owner?->created_at,
             // google / line / facebook (เข้าสู่ระบบด้วยบัญชีเหล่านี้)

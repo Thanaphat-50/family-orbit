@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\MarketScreening;
 use App\Support\MediaStorage;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -220,6 +221,13 @@ class Shop extends Model
     // (สินค้า รูป และสลิปถูกลบตาม cascade จึงต้องโหลด path ไว้ก่อน)
     protected static function booted(): void
     {
+        // เปิดร้าน / แก้ชื่อหรือคำอธิบาย → ตรวจคำต้องห้าม (พบ → แจ้งผู้ดูแล)
+        static::saved(function (Shop $shop) {
+            if ($shop->wasRecentlyCreated || $shop->wasChanged(['name', 'description'])) {
+                app(MarketScreening::class)->screenShop($shop);
+            }
+        });
+
         static::deleting(function (Shop $shop) {
             $shop->loadMissing(['images', 'products.images', 'products.promotions']);
         });

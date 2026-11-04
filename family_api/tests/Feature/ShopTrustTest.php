@@ -244,7 +244,6 @@ class ShopTrustTest extends TestCase
 
         $this->getJson("/api/market/shops/{$shop->id}")
             ->assertOk()
-            ->assertJsonPath('shop.trust.reviewed_by_admin', true)
             ->assertJsonPath('shop.trust.products_count', 1)
             ->assertJsonPath('shop.trust.login_methods', ['line'])
             ->assertJsonPath('shop.rating.count', 0)

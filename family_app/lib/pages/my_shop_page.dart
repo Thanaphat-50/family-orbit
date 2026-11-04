@@ -798,7 +798,7 @@ class _MyShopPageState extends State<MyShopPage> {
   Widget buildNoShop() {
     const steps = [
       (Icons.edit_note_rounded, 'กรอกข้อมูลร้าน เบอร์โทร และพื้นที่ขาย'),
-      (Icons.verified_outlined, 'ผู้ดูแลตรวจสอบร้าน แจ้งผลในหน้าการแจ้งเตือน'),
+      (Icons.bolt_rounded, 'เปิดขายได้ทันที ไม่ต้องรออนุมัติ'),
       (
         Icons.inventory_2_outlined,
         'ลงสินค้าได้ 30 ชิ้น ให้ทุกคนในแอปเห็น',

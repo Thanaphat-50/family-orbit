@@ -632,7 +632,7 @@ class _ShopFormPageState extends State<ShopFormPage> {
                   ),
                   child: Text(
                     'เปิดร้านฟรีช่วงเปิดตัว ลงสินค้าได้ 30 ชิ้น '
-                    'ผู้ดูแลจะตรวจสอบร้านก่อนแสดงในหน้าร้านค้า',
+                    'ร้านเปิดขายได้ทันที ระบบจะตรวจหาสินค้าต้องห้ามอัตโนมัติ',
                     style: TextStyle(
                       color: AppColors.navy,
                       fontSize: 13,

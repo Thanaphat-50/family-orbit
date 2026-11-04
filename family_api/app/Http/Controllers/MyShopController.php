@@ -16,8 +16,9 @@ use Throwable;
 
 // =======================================================
 // ร้านของฉัน (ฝั่งผู้ขาย)
-// - สมัครเปิดร้าน → รอ Admin อนุมัติ
-// - แก้ไขข้อมูลร้าน (ร้านที่ไม่ผ่าน แก้แล้วส่งตรวจใหม่)
+// - เปิดร้านได้ทันที ไม่ต้องรอ Admin อนุมัติ
+//   (ระบบตรวจคำต้องห้ามอัตโนมัติ → แจ้งผู้ดูแล ดู App\Services\MarketScreening)
+// - แก้ไขข้อมูลร้าน (ร้านที่ไม่ผ่านแบบเดิม แก้แล้วเปิดขายเลย)
 // =======================================================
 
 class MyShopController extends Controller
@@ -66,7 +67,8 @@ class MyShopController extends Controller
                 ...$this->shopFields($data),
                 'user_id' => $user->id,
                 'logo_path' => $logoPath,
-                'status' => Shop::STATUS_PENDING,
+                'status' => Shop::STATUS_ACTIVE,
+                'approved_at' => now(),
                 'terms_accepted_at' => now(),
             ]);
         } catch (UniqueConstraintViolationException) {
@@ -82,7 +84,7 @@ class MyShopController extends Controller
 
         return response()->json([
             'status' => true,
-            'message' => 'ส่งคำขอเปิดร้านแล้ว รอผู้ดูแลตรวจสอบ',
+            'message' => 'เปิดร้านแล้ว ลงสินค้าได้เลย',
             'shop' => $this->payload($shop),
         ], 201);
     }
@@ -126,12 +128,13 @@ class MyShopController extends Controller
             $shop->logo_path = null;
         }
 
-        // ร้านที่ไม่ผ่าน: แก้ไขแล้วถือว่าส่งตรวจใหม่
-        $resubmitted = $shop->status === Shop::STATUS_REJECTED;
+        // ร้านที่ไม่ผ่าน/รออนุมัติแบบเดิม: แก้ไขแล้วเปิดขายเลย (ร้านที่ถูกระงับยังปิดอยู่)
+        $resubmitted = in_array($shop->status, [Shop::STATUS_REJECTED, Shop::STATUS_PENDING], true);
 
         if ($resubmitted) {
-            $shop->status = Shop::STATUS_PENDING;
+            $shop->status = Shop::STATUS_ACTIVE;
             $shop->status_reason = null;
+            $shop->approved_at ??= now();
         }
 
         try {
@@ -150,7 +153,7 @@ class MyShopController extends Controller
         return response()->json([
             'status' => true,
             'message' => $resubmitted
-                ? 'ส่งข้อมูลร้านให้ตรวจสอบอีกครั้งแล้ว'
+                ? 'บันทึกแล้ว ร้านเปิดขายแล้ว'
                 : 'บันทึกข้อมูลร้านแล้ว',
             'shop' => $this->payload($shop),
         ]);

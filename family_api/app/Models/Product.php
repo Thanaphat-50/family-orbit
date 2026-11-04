@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\MarketScreening;
 use App\Support\MediaStorage;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -102,11 +103,22 @@ class Product extends Model
     // (โหลดรายการรูป/สลิปไว้ก่อน เพราะแถวถูกลบตาม cascade)
     protected static function booted(): void
     {
+        // ลงสินค้าใหม่ / แก้ชื่อหรือรายละเอียด → ตรวจสินค้าต้องห้าม (พบ → แจ้งผู้ดูแล)
+        static::saved(function (Product $product) {
+            if ($product->wasRecentlyCreated || $product->wasChanged(['title', 'description'])) {
+                app(MarketScreening::class)->screenProduct($product);
+            }
+        });
+
         static::deleting(function (Product $product) {
             $product->loadMissing(['images', 'promotions']);
         });
 
         static::deleted(function (Product $product) {
+            MarketFlag::where('flaggable_type', Product::class)
+                ->where('flaggable_id', $product->id)
+                ->delete();
+
             $paths = $product->mediaPaths();
 
             DB::afterCommit(fn () => MediaStorage::delete($paths));

@@ -4,6 +4,7 @@ import '../data/market_data.dart';
 import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/featured_shops_banner.dart' show featuredColor;
+import 'market_product_page.dart';
 import 'market_shop_page.dart';
 import 'my_shop_page.dart';
 import 'post_detail_page.dart';
@@ -290,6 +291,22 @@ class _NotificationPageState extends State<NotificationPage> {
             .push(MaterialPageRoute(builder: (context) => const MyShopPage()));
         return;
 
+      // ผู้ดูแล: ระบบตรวจพบสินค้า/ร้านที่อาจผิดกฎหมาย → เปิดดูสินค้าหรือร้านนั้น
+      case 'market_flag':
+        final int? productId = dataId('product_id');
+        final int? flaggedShopId = dataId('shop_id');
+
+        if (productId != null || flaggedShopId != null) {
+          await Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => productId != null
+                  ? MarketProductPage(productId: productId)
+                  : MarketShopPage(shopId: flaggedShopId!),
+            ),
+          );
+          return;
+        }
+
       // รีวิวร้านใหม่ → หน้าร้าน (เห็นรีวิว)
       case 'shop_review':
         final int? shopId = dataId('shop_id');
@@ -418,6 +435,11 @@ class _NotificationPageState extends State<NotificationPage> {
         return const _NotificationStyle(
           icon: Icons.storefront_rounded,
           color: marketColor,
+        );
+      case 'market_flag':
+        return _NotificationStyle(
+          icon: Icons.gpp_maybe_rounded,
+          color: AppColors.danger,
         );
       case 'promotion_status':
       case 'shop_review':
