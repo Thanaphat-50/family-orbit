@@ -6,6 +6,7 @@ import '../theme/app_theme.dart';
 import '../widgets/market_sheets.dart';
 import '../widgets/market_widgets.dart';
 import '../widgets/photo_viewer.dart';
+import 'checkout_page.dart';
 import 'market_shop_page.dart';
 import 'video_player_page.dart';
 
@@ -111,6 +112,77 @@ class _MarketProductPageState extends State<MarketProductPage> {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  // สั่งซื้อแล้วกลับมา → โหลดใหม่ (สต็อกเปลี่ยน)
+  Future<void> openCheckout() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => CheckoutPage(productId: widget.productId),
+      ),
+    );
+
+    if (mounted) await loadProduct();
+  }
+
+  // แถบล่าง: ปุ่มสั่งซื้อ หรือเหตุผลที่สั่งในแอปไม่ได้
+  Widget? buildOrderBar(Map<String, dynamic> data) {
+    if (data['is_mine'] == true) return null;
+
+    final Map order = (data['order'] as Map?) ?? const {};
+
+    final bool available = order['available'] == true;
+
+    return SafeArea(
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          border: Border(top: BorderSide(color: AppColors.border)),
+        ),
+        child: available
+            ? FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  backgroundColor: marketColor,
+                  minimumSize: const Size(double.infinity, 52),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                ),
+                onPressed: openCheckout,
+                icon: const Icon(Icons.shopping_bag_outlined),
+                label: Text('สั่งซื้อ · ${formatPrice(data['price'])}'),
+              )
+            : Row(
+                children: [
+                  Icon(Icons.info_outline_rounded, color: AppColors.muted),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      order['reason']?.toString() ?? 'สั่งซื้อในแอปไม่ได้',
+                      style: TextStyle(
+                        color: AppColors.navy,
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+
+  // "มีสินค้า 5 ชิ้น · ค่าส่ง ฿40" / "สินค้าหมด"
+  String stockLine(Map<String, dynamic> data) {
+    if (data['sold_out'] == true) return 'สินค้าหมด';
+
+    final double fee = double.tryParse('${data['shipping_fee'] ?? ''}') ?? 0;
+
+    return [
+      if (data['stock'] != null) 'มีสินค้า ${data['stock']} ชิ้น',
+      fee > 0 ? 'ค่าส่ง ${formatPrice(fee)}' : 'ส่งฟรี',
+    ].join(' · ');
   }
 
   List<String> imageUrls() {
@@ -327,6 +399,17 @@ class _MarketProductPageState extends State<MarketProductPage> {
               fontWeight: FontWeight.w800,
             ),
           ),
+          const SizedBox(height: 4),
+          Text(
+            stockLine(data),
+            style: TextStyle(
+              color: data['sold_out'] == true
+                  ? AppColors.danger
+                  : AppColors.muted,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           // วิดีโอแนะนำสินค้า
           if (videoUrl != null) ...[
             const SizedBox(height: 14),
@@ -499,6 +582,9 @@ class _MarketProductPageState extends State<MarketProductPage> {
               padding: EdgeInsets.zero,
               children: [buildGallery(), buildDetails(data, shopData)],
             ),
+      bottomNavigationBar: data == null || loadError != null
+          ? null
+          : buildOrderBar(data),
     );
   }
 }

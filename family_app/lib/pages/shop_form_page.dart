@@ -56,6 +56,27 @@ class _ShopFormPageState extends State<ShopFormPage> {
       method.toString(),
   };
 
+  // วิธีรับเงิน (key ตาม paymentMethods) + บัญชีรับเงินของร้าน
+  late final Set<String> payments = {
+    for (final method in (widget.shop?['payment_methods'] as List?) ?? const [])
+      method.toString(),
+  };
+
+  late final TextEditingController promptPayController = TextEditingController(
+    text: initialText('promptpay_id'),
+  );
+  late final TextEditingController accountNumberController =
+      TextEditingController(text: initialText('bank_account_number'));
+  late final TextEditingController accountNameController =
+      TextEditingController(text: initialText('bank_account_name'));
+
+  late String? bankName = thaiBanks.contains(widget.shop?['bank_name'])
+      ? widget.shop!['bank_name'].toString()
+      : null;
+
+  bool get usesPromptPay => payments.contains('promptpay');
+  bool get usesBank => payments.contains('bank');
+
   // รูปหน้าร้าน: รูปเดิม ({id, url}) / รูปเดิมที่เอาออก / รูปใหม่
   static const int maxPhotos = 5;
 
@@ -255,10 +276,18 @@ class _ShopFormPageState extends State<ShopFormPage> {
           'province': province ?? '',
           'district': districtController.text.trim(),
           'opening_hours': hoursController.text.trim(),
+          'promptpay_id': promptPayController.text.trim(),
+          'bank_name': bankName ?? '',
+          'bank_account_number': accountNumberController.text.trim(),
+          'bank_account_name': accountNameController.text.trim(),
         },
         deliveryMethods: [
           for (final method in deliveryMethods)
             if (delivery.contains(method.key)) method.key,
+        ],
+        paymentMethods: [
+          for (final method in paymentMethods)
+            if (payments.contains(method.key)) method.key,
         ],
         logoPath: pickedLogo?.path,
         removeLogo: removeLogo && pickedLogo == null,
@@ -563,6 +592,147 @@ class _ShopFormPageState extends State<ShopFormPage> {
     );
   }
 
+  // วิธีรับเงิน → เปิดให้ลูกค้าสั่งซื้อในแอป
+  Widget buildPayments() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'เลือกอย่างน้อย 1 แบบ ลูกค้าจึงกดสั่งซื้อในแอปได้ (ต้องเลือกวิธีรับสินค้าด้วย)',
+          style: TextStyle(color: AppColors.muted, fontSize: 12.5),
+        ),
+        const SizedBox(height: 10),
+        for (final method in paymentMethods)
+          CheckboxListTile(
+            value: payments.contains(method.key),
+            onChanged: isSaving
+                ? null
+                : (checked) {
+                    setState(() {
+                      if (checked == true) {
+                        payments.add(method.key);
+                      } else {
+                        payments.remove(method.key);
+                      }
+                    });
+                  },
+            activeColor: marketColor,
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+            secondary: Icon(method.icon, color: marketColor),
+            title: Text(
+              method.label,
+              style: TextStyle(
+                color: AppColors.navy,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            subtitle: Text(
+              method.hint,
+              style: TextStyle(color: AppColors.muted, fontSize: 12),
+            ),
+          ),
+        if (serverErrors['payment_methods'] != null)
+          Text(
+            serverErrors['payment_methods']!,
+            style: TextStyle(color: AppColors.danger, fontSize: 12),
+          ),
+        if (usesPromptPay) ...[
+          const SizedBox(height: 8),
+          TextFormField(
+            controller: promptPayController,
+            keyboardType: TextInputType.number,
+            textInputAction: TextInputAction.next,
+            decoration: InputDecoration(
+              labelText: 'พร้อมเพย์ของร้าน',
+              helperText: 'เบอร์มือถือ 10 หลัก หรือเลขบัตรประชาชน 13 หลัก',
+              prefixIcon: const Icon(Icons.qr_code_2_rounded),
+              errorText: serverErrors['promptpay_id'],
+            ),
+            validator: (value) {
+              if (!usesPromptPay) return null;
+
+              final String digits = (value ?? '').replaceAll(RegExp(r'\D'), '');
+
+              final bool valid =
+                  (digits.length == 10 && digits.startsWith('0')) ||
+                  digits.length == 13;
+
+              return valid ? null : 'ใส่เบอร์ 10 หลัก หรือเลข 13 หลัก';
+            },
+          ),
+        ],
+        if (usesBank) ...[
+          const SizedBox(height: 14),
+          DropdownButtonFormField<String>(
+            initialValue: bankName,
+            isExpanded: true,
+            decoration: InputDecoration(
+              labelText: 'ธนาคาร',
+              prefixIcon: const Icon(Icons.account_balance_outlined),
+              errorText: serverErrors['bank_name'],
+            ),
+            items: [
+              for (final bank in thaiBanks)
+                DropdownMenuItem(
+                  value: bank,
+                  child: Text(bank, overflow: TextOverflow.ellipsis),
+                ),
+            ],
+            onChanged: isSaving
+                ? null
+                : (value) => setState(() => bankName = value),
+            validator: (value) =>
+                usesBank && value == null ? 'กรุณาเลือกธนาคาร' : null,
+          ),
+          const SizedBox(height: 14),
+          TextFormField(
+            controller: accountNumberController,
+            keyboardType: TextInputType.number,
+            textInputAction: TextInputAction.next,
+            decoration: InputDecoration(
+              labelText: 'เลขบัญชี',
+              prefixIcon: const Icon(Icons.numbers_rounded),
+              errorText: serverErrors['bank_account_number'],
+            ),
+            validator: (value) {
+              if (!usesBank) return null;
+
+              final int digits = (value ?? '')
+                  .replaceAll(RegExp(r'\D'), '')
+                  .length;
+
+              return digits >= 10 && digits <= 15 ? null : 'เลขบัญชีไม่ถูกต้อง';
+            },
+          ),
+        ],
+        if (usesPromptPay || usesBank) ...[
+          const SizedBox(height: 14),
+          TextFormField(
+            controller: accountNameController,
+            maxLength: 100,
+            decoration: InputDecoration(
+              labelText: 'ชื่อบัญชีผู้รับเงิน',
+              helperText: 'ให้ลูกค้าเช็กก่อนโอนว่าชื่อตรงกัน',
+              prefixIcon: const Icon(Icons.person_outline_rounded),
+              errorText: serverErrors['bank_account_name'],
+            ),
+            validator: (value) =>
+                (usesPromptPay || usesBank) && (value ?? '').trim().isEmpty
+                ? 'กรุณาใส่ชื่อบัญชี'
+                : null,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'ลูกค้าเห็นเลขบัญชีเฉพาะตอนต้องโอนเงินตามคำสั่งซื้อเท่านั้น '
+            'เงินโอนเข้าบัญชีร้านโดยตรง',
+            style: TextStyle(color: AppColors.muted, fontSize: 12),
+          ),
+        ],
+      ],
+    );
+  }
+
   Widget buildRulesAgreement() {
     return Container(
       padding: const EdgeInsets.fromLTRB(4, 4, 12, 4),
@@ -761,6 +931,9 @@ class _ShopFormPageState extends State<ShopFormPage> {
                 ],
               ),
               const SizedBox(height: 24),
+              buildSectionLabel('วิธีรับเงิน'),
+              buildPayments(),
+              const SizedBox(height: 24),
               buildSectionLabel('รูปหน้าร้าน (ไม่เกิน $maxPhotos รูป)'),
               buildPhotos(),
               const SizedBox(height: 24),
@@ -818,6 +991,9 @@ class _ShopFormPageState extends State<ShopFormPage> {
     lineController.dispose();
     districtController.dispose();
     hoursController.dispose();
+    promptPayController.dispose();
+    accountNumberController.dispose();
+    accountNameController.dispose();
 
     super.dispose();
   }

@@ -53,6 +53,19 @@ class _ProductFormPageState extends State<ProductFormPage> {
   late final TextEditingController descriptionController =
       TextEditingController(text: initialText('description'));
 
+  // สินค้าใหม่เริ่มที่ 1 ชิ้น
+  late final TextEditingController stockController = TextEditingController(
+    text: widget.product?['stock']?.toString() ?? '1',
+  );
+  late final TextEditingController shippingController = TextEditingController(
+    text: initialMoney('shipping_fee'),
+  );
+
+  // หน้าปกการ์ดในหน้าร้านค้า: image = รูปแรก / video = เล่นวิดีโอเอง
+  late String cardMedia = widget.product?['card_media'] == 'video'
+      ? 'video'
+      : 'image';
+
   late String? category =
       widget.product?['category']?.toString() ?? widget.defaultCategory;
 
@@ -91,9 +104,11 @@ class _ProductFormPageState extends State<ProductFormPage> {
     return value == null ? '' : value.toString();
   }
 
+  String initialPrice() => initialMoney('price');
+
   // "35.00" → "35", "35.50" → "35.50"
-  String initialPrice() {
-    final double? value = double.tryParse(initialText('price'));
+  String initialMoney(String key) {
+    final double? value = double.tryParse(initialText(key));
 
     if (value == null) return '';
 
@@ -101,6 +116,9 @@ class _ProductFormPageState extends State<ProductFormPage> {
         ? value.toStringAsFixed(0)
         : value.toStringAsFixed(2);
   }
+
+  // มีวิดีโอ (ใหม่ หรือของเดิมที่ไม่ได้ลบ) → เลือกหน้าปกเป็นวิดีโอได้
+  bool get hasVideo => newVideo != null || (hadVideo && !removeVideo);
 
   void dismissKeyboard() {
     FocusManager.instance.primaryFocus?.unfocus();
@@ -234,6 +252,9 @@ class _ProductFormPageState extends State<ProductFormPage> {
           'price': priceController.text.trim().replaceAll(',', ''),
           'description': descriptionController.text.trim(),
           'category': category!,
+          'stock': stockController.text.trim(),
+          'shipping_fee': shippingController.text.trim().replaceAll(',', ''),
+          'card_media': hasVideo ? cardMedia : 'image',
         },
         newImagePaths: newImages.map((image) => image.path).toList(),
         removeImageIds: removedImageIds,
@@ -449,6 +470,50 @@ class _ProductFormPageState extends State<ProductFormPage> {
     );
   }
 
+  // เลือกให้การ์ดในหน้าร้านค้าแสดงรูป หรือเล่นวิดีโอ
+  Widget buildCardMedia() {
+    final bool canUseVideo = hasVideo;
+
+    final String selected = canUseVideo ? cardMedia : 'image';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: double.infinity,
+          child: SegmentedButton<String>(
+            segments: [
+              const ButtonSegment(
+                value: 'image',
+                icon: Icon(Icons.image_outlined),
+                label: Text('รูปภาพ'),
+              ),
+              ButtonSegment(
+                value: 'video',
+                icon: const Icon(Icons.play_circle_outline_rounded),
+                label: const Text('วิดีโอ'),
+                enabled: canUseVideo,
+              ),
+            ],
+            selected: {selected},
+            onSelectionChanged: isSaving
+                ? null
+                : (value) => setState(() => cardMedia = value.first),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          !canUseVideo
+              ? 'เพิ่มวิดีโอด้านบนก่อน จึงเลือกให้การ์ดเล่นวิดีโอได้'
+              : selected == 'video'
+              ? 'วิดีโอเล่นเอง (ไม่มีเสียง) เมื่อลูกค้าเลื่อนมาหยุด หรือแตะที่สินค้า'
+              : 'การ์ดแสดงรูปแรกของสินค้า',
+          style: TextStyle(color: AppColors.muted, fontSize: 12.5),
+        ),
+      ],
+    );
+  }
+
   Widget buildPromoteSwitch() {
     return Container(
       decoration: BoxDecoration(
@@ -544,6 +609,71 @@ class _ProductFormPageState extends State<ProductFormPage> {
                   return null;
                 },
               ),
+              const SizedBox(height: 8),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: stockController,
+                      keyboardType: TextInputType.number,
+                      textInputAction: TextInputAction.next,
+                      decoration: InputDecoration(
+                        labelText: 'จำนวนในสต็อก',
+                        helperText: 'ขายได้ระบบลดให้เอง',
+                        prefixIcon: const Icon(Icons.inventory_2_outlined),
+                        errorText: serverErrors['stock'],
+                      ),
+                      validator: (value) {
+                        final int? stock = int.tryParse((value ?? '').trim());
+
+                        if (stock == null || stock < 0 || stock > 99999) {
+                          return 'ใส่ 0 – 99,999';
+                        }
+
+                        return null;
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextFormField(
+                      controller: shippingController,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      textInputAction: TextInputAction.next,
+                      decoration: InputDecoration(
+                        labelText: 'ค่าส่ง (บาท)',
+                        helperText: 'เว้นว่าง = ส่งฟรี',
+                        prefixIcon: const Icon(Icons.local_shipping_outlined),
+                        errorText: serverErrors['shipping_fee'],
+                      ),
+                      validator: (value) {
+                        final String text = (value ?? '').trim().replaceAll(
+                          ',',
+                          '',
+                        );
+
+                        if (text.isEmpty) return null;
+
+                        final double? fee = double.tryParse(text);
+
+                        return fee == null || fee < 0 || fee > 99999
+                            ? 'ใส่ 0 – 99,999'
+                            : null;
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 6, 4, 0),
+                child: Text(
+                  'ค่าส่งคิดครั้งเดียวต่อคำสั่งซื้อ เฉพาะส่งพัสดุ / ส่งถึงบ้าน',
+                  style: TextStyle(color: AppColors.muted, fontSize: 12),
+                ),
+              ),
               const SizedBox(height: 16),
               buildSectionLabel('หมวดสินค้า'),
               Wrap(
@@ -580,6 +710,9 @@ class _ProductFormPageState extends State<ProductFormPage> {
               const SizedBox(height: 8),
               buildSectionLabel('วิดีโอแนะนำสินค้า (ไม่บังคับ)'),
               buildVideo(),
+              const SizedBox(height: 20),
+              buildSectionLabel('หน้าปกการ์ดสินค้า'),
+              buildCardMedia(),
               if (widget.canPromote) ...[
                 const SizedBox(height: 12),
                 buildPromoteSwitch(),
@@ -624,6 +757,8 @@ class _ProductFormPageState extends State<ProductFormPage> {
     titleController.dispose();
     priceController.dispose();
     descriptionController.dispose();
+    stockController.dispose();
+    shippingController.dispose();
 
     super.dispose();
   }

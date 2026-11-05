@@ -1,15 +1,11 @@
-import 'dart:io';
-import 'dart:ui' as ui;
-
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:qr_flutter/qr_flutter.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../data/market_data.dart';
 import '../services/market_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/featured_shops_banner.dart';
+import '../widgets/promptpay_qr.dart';
 
 // =======================================================
 // ขึ้นช่องแนะนำสินค้า
@@ -210,59 +206,14 @@ class _PromotionPageState extends State<PromotionPage> {
     }
   }
 
-  // บันทึก/แชร์รูป QR → เปิดแอปธนาคารแล้วสแกนจากรูปในเครื่อง
   Future<void> shareQr(String payload, String amount) async {
-    try {
-      final painter = QrPainter(
-        data: payload,
-        version: QrVersions.auto,
-        gapless: true,
-        eyeStyle: const QrEyeStyle(
-          eyeShape: QrEyeShape.square,
-          color: Colors.black,
-        ),
-        dataModuleStyle: const QrDataModuleStyle(
-          dataModuleShape: QrDataModuleShape.square,
-          color: Colors.black,
-        ),
-      );
+    final String? error = await sharePromptPayQr(
+      payload: payload,
+      amount: amount,
+      fileTag: 'promo_${order?['id'] ?? 'qr'}',
+    );
 
-      final image = await painter.toImage(720);
-
-      // พื้นขาวรอบ QR (แอปธนาคารอ่านง่ายขึ้น)
-      final recorder = ui.PictureRecorder();
-      final canvas = Canvas(recorder);
-      const double size = 800;
-
-      canvas.drawRect(
-        const Rect.fromLTWH(0, 0, size, size),
-        Paint()..color = Colors.white,
-      );
-      canvas.drawImage(image, const Offset(40, 40), Paint());
-
-      final picture = await recorder.endRecording().toImage(
-        size.toInt(),
-        size.toInt(),
-      );
-      final bytes = await picture.toByteData(format: ui.ImageByteFormat.png);
-
-      if (bytes == null) throw Exception('สร้างรูป QR ไม่สำเร็จ');
-
-      final File file = File(
-        '${Directory.systemTemp.path}/promptpay_${order?['id'] ?? 'qr'}.png',
-      );
-
-      await file.writeAsBytes(bytes.buffer.asUint8List(), flush: true);
-
-      await SharePlus.instance.share(
-        ShareParams(
-          files: [XFile(file.path, mimeType: 'image/png')],
-          text: 'QR พร้อมเพย์ ยอด $amount บาท',
-        ),
-      );
-    } catch (e) {
-      if (mounted) showMessage('บันทึก QR ไม่สำเร็จ: $e');
-    }
+    if (error != null && mounted) showMessage(error);
   }
 
   // =====================================================
@@ -614,21 +565,7 @@ class _PromotionPageState extends State<PromotionPage> {
             ),
           ),
           const SizedBox(height: 12),
-          if (payload.isNotEmpty)
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: AppColors.border),
-              ),
-              child: QrImageView(
-                data: payload,
-                size: 220,
-                backgroundColor: Colors.white,
-                semanticsLabel: 'QR พร้อมเพย์',
-              ),
-            ),
+          if (payload.isNotEmpty) PromptPayQrImage(payload: payload),
           const SizedBox(height: 10),
           Text(
             [

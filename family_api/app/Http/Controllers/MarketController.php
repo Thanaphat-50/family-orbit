@@ -96,12 +96,21 @@ class MarketController extends Controller
         return response()->json([
             'status' => true,
             'product' => [
-                ...$product->only(['id', 'title', 'description', 'price', 'category', 'status', 'created_at']),
+                ...$product->only([
+                    'id', 'title', 'description', 'price', 'stock', 'shipping_fee',
+                    'category', 'status', 'created_at',
+                ]),
                 'images' => $product->images,
                 'video_url' => $product->video_url,
                 'video_thumbnail_url' => $product->video_thumbnail_url,
                 'is_featured' => $product->isFeatured(),
                 'is_mine' => $isMine,
+                'sold_out' => $product->isSoldOut(),
+                // ปุ่มสั่งซื้อ: reason = เหตุผลที่สั่งในแอปไม่ได้ (แสดงแทนปุ่ม)
+                'order' => [
+                    'available' => ($reason = $product->orderBlockReason($user)) === null,
+                    'reason' => $reason,
+                ],
             ],
             'shop' => $this->shopPayload($product->shop),
         ]);
@@ -360,6 +369,12 @@ class MarketController extends Controller
             'images_count' => $product->images->count(),
             'is_featured' => $product->isFeatured(),
             'has_video' => $product->video_path !== null,
+            'sold_out' => $product->isSoldOut(),
+            // ผู้ขายเลือกให้การ์ดเล่นวิดีโอ (แอปเล่นเองเมื่อเลื่อนมาหยุดที่การ์ด)
+            ...($product->showsVideoOnCard() ? [
+                'card_video_url' => $product->video_url,
+                'card_video_thumbnail_url' => $product->video_thumbnail_url,
+            ] : []),
             ...($withShop ? [
                 'shop' => [
                     'id' => $product->shop->id,
@@ -374,6 +389,15 @@ class MarketController extends Controller
 
     // ข้อมูลร้านที่เปิดให้ผู้ซื้อเห็น (ไม่มีข้อมูลเจ้าของบัญชี)
     private function shopPayload(Shop $shop): array
+    {
+        return [
+            ...$this->shopPublicFields($shop),
+            'payment_methods' => $shop->readyPaymentMethods(),
+            'accepts_orders' => $shop->acceptsOrders(),
+        ];
+    }
+
+    private function shopPublicFields(Shop $shop): array
     {
         return $shop->only([
             'id',

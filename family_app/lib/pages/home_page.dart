@@ -33,6 +33,8 @@ import 'history_page.dart';
 import 'my_posts_page.dart';
 import 'my_shop_page.dart';
 import 'notification_page.dart';
+import 'order_page.dart';
+import 'orders_page.dart';
 import 'post_detail_page.dart';
 import 'profile_page.dart';
 import 'settings_page.dart';
@@ -447,6 +449,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           MaterialPageRoute(builder: (_) => const MyShopPage()),
         );
         return;
+
+      case 'order_status':
+        final int? orderId = int.tryParse('${data['order_id'] ?? ''}');
+
+        if (orderId != null) {
+          await navigator.push(
+            MaterialPageRoute(builder: (_) => OrderPage(orderId: orderId)),
+          );
+          return;
+        }
 
       // เปลี่ยนแท็บ → ปิดหน้าที่เปิดซ้อนอยู่ก่อน ให้เห็นแท็บนั้น
       case 'new_activity':
@@ -1242,6 +1254,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       case AccountMenuItem.notifications:
         await openNotifications();
 
+      case AccountMenuItem.orders:
+        await openMyOrders();
+
       case AccountMenuItem.shop:
         await openSellerAccount();
 
@@ -1688,6 +1703,20 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
+  // ปุ่ม 🧾 คำสั่งซื้อของฉัน (หน้าตลาด และเมนูบัญชี)
+  Future<void> openMyOrders() async {
+    final dynamic changed = await Navigator.of(context).push(
+      MaterialPageRoute(builder: (context) => const OrdersPage()),
+    );
+
+    // ยกเลิกคำสั่งซื้อ → สต็อกสินค้าในตลาดเปลี่ยน
+    if (changed == true && mounted) {
+      setState(() {
+        marketRefreshToken++;
+      });
+    }
+  }
+
   // เลื่อนลง → ซ่อนแถบล่าง / เลื่อนขึ้น → แสดง (หน้าหลัก / ตลาด)
   bool handleUserScroll(UserScrollNotification notification) {
     if (!hidesBarOnScroll || notification.metrics.axis != Axis.vertical) {
@@ -1851,12 +1880,18 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
 
       actions: [
-        if (selectedIndex == tabMarket && hasFamily)
+        if (selectedIndex == tabMarket && hasFamily) ...[
+          IconButton(
+            tooltip: 'คำสั่งซื้อของฉัน',
+            onPressed: openMyOrders,
+            icon: const Icon(Icons.receipt_long_outlined, size: 25),
+          ),
           IconButton(
             tooltip: 'บัญชีผู้ขาย',
             onPressed: openSellerAccount,
             icon: const Icon(Icons.storefront_outlined, size: 26),
           ),
+        ],
 
         // แชทใช้ได้เมื่อมีครอบครัวแล้ว
         if (hasFamily) buildChatButton(),

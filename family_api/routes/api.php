@@ -26,6 +26,7 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\SocialAuthController;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\OrderController;
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -489,6 +490,57 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/my-shop/shop-promotions/{shopPromotion}/cancel', [
         MyPromotionController::class,
         'cancelShop'
+    ]);
+
+    // สั่งซื้อสินค้า (ผู้ซื้อ + ร้าน) ดู App\Models\Order
+    Route::get('/orders/checkout', [
+        OrderController::class,
+        'checkout'
+    ]);
+
+    Route::get('/orders', [
+        OrderController::class,
+        'index'
+    ]);
+
+    Route::post('/orders', [
+        OrderController::class,
+        'store'
+    ])->middleware('throttle:ugc');
+
+    Route::get('/my-shop/orders', [
+        OrderController::class,
+        'shopIndex'
+    ]);
+
+    Route::get('/orders/{order}', [
+        OrderController::class,
+        'show'
+    ]);
+
+    Route::post('/orders/{order}/slip', [
+        OrderController::class,
+        'uploadSlip'
+    ])->middleware('throttle:ugc');
+
+    Route::post('/orders/{order}/reject-slip', [
+        OrderController::class,
+        'rejectSlip'
+    ]);
+
+    Route::post('/orders/{order}/ship', [
+        OrderController::class,
+        'ship'
+    ]);
+
+    Route::post('/orders/{order}/received', [
+        OrderController::class,
+        'received'
+    ]);
+
+    Route::post('/orders/{order}/cancel', [
+        OrderController::class,
+        'cancel'
     ]);
 
     Route::get('/activities', [

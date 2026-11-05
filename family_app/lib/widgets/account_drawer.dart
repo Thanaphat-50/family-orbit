@@ -18,6 +18,7 @@ enum AccountMenuItem {
   communityProfile,
   family,
   notifications,
+  orders,
   shop,
   settings,
   logout,
@@ -63,9 +64,7 @@ class AccountDrawer extends StatelessWidget {
 
     if (family is! Map) return null;
 
-    final String role = profile?['role'] == 'owner'
-        ? 'เจ้าของกลุ่ม'
-        : 'สมาชิก';
+    final String role = profile?['role'] == 'owner' ? 'เจ้าของกลุ่ม' : 'สมาชิก';
 
     return '${family['name']} · $role';
   }
@@ -331,6 +330,14 @@ class AccountDrawer extends StatelessWidget {
                   icon: Icons.notifications_none_rounded,
                   title: 'การแจ้งเตือน',
                   badge: unreadNotifications,
+                ),
+                buildItem(
+                  context,
+                  item: AccountMenuItem.orders,
+                  icon: Icons.receipt_long_outlined,
+                  title: 'คำสั่งซื้อของฉัน',
+                  subtitle: 'สินค้าที่สั่งซื้อและสถานะการส่ง',
+                  color: marketColor,
                 ),
                 buildItem(
                   context,

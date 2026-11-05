@@ -193,6 +193,121 @@ DeliveryMethod? findDeliveryMethod(String key) {
   return null;
 }
 
+// วิธีรับเงินของร้าน (ตรงกับ config('market.payment_methods'))
+// transfer = ผู้ซื้อโอนก่อนแล้วแนบสลิป
+class PaymentMethod {
+  final String key;
+  final String label;
+  final IconData icon;
+  final bool transfer;
+  final String hint;
+
+  const PaymentMethod({
+    required this.key,
+    required this.label,
+    required this.icon,
+    required this.transfer,
+    required this.hint,
+  });
+}
+
+const List<PaymentMethod> paymentMethods = [
+  PaymentMethod(
+    key: 'promptpay',
+    label: 'โอนพร้อมเพย์',
+    icon: Icons.qr_code_2_rounded,
+    transfer: true,
+    hint: 'ผู้ซื้อสแกน QR ตามยอดรวม แล้วแนบสลิป',
+  ),
+  PaymentMethod(
+    key: 'bank',
+    label: 'โอนเข้าบัญชีธนาคาร',
+    icon: Icons.account_balance_outlined,
+    transfer: true,
+    hint: 'ผู้ซื้อโอนเข้าเลขบัญชีของร้าน แล้วแนบสลิป',
+  ),
+  PaymentMethod(
+    key: 'cod',
+    label: 'เก็บเงินปลายทาง',
+    icon: Icons.local_atm_rounded,
+    transfer: false,
+    hint: 'ใช้กับส่งพัสดุ / ส่งถึงบ้าน',
+  ),
+  PaymentMethod(
+    key: 'cash',
+    label: 'จ่ายเงินสดตอนรับของ',
+    icon: Icons.payments_outlined,
+    transfer: false,
+    hint: 'ใช้กับรับที่หน้าร้าน / นัดรับ',
+  ),
+];
+
+PaymentMethod? findPaymentMethod(String key) {
+  for (final method in paymentMethods) {
+    if (method.key == key) return method;
+  }
+
+  return null;
+}
+
+// ธนาคารที่ร้านเลือกได้ (ตรงกับ config('market.banks'))
+const List<String> thaiBanks = [
+  'ธนาคารกสิกรไทย',
+  'ธนาคารไทยพาณิชย์',
+  'ธนาคารกรุงเทพ',
+  'ธนาคารกรุงไทย',
+  'ธนาคารกรุงศรีอยุธยา',
+  'ธนาคารทหารไทยธนชาต (ttb)',
+  'ธนาคารออมสิน',
+  'ธนาคารเพื่อการเกษตรและสหกรณ์การเกษตร (ธ.ก.ส.)',
+  'ธนาคารอาคารสงเคราะห์',
+  'ธนาคารยูโอบี',
+  'ธนาคารซีไอเอ็มบี ไทย',
+  'ธนาคารเกียรตินาคินภัทร',
+  'ธนาคารแลนด์ แอนด์ เฮ้าส์',
+  'ธนาคารทิสโก้',
+  'ธนาคารอิสลามแห่งประเทศไทย',
+];
+
+// =======================================================
+// สถานะคำสั่งซื้อ (ป้ายสี)
+// =======================================================
+
+ShopStatusStyle orderStatusStyle(dynamic status) {
+  switch (status) {
+    case 'awaiting_payment':
+      return const ShopStatusStyle(
+        label: 'รอชำระเงิน',
+        color: Color(0xFFDC6803),
+        icon: Icons.payments_outlined,
+      );
+    case 'preparing':
+      return const ShopStatusStyle(
+        label: 'รอร้านจัดส่ง',
+        color: Color(0xFF2E90FA),
+        icon: Icons.inventory_2_outlined,
+      );
+    case 'shipped':
+      return const ShopStatusStyle(
+        label: 'ส่งสินค้าแล้ว',
+        color: Color(0xFF7A5AF8),
+        icon: Icons.local_shipping_outlined,
+      );
+    case 'completed':
+      return const ShopStatusStyle(
+        label: 'สำเร็จ',
+        color: Color(0xFF12B76A),
+        icon: Icons.check_circle_rounded,
+      );
+    default:
+      return const ShopStatusStyle(
+        label: 'ยกเลิกแล้ว',
+        color: Color(0xFF98A2B3),
+        icon: Icons.cancel_outlined,
+      );
+  }
+}
+
 String shopArea(dynamic shop) {
   if (shop is! Map) return '';
 

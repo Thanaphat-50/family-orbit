@@ -7,6 +7,7 @@ import '../widgets/featured_shops_banner.dart' show featuredColor;
 import 'market_product_page.dart';
 import 'market_shop_page.dart';
 import 'my_shop_page.dart';
+import 'order_page.dart';
 import 'post_detail_page.dart';
 
 // แท็บในหน้าหลักที่ต้องเปิดหลังกดการแจ้งเตือน
@@ -308,6 +309,19 @@ class _NotificationPageState extends State<NotificationPage> {
           return;
         }
 
+      // คำสั่งซื้อเปลี่ยนสถานะ → หน้าคำสั่งซื้อ (ผู้ซื้อ / ร้าน)
+      case 'order_status':
+        final int? orderId = dataId('order_id');
+
+        if (orderId != null) {
+          await Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => OrderPage(orderId: orderId),
+            ),
+          );
+          return;
+        }
+
       // รีวิวร้านใหม่ → หน้าร้าน (เห็นรีวิว)
       case 'shop_review':
         final int? shopId = dataId('shop_id');
@@ -447,6 +461,11 @@ class _NotificationPageState extends State<NotificationPage> {
           icon: Icons.flag_rounded,
           color: AppColors.danger,
         );
+      case 'order_status':
+        return const _NotificationStyle(
+          icon: Icons.receipt_long_rounded,
+          color: marketColor,
+        );
       case 'promotion_status':
       case 'shop_review':
         return const _NotificationStyle(
@@ -495,7 +514,9 @@ class _NotificationPageState extends State<NotificationPage> {
       child: Material(
         color: read
             ? AppColors.surface
-            : AppColors.primary.withValues(alpha: AppColors.isDark ? 0.12 : 0.05),
+            : AppColors.primary.withValues(
+                alpha: AppColors.isDark ? 0.12 : 0.05,
+              ),
         child: InkWell(
           onTap: () => openItem(item),
           child: Padding(

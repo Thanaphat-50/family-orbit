@@ -349,6 +349,10 @@ class MyProductController extends Controller
             'description' => 'nullable|string|max:2000',
             'price' => 'nullable|numeric|min:0|max:9999999',
             'category' => ['required', Rule::in(array_keys(config('market.categories')))],
+            // ไม่ส่งมา (แอปเวอร์ชันเก่า) = ไม่เปลี่ยน
+            'stock' => 'sometimes|required|integer|min:0|max:' . config('market.max_stock'),
+            'shipping_fee' => 'nullable|numeric|min:0|max:99999',
+            'card_media' => ['sometimes', Rule::in(['image', 'video'])],
         ];
     }
 
@@ -362,6 +366,9 @@ class MyProductController extends Controller
             'description.max' => 'รายละเอียดยาวได้ไม่เกิน 2,000 ตัวอักษร',
             'price.*' => 'ราคาต้องเป็นตัวเลข 0 – 9,999,999 บาท',
             'category.*' => 'กรุณาเลือกหมวดสินค้า',
+            'stock.*' => 'จำนวนในสต็อกต้องเป็นตัวเลข 0 – ' . number_format(config('market.max_stock')),
+            'shipping_fee.*' => 'ค่าส่งต้องเป็นตัวเลข 0 – 99,999 บาท',
+            'card_media.*' => 'เลือกหน้าปกการ์ดเป็นรูปหรือวิดีโอ',
             'images.required' => 'กรุณาเพิ่มรูปสินค้าอย่างน้อย 1 รูป',
             'images.min' => 'กรุณาเพิ่มรูปสินค้าอย่างน้อย 1 รูป',
             'images.max' => "สินค้าแต่ละชิ้นมีรูปได้สูงสุด {$maxImages} รูป",
@@ -379,6 +386,7 @@ class MyProductController extends Controller
             'description' => $data['description'] ?? null,
             'price' => $data['price'] ?? null,
             'category' => $data['category'],
+            ...array_intersect_key($data, array_flip(['stock', 'shipping_fee', 'card_media'])),
         ];
     }
 

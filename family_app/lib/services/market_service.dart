@@ -48,10 +48,13 @@ class MarketService {
   // logoPath: รูปโลโก้ใหม่ในเครื่อง (ไม่เปลี่ยน = null)
   // =====================================================
 
+  // paymentMethods != null → บันทึกวิธีรับเงินด้วย
+  // (fields ใส่ promptpay_id, bank_name, bank_account_number, bank_account_name)
   static Future<Map<String, dynamic>> saveShop({
     required bool isNew,
     required Map<String, String> fields,
     List<String> deliveryMethods = const [],
+    List<String>? paymentMethods,
     String? logoPath,
     bool removeLogo = false,
   }) async {
@@ -71,6 +74,14 @@ class MarketService {
     // ไม่ส่งเลย = ไม่ระบุวิธีรับสินค้า
     for (int i = 0; i < deliveryMethods.length; i++) {
       request.fields['delivery_methods[$i]'] = deliveryMethods[i];
+    }
+
+    if (paymentMethods != null) {
+      request.fields['payment_settings'] = '1';
+
+      for (int i = 0; i < paymentMethods.length; i++) {
+        request.fields['payment_methods[$i]'] = paymentMethods[i];
+      }
     }
 
     if (removeLogo) {

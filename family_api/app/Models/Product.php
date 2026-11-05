@@ -18,12 +18,15 @@ class Product extends Model
         'title',
         'description',
         'price',
+        'stock',
+        'shipping_fee',
         'category',
         'status',
         'hidden_at',
         'views',
         'video_path',
         'video_thumbnail_path',
+        'card_media',
     ];
 
     protected $hidden = [
@@ -33,6 +36,8 @@ class Product extends Model
 
     protected $casts = [
         'price' => 'decimal:2',
+        'stock' => 'integer',
+        'shipping_fee' => 'decimal:2',
         'hidden_at' => 'datetime',
         'views' => 'integer',
         'featured_until' => 'datetime',
@@ -56,6 +61,34 @@ class Product extends Model
     public function promotions()
     {
         return $this->hasMany(ProductPromotion::class);
+    }
+
+    public function orders()
+    {
+        return $this->hasMany(Order::class);
+    }
+
+    public function isSoldOut(): bool
+    {
+        return (int) $this->stock <= 0;
+    }
+
+    // การ์ดสินค้าเล่นวิดีโอแทนรูป (ผู้ขายเลือก และมีวิดีโอแล้ว)
+    public function showsVideoOnCard(): bool
+    {
+        return $this->card_media === 'video' && $this->video_path !== null;
+    }
+
+    // เหตุผลที่ผู้ใช้คนนี้สั่งซื้อในแอปไม่ได้ (null = สั่งได้) ต้องโหลด shop ไว้ก่อน
+    public function orderBlockReason(User $user): ?string
+    {
+        return match (true) {
+            (int) $this->shop->user_id === (int) $user->id => 'นี่คือสินค้าของร้านคุณ',
+            $this->price === null => 'สินค้านี้ให้สอบถามราคากับร้านก่อน',
+            $this->isSoldOut() => 'สินค้าหมดแล้ว',
+            !$this->shop->acceptsOrders() => 'ร้านนี้ยังไม่เปิดรับคำสั่งซื้อในแอป ติดต่อร้านได้โดยตรง',
+            default => null,
+        };
     }
 
     // ขึ้นช่องแนะนำอยู่ตอนนี้

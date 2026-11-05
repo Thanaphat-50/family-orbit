@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../data/market_data.dart';
 import '../services/market_service.dart';
+import '../services/order_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/featured_shops_banner.dart';
 import '../widgets/market_sheets.dart';
+import 'orders_page.dart';
 import 'product_form_page.dart';
 import 'promotion_page.dart';
 import 'shop_form_page.dart';
@@ -50,7 +52,33 @@ class _MyShopPageState extends State<MyShopPage> {
   }
 
   Future<void> refreshAll() async {
-    await Future.wait([loadShop(), loadProducts()]);
+    await Future.wait([loadShop(), loadProducts(), loadOrderTodo()]);
+  }
+
+  // ออเดอร์ที่ร้านต้องจัดการ (ตัวเลขบนการ์ดออเดอร์)
+  int orderTodo = 0;
+
+  Future<void> loadOrderTodo() async {
+    try {
+      final result = await OrderService.getOrders(seller: true, filter: 'todo');
+
+      if (!mounted || result['status'] != true) return;
+
+      setState(() => orderTodo = (result['todo'] as num?)?.toInt() ?? 0);
+    } catch (_) {
+      // ไม่มีร้าน / เน็ตหลุด → ไม่แสดงตัวเลข
+    }
+  }
+
+  Future<void> openOrders() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (context) => const OrdersPage(seller: true)),
+    );
+
+    if (!mounted) return;
+
+    // ออเดอร์เปลี่ยน → สต็อกสินค้าอาจเปลี่ยน
+    await Future.wait([loadOrderTodo(), loadProducts()]);
   }
 
   Future<void> loadProducts() async {
@@ -489,6 +517,81 @@ class _MyShopPageState extends State<MyShopPage> {
   // ข้อมูลติดต่อ
   // =====================================================
 
+  // ออเดอร์ของร้าน + ชวนตั้งค่าวิธีรับเงิน (ยังไม่เปิดรับคำสั่งซื้อ)
+  Widget buildOrdersCard(Map<String, dynamic> data) {
+    final bool accepts = data['accepts_orders'] == true;
+
+    return Material(
+      color: AppColors.surface,
+      borderRadius: BorderRadius.circular(24),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(24),
+        onTap: accepts || orderTodo > 0 ? openOrders : editShop,
+        child: Ink(
+          padding: const EdgeInsets.fromLTRB(16, 14, 10, 14),
+          decoration: cardDecoration(),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.receipt_long_rounded,
+                color: marketColor,
+                size: 28,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'ออเดอร์ของร้าน',
+                      style: TextStyle(
+                        color: AppColors.navy,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      !accepts
+                          ? 'ตั้งวิธีรับเงินและวิธีรับสินค้า เพื่อให้ลูกค้าสั่งซื้อในแอปได้'
+                          : orderTodo > 0
+                          ? 'มี $orderTodo รายการรอคุณจัดส่ง'
+                          : 'ดูคำสั่งซื้อทั้งหมดของลูกค้า',
+                      style: TextStyle(
+                        color: !accepts ? AppColors.danger : AppColors.muted,
+                        fontSize: 12.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (orderTodo > 0)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 9,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.danger,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    '$orderTodo',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              const Icon(Icons.chevron_right_rounded, color: marketColor),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   // ช่องร้านแนะนำ (แบนเนอร์ใหญ่บนสุดของหน้าร้านค้า)
   Widget buildShopPromotionCard(Map<String, dynamic> data) {
     final bool featured = data['is_featured'] == true;
@@ -740,13 +843,33 @@ class _MyShopPageState extends State<MyShopPage> {
                         ),
                       ),
                       const SizedBox(height: 3),
-                      Text(
-                        formatPrice(product['price']),
-                        style: const TextStyle(
-                          color: marketColor,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w800,
+                      Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(
+                              text: formatPrice(product['price']),
+                              style: const TextStyle(
+                                color: marketColor,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            TextSpan(
+                              text: (product['stock'] as num? ?? 0) <= 0
+                                  ? ' · สินค้าหมด'
+                                  : ' · เหลือ ${product['stock']} ชิ้น',
+                              style: TextStyle(
+                                color: (product['stock'] as num? ?? 0) <= 0
+                                    ? AppColors.danger
+                                    : AppColors.muted,
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                       if (featured) ...[
                         const SizedBox(height: 4),
@@ -1000,6 +1123,10 @@ class _MyShopPageState extends State<MyShopPage> {
                     buildHeader(data),
                     const SizedBox(height: 14),
                     buildStatusCard(data),
+                    if (data['status'] == 'active' || orderTodo > 0) ...[
+                      const SizedBox(height: 14),
+                      buildOrdersCard(data),
+                    ],
                     if (data['status'] == 'active') ...[
                       const SizedBox(height: 14),
                       buildShopPromotionCard(data),

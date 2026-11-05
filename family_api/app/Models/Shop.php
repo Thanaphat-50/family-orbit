@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Services\MarketScreening;
 use App\Support\MediaStorage;
+use App\Support\PromptPay;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
@@ -39,6 +40,11 @@ class Shop extends Model
         'district',
         'opening_hours',
         'delivery_methods',
+        'payment_methods',
+        'promptpay_id',
+        'bank_name',
+        'bank_account_number',
+        'bank_account_name',
         'logo_path',
         'video_path',
         'video_thumbnail_path',
@@ -49,10 +55,16 @@ class Shop extends Model
         'terms_accepted_at',
     ];
 
+    // บัญชีรับเงินเห็นเฉพาะเจ้าของร้าน (MyShopController)
+    // และผู้ซื้อตอนต้องโอน (Order::toPayload)
     protected $hidden = [
         'logo_path',
         'video_path',
         'video_thumbnail_path',
+        'promptpay_id',
+        'bank_name',
+        'bank_account_number',
+        'bank_account_name',
     ];
 
     protected $appends = [
@@ -64,6 +76,7 @@ class Shop extends Model
 
     protected $casts = [
         'delivery_methods' => 'array',
+        'payment_methods' => 'array',
         'approved_at' => 'datetime',
         'featured_until' => 'datetime',
         'terms_accepted_at' => 'datetime',
@@ -92,6 +105,100 @@ class Shop extends Model
     public function promotions()
     {
         return $this->hasMany(ShopPromotion::class);
+    }
+
+    public function orders()
+    {
+        return $this->hasMany(Order::class);
+    }
+
+    // =====================================================
+    // สั่งซื้อในแอป
+    // =====================================================
+
+    // วิธีรับเงินที่ร้านเปิดและกรอกข้อมูลครบ
+    public function readyPaymentMethods(): array
+    {
+        $methods = config('market.payment_methods');
+
+        return collect($this->payment_methods ?? [])
+            ->filter(fn ($key) => is_string($key) && array_key_exists($key, $methods))
+            ->filter(fn (string $key) => match ($key) {
+                'promptpay' => PromptPay::isValidId($this->promptpay_id),
+                'bank' => filled($this->bank_name) && filled($this->bank_account_number),
+                default => true,
+            })
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    // วิธีจ่ายที่ใช้กับวิธีรับสินค้านี้ได้ (เช่น เก็บเงินปลายทางใช้กับส่งพัสดุ)
+    public function paymentMethodsFor(string $delivery): array
+    {
+        return array_values(array_filter(
+            $this->readyPaymentMethods(),
+            function (string $key) use ($delivery) {
+                $allowed = config("market.payment_methods.{$key}.delivery");
+
+                return $allowed === null || in_array($delivery, $allowed, true);
+            }
+        ));
+    }
+
+    // วิธีรับสินค้าที่สั่งในแอปได้ (มีวิธีจ่ายอย่างน้อย 1 แบบ)
+    public function orderDeliveryMethods(): array
+    {
+        return array_values(array_filter(
+            $this->delivery_methods ?? [],
+            fn ($key) => is_string($key)
+                && array_key_exists($key, config('market.delivery_methods'))
+                && $this->paymentMethodsFor($key) !== []
+        ));
+    }
+
+    public function acceptsOrders(): bool
+    {
+        return $this->isActive() && $this->orderDeliveryMethods() !== [];
+    }
+
+    // ข้อมูลโอนเงินให้ผู้ซื้อ (null = ร้านเอาวิธีนี้ออกไปแล้ว)
+    public function paymentInfo(string $method, float $amount): ?array
+    {
+        $accountName = filled($this->bank_account_name) ? $this->bank_account_name : $this->name;
+
+        if ($method === 'promptpay' && PromptPay::isValidId($this->promptpay_id)) {
+            return [
+                'method' => 'promptpay',
+                'promptpay_payload' => PromptPay::payload($this->promptpay_id, $amount),
+                'promptpay_id' => PromptPay::maskedId($this->promptpay_id),
+                'account_name' => $accountName,
+            ];
+        }
+
+        if ($method === 'bank' && filled($this->bank_name) && filled($this->bank_account_number)) {
+            return [
+                'method' => 'bank',
+                'bank_name' => $this->bank_name,
+                'account_number' => $this->bank_account_number,
+                'account_name' => $accountName,
+            ];
+        }
+
+        return null;
+    }
+
+    // ข้อมูลบัญชีรับเงิน (เจ้าของร้านเท่านั้น)
+    public function paymentSettings(): array
+    {
+        return [
+            'payment_methods' => $this->payment_methods ?? [],
+            'promptpay_id' => $this->promptpay_id,
+            'bank_name' => $this->bank_name,
+            'bank_account_number' => $this->bank_account_number,
+            'bank_account_name' => $this->bank_account_name,
+            'accepts_orders' => $this->acceptsOrders(),
+        ];
     }
 
     public function getVideoUrlAttribute(): ?string
@@ -238,7 +345,7 @@ class Shop extends Model
         });
 
         static::deleting(function (Shop $shop) {
-            $shop->loadMissing(['images', 'promotions', 'products.images', 'products.promotions']);
+            $shop->loadMissing(['images', 'promotions', 'orders', 'products.images', 'products.promotions']);
         });
 
         static::deleted(function (Shop $shop) {
@@ -248,6 +355,7 @@ class Shop extends Model
                 $shop->video_thumbnail_path,
                 ...$shop->images->pluck('path')->all(),
                 ...$shop->promotions->pluck('slip_path')->all(),
+                ...$shop->orders->pluck('slip_path')->all(),
                 ...$shop->products->flatMap(fn (Product $product) => $product->mediaPaths())->all(),
             ];
 
@@ -271,6 +379,11 @@ class Shop extends Model
             ...ProductImage::whereIn('product_id', $products->pluck('id'))->pluck('path')->all(),
             ...ProductPromotion::where('user_id', $userId)->pluck('slip_path')->all(),
             ...ShopPromotion::where('user_id', $userId)->pluck('slip_path')->all(),
+            // สลิปคำสั่งซื้อ: ที่ผู้ใช้ซื้อ และที่ลูกค้าซื้อจากร้านของผู้ใช้
+            ...Order::where('buyer_id', $userId)
+                ->orWhereIn('shop_id', $shops->pluck('id'))
+                ->pluck('slip_path')
+                ->all(),
         ];
     }
 }

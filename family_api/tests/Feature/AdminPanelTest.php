@@ -4,8 +4,10 @@ namespace Tests\Feature;
 
 use App\Filament\Resources\Posts\Pages\ListPosts;
 use App\Filament\Widgets\AppStatsOverview;
+use App\Models\Order;
 use App\Models\Post;
 use App\Models\PostReport;
+use App\Models\Shop;
 use App\Models\User;
 use Filament\Actions\Testing\TestAction;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -53,6 +55,32 @@ class AdminPanelTest extends TestCase
         $this->get('/admin/market-flags')->assertOk();
         $this->get('/admin/shop-reports')->assertOk();
         $this->get('/admin/shop-promotions')->assertOk();
+
+        $shop = Shop::create([
+            'user_id' => User::factory()->create()->id,
+            'name' => 'ร้านทดสอบ',
+            'category' => 'food',
+            'phone' => '0812345678',
+            'province' => 'เชียงใหม่',
+            'status' => 'active',
+        ]);
+
+        Order::create([
+            'code' => 'OR261105TEST01',
+            'buyer_id' => User::factory()->create()->id,
+            'shop_id' => $shop->id,
+            'product_title' => 'ข้าวกล่อง',
+            'unit_price' => 50,
+            'quantity' => 2,
+            'total' => 100,
+            'delivery_method' => 'storefront',
+            'payment_method' => 'cash',
+            'recipient_name' => 'ผู้ซื้อ',
+            'recipient_phone' => '0811111111',
+            'status' => 'shipped',
+        ]);
+
+        $this->get('/admin/orders')->assertOk()->assertSee('OR261105TEST01')->assertSee('ส่งมอบสินค้าแล้ว');
 
         // Widget บน Dashboard โหลดแบบ lazy จึงทดสอบตัว Widget โดยตรง
         Livewire::test(AppStatsOverview::class)

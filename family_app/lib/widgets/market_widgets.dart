@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../data/market_data.dart';
 import '../theme/app_theme.dart';
+import 'autoplay_video_cover.dart';
 
 // =======================================================
 // การ์ดสินค้าในตาราง (หน้าตลาด / หน้าร้าน)
@@ -25,9 +26,38 @@ class MarketProductCard extends StatelessWidget {
     this.showShop = true,
   });
 
+  Widget buildImage(String? imageUrl) {
+    if (imageUrl == null) {
+      return ColoredBox(
+        color: AppColors.fill,
+        child: Icon(Icons.shopping_bag_outlined, color: marketColor),
+      );
+    }
+
+    return Image.network(
+      imageUrl,
+      fit: BoxFit.cover,
+      cacheWidth: 500,
+      loadingBuilder: (context, child, progress) {
+        return progress == null ? child : ColoredBox(color: AppColors.fill);
+      },
+      errorBuilder: (context, error, stackTrace) {
+        return ColoredBox(
+          color: AppColors.fill,
+          child: Icon(Icons.broken_image_outlined, color: AppColors.muted),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final String? imageUrl = product['image_url']?.toString();
+
+    // ผู้ขายเลือกให้การ์ดเล่นวิดีโอ
+    final String? cardVideoUrl = product['card_video_url']?.toString();
+
+    final bool soldOut = product['sold_out'] == true;
 
     final dynamic shop = product['shop'];
 
@@ -60,34 +90,33 @@ class MarketProductCard extends StatelessWidget {
                   children: [
                     SizedBox(
                       width: double.infinity,
-                      child: imageUrl == null
-                          ? ColoredBox(
-                              color: AppColors.fill,
-                              child: Icon(
-                                Icons.shopping_bag_outlined,
-                                color: marketColor,
+                      child: cardVideoUrl == null
+                          ? buildImage(imageUrl)
+                          : AutoplayVideoCover(
+                              videoUrl: cardVideoUrl,
+                              placeholder: buildImage(
+                                product['card_video_thumbnail_url']
+                                        ?.toString() ??
+                                    imageUrl,
                               ),
-                            )
-                          : Image.network(
-                              imageUrl,
-                              fit: BoxFit.cover,
-                              cacheWidth: 500,
-                              loadingBuilder: (context, child, progress) {
-                                return progress == null
-                                    ? child
-                                    : ColoredBox(color: AppColors.fill);
-                              },
-                              errorBuilder: (context, error, stackTrace) {
-                                return ColoredBox(
-                                  color: AppColors.fill,
-                                  child: Icon(
-                                    Icons.broken_image_outlined,
-                                    color: AppColors.muted,
-                                  ),
-                                );
-                              },
                             ),
                     ),
+                    if (soldOut)
+                      Positioned.fill(
+                        child: ColoredBox(
+                          color: Colors.black.withValues(alpha: 0.45),
+                          child: const Center(
+                            child: Text(
+                              'สินค้าหมด',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                     // ช่องแนะนำแบบชำระเงิน
                     if (product['is_featured'] == true)
                       const Positioned(

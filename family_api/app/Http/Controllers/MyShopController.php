@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Shop;
 use App\Support\MarketVideo;
 use App\Support\MediaStorage;
+use App\Support\PromptPay;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -52,7 +53,7 @@ class MyShopController extends Controller
         }
 
         $data = $request->validate(
-            $this->rules() + ['accept_terms' => 'accepted'],
+            $this->rules($request) + ['accept_terms' => 'accepted'],
             $this->messages()
         );
 
@@ -110,7 +111,7 @@ class MyShopController extends Controller
         }
 
         $data = $request->validate(
-            $this->rules() + ['remove_logo' => 'nullable|boolean'],
+            $this->rules($request) + ['remove_logo' => 'nullable|boolean'],
             $this->messages()
         );
 
@@ -165,9 +166,43 @@ class MyShopController extends Controller
     // HELPERS
     // =====================================================
 
-    private function rules(): array
+    private function rules(Request $request): array
     {
+        $methods = (array) $request->input('payment_methods', []);
+
+        $usesPromptPay = in_array('promptpay', $methods, true);
+        $usesBank = in_array('bank', $methods, true);
+
         return [
+            // payment_settings = 1 → บันทึกวิธีรับเงินด้วย (แอปเวอร์ชันเก่าไม่ส่ง = ไม่เปลี่ยน)
+            'payment_settings' => 'nullable|boolean',
+            'payment_methods' => 'nullable|array',
+            'payment_methods.*' => ['distinct', Rule::in(array_keys(config('market.payment_methods')))],
+            // ตรวจรูปแบบเฉพาะวิธีที่เลือก (ที่ไม่ได้เลือกเก็บค่าเดิมไว้ เปิดใหม่ไม่ต้องพิมพ์ซ้ำ)
+            'promptpay_id' => [
+                Rule::requiredIf($usesPromptPay),
+                'nullable',
+                'string',
+                'max:30',
+                function (string $attribute, mixed $value, \Closure $fail) use ($usesPromptPay) {
+                    if ($usesPromptPay && filled($value) && !PromptPay::isValidId($value)) {
+                        $fail('พร้อมเพย์ต้องเป็นเบอร์มือถือ 10 หลัก หรือเลขบัตรประชาชน 13 หลัก');
+                    }
+                },
+            ],
+            'bank_name' => [
+                Rule::requiredIf($usesBank),
+                'nullable',
+                ...($usesBank ? [Rule::in(config('market.banks'))] : ['string', 'max:60']),
+            ],
+            'bank_account_number' => [
+                Rule::requiredIf($usesBank),
+                'nullable',
+                'string',
+                ...($usesBank ? ['regex:/^[0-9][0-9\s\-]{8,20}$/'] : ['max:30']),
+            ],
+            'bank_account_name' => [Rule::requiredIf($usesPromptPay || $usesBank), 'nullable', 'string', 'max:100'],
+
             'name' => 'required|string|max:80',
             'description' => 'nullable|string|max:1000',
             'category' => ['required', Rule::in(array_keys(config('market.categories')))],
@@ -197,6 +232,13 @@ class MyShopController extends Controller
             'district.max' => 'อำเภอ/เขต ยาวได้ไม่เกิน 80 ตัวอักษร',
             'opening_hours.max' => 'เวลาเปิด-ปิดยาวได้ไม่เกิน 200 ตัวอักษร',
             'delivery_methods.*' => 'วิธีรับสินค้าไม่ถูกต้อง',
+            'payment_methods.*' => 'วิธีรับเงินไม่ถูกต้อง',
+            'promptpay_id.required' => 'กรุณาใส่เบอร์หรือเลขพร้อมเพย์ของร้าน',
+            'bank_name.*' => 'กรุณาเลือกธนาคาร',
+            'bank_account_number.required' => 'กรุณาใส่เลขบัญชี',
+            'bank_account_number.regex' => 'เลขบัญชีไม่ถูกต้อง',
+            'bank_account_name.required' => 'กรุณาใส่ชื่อบัญชีผู้รับเงิน',
+            'bank_account_name.max' => 'ชื่อบัญชียาวได้ไม่เกิน 100 ตัวอักษร',
             'logo.*' => 'โลโก้ต้องเป็นรูป JPG, PNG หรือ WEBP ไม่เกิน 4 MB',
             'accept_terms.accepted' => 'กรุณายอมรับกฎผู้ขายก่อนเปิดร้าน',
         ];
@@ -215,6 +257,20 @@ class MyShopController extends Controller
             'district' => $data['district'] ?? null,
             'opening_hours' => filled($data['opening_hours'] ?? null) ? trim($data['opening_hours']) : null,
             'delivery_methods' => array_values(array_unique($data['delivery_methods'] ?? [])) ?: null,
+            ...(!empty($data['payment_settings']) ? [
+                'payment_methods' => array_values(array_unique($data['payment_methods'] ?? [])) ?: null,
+                // เก็บแบบตัวเลขล้วน
+                'promptpay_id' => filled($data['promptpay_id'] ?? null)
+                    ? preg_replace('/\D/', '', $data['promptpay_id'])
+                    : null,
+                'bank_name' => $data['bank_name'] ?? null,
+                'bank_account_number' => filled($data['bank_account_number'] ?? null)
+                    ? preg_replace('/\D/', '', $data['bank_account_number'])
+                    : null,
+                'bank_account_name' => filled($data['bank_account_name'] ?? null)
+                    ? trim($data['bank_account_name'])
+                    : null,
+            ] : []),
         ];
     }
 
@@ -247,6 +303,7 @@ class MyShopController extends Controller
     {
         return [
             ...$shop->toArray(),
+            ...$shop->paymentSettings(),
             'status_label' => Shop::STATUS_LABELS[$shop->status] ?? $shop->status,
             'images' => $shop->images()->get(),
             'max_images' => (int) config('market.max_shop_images'),
