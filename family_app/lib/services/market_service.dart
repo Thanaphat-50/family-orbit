@@ -167,6 +167,37 @@ class MarketService {
     return ApiHelper.decode(response);
   }
 
+  // บันทึกสินค้า (saved = true) / เอาออก (false)
+  static Future<Map<String, dynamic>> setProductSaved(
+    int productId,
+    bool saved,
+  ) async {
+    final headers = await _headers();
+
+    final Uri uri = Uri.parse('$baseUrl/market/products/$productId/save');
+
+    final response = await ApiHelper.request(
+      () => saved
+          ? http.post(uri, headers: headers)
+          : http.delete(uri, headers: headers),
+    );
+
+    return ApiHelper.decode(response);
+  }
+
+  static Future<Map<String, dynamic>> getSavedProducts({int page = 1}) async {
+    final headers = await _headers();
+
+    final response = await ApiHelper.request(
+      () => http.get(
+        Uri.parse('$baseUrl/market/saved-products?page=$page'),
+        headers: headers,
+      ),
+    );
+
+    return ApiHelper.decode(response);
+  }
+
   // target: 'products' หรือ 'shops'
   static Future<Map<String, dynamic>> report({
     required String target,

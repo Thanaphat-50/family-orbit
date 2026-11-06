@@ -24,7 +24,15 @@ class ChatRoomPage extends StatefulWidget {
   // ข้อมูลคู่สนทนาที่รู้อยู่แล้ว (แสดงระหว่างโหลด)
   final Map<String, dynamic>? user;
 
-  const ChatRoomPage({super.key, required this.conversationId, this.user});
+  // ข้อความที่พิมพ์ไว้ให้ก่อน (เช่น ทักร้านจากหน้าสินค้า)
+  final String? draft;
+
+  const ChatRoomPage({
+    super.key,
+    required this.conversationId,
+    this.user,
+    this.draft,
+  });
 
   @override
   State<ChatRoomPage> createState() => _ChatRoomPageState();
@@ -34,7 +42,9 @@ class _ChatRoomPageState extends State<ChatRoomPage>
     with WidgetsBindingObserver {
   static const Duration pollInterval = Duration(seconds: 4);
 
-  final TextEditingController inputController = TextEditingController();
+  late final TextEditingController inputController = TextEditingController(
+    text: widget.draft ?? '',
+  );
 
   final ScrollController scrollController = ScrollController();
 
@@ -116,6 +126,19 @@ class _ChatRoomPageState extends State<ChatRoomPage>
   };
 
   bool get canSend => conversation?['can_send'] != false;
+
+  // ห้องแชทลูกค้า-ร้าน / คนในกลุ่ม
+  String get roomSubtitle {
+    final dynamic shop = conversation?['shop'];
+
+    if (shop is Map) {
+      return shop['is_mine'] == true
+          ? 'ลูกค้าของร้าน ${shop['name'] ?? ''}'
+          : 'ร้านค้า · แชทกับร้าน';
+    }
+
+    return canSend ? 'สมาชิกในกลุ่ม · แชทส่วนตัว' : 'แชทส่วนตัว';
+  }
 
   int get otherReadId {
     final dynamic value = conversation?['other_read_id'];
@@ -894,7 +917,7 @@ class _ChatRoomPageState extends State<ChatRoomPage>
                         ),
                       ),
                       Text(
-                        canSend ? 'สมาชิกในกลุ่ม · แชทส่วนตัว' : 'แชทส่วนตัว',
+                        roomSubtitle,
                         style: TextStyle(
                           color: AppColors.muted,
                           fontSize: 11.5,

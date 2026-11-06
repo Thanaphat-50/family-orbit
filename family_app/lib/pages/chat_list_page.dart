@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../data/market_data.dart' show marketColor;
 import '../services/chat_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/user_avatar.dart';
@@ -286,6 +287,15 @@ class _ChatListPageState extends State<ChatListPage> {
 
     final dynamic last = conversation['last_message'];
 
+    // ห้องแชทลูกค้า-ร้าน
+    final dynamic shop = conversation['shop'];
+
+    final String? shopTag = shop is Map
+        ? shop['is_mine'] == true
+              ? 'ลูกค้าร้าน ${shop['name'] ?? ''}'
+              : 'ร้านค้า'
+        : null;
+
     return ListTile(
       onTap: () {
         final dynamic id = conversation['id'];
@@ -311,6 +321,25 @@ class _ChatListPageState extends State<ChatListPage> {
               ),
             ),
           ),
+          if (shopTag != null)
+            Container(
+              margin: const EdgeInsets.only(right: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+              decoration: BoxDecoration(
+                color: marketColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(99),
+              ),
+              child: Text(
+                shopTag,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: marketColor,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
           Text(
             last is Map ? formatTime(last['created_at']) : '',
             style: TextStyle(
@@ -407,7 +436,7 @@ class _ChatListPageState extends State<ChatListPage> {
                   Icon(Icons.forum_outlined, size: 40, color: AppColors.muted),
                   SizedBox(height: 10),
                   Text(
-                    'ยังไม่มีข้อความ\nกดรูปสมาชิกในกลุ่มด้านบนเพื่อเริ่มคุย',
+                    'ยังไม่มีข้อความ\nกดรูปสมาชิกในกลุ่มด้านบนเพื่อเริ่มคุย\nหรือกด "แชท" ในหน้าสินค้าเพื่อทักร้าน',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: AppColors.muted,

@@ -81,6 +81,21 @@ class ChatService {
     return ApiHelper.decode(response);
   }
 
+  // ทักร้าน (ลูกค้าคุยกับเจ้าของร้านได้แม้ไม่ได้อยู่กลุ่มเดียวกัน)
+  static Future<Map<String, dynamic>> openShopChat(int shopId) async {
+    final headers = await _headers();
+
+    final response = await ApiHelper.request(
+      () => http.post(
+        Uri.parse('$baseUrl/chats'),
+        headers: headers,
+        body: jsonEncode({'shop_id': shopId}),
+      ),
+    );
+
+    return ApiHelper.decode(response);
+  }
+
   // afterId: ข้อความใหม่กว่านี้ / beforeId: ข้อความเก่ากว่านี้
   static Future<Map<String, dynamic>> getMessages(
     int conversationId, {

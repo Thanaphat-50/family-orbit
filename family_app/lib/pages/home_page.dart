@@ -36,6 +36,7 @@ import 'notification_page.dart';
 import 'order_page.dart';
 import 'orders_page.dart';
 import 'post_detail_page.dart';
+import 'saved_products_page.dart';
 import 'profile_page.dart';
 import 'settings_page.dart';
 import 'shop_page.dart';
@@ -1257,6 +1258,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       case AccountMenuItem.orders:
         await openMyOrders();
 
+      case AccountMenuItem.savedProducts:
+        await Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const SavedProductsPage()));
+
       case AccountMenuItem.shop:
         await openSellerAccount();
 
@@ -1880,7 +1886,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
 
       actions: [
-        if (selectedIndex == tabMarket && hasFamily) ...[
+        if (selectedIndex == tabMarket) ...[
           IconButton(
             tooltip: 'คำสั่งซื้อของฉัน',
             onPressed: openMyOrders,
@@ -1894,7 +1900,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         ],
 
         // แชทใช้ได้เมื่อมีครอบครัวแล้ว
-        if (hasFamily) buildChatButton(),
+        // แชทกับคนในกลุ่ม และกับร้านที่ทักไว้ (ไม่มีกลุ่มก็คุยกับร้านได้)
+        buildChatButton(),
 
         buildNotificationButton(),
 

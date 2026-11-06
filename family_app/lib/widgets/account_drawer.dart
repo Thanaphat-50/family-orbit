@@ -19,6 +19,7 @@ enum AccountMenuItem {
   family,
   notifications,
   orders,
+  savedProducts,
   shop,
   settings,
   logout,
@@ -337,6 +338,13 @@ class AccountDrawer extends StatelessWidget {
                   icon: Icons.receipt_long_outlined,
                   title: 'คำสั่งซื้อของฉัน',
                   subtitle: 'สินค้าที่สั่งซื้อและสถานะการส่ง',
+                  color: marketColor,
+                ),
+                buildItem(
+                  context,
+                  item: AccountMenuItem.savedProducts,
+                  icon: Icons.bookmark_border_rounded,
+                  title: 'สินค้าที่บันทึก',
                   color: marketColor,
                 ),
                 buildItem(

@@ -349,6 +349,21 @@ Route::middleware('auth:sanctum')->group(function () {
     ])->middleware('throttle:ugc');
 
     // ร้านแนะนำ (ร้านที่เช่าพื้นที่) บนสุดของตลาด
+    Route::post('/market/products/{product}/save', [
+        MarketController::class,
+        'save'
+    ]);
+
+    Route::delete('/market/products/{product}/save', [
+        MarketController::class,
+        'unsave'
+    ]);
+
+    Route::get('/market/saved-products', [
+        MarketController::class,
+        'savedProducts'
+    ]);
+
     Route::get('/market/featured', [
         MarketController::class,
         'featured'

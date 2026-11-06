@@ -40,6 +40,7 @@ class Shop extends Model
         'district',
         'opening_hours',
         'delivery_methods',
+        'ship_within_days',
         'payment_methods',
         'promptpay_id',
         'bank_name',
@@ -77,6 +78,7 @@ class Shop extends Model
     protected $casts = [
         'delivery_methods' => 'array',
         'payment_methods' => 'array',
+        'ship_within_days' => 'integer',
         'approved_at' => 'datetime',
         'featured_until' => 'datetime',
         'terms_accepted_at' => 'datetime',
@@ -155,6 +157,29 @@ class Shop extends Model
                 && array_key_exists($key, config('market.delivery_methods'))
                 && $this->paymentMethodsFor($key) !== []
         ));
+    }
+
+    // ข้อมูลจริงจากคำสั่งซื้อ: ขายแล้วกี่ชิ้น และส่งจริงเฉลี่ยกี่ชั่วโมงหลังชำระ
+    // (ต้องมีอย่างน้อย 3 ออเดอร์ใน 90 วัน ไม่งั้นไม่แสดงค่าเฉลี่ย)
+    public function salesStats(): array
+    {
+        $sold = (int) Order::where('shop_id', $this->id)
+            ->where('status', Order::STATUS_COMPLETED)
+            ->sum('quantity');
+
+        $hours = Order::where('shop_id', $this->id)
+            ->whereNotNull('shipped_at')
+            ->where('shipped_at', '>=', now()->subDays(90))
+            ->latest('shipped_at')
+            ->limit(100)
+            ->get(['created_at', 'paid_at', 'shipped_at'])
+            ->map(fn (Order $order) => max(0, ($order->paid_at ?? $order->created_at)->diffInMinutes($order->shipped_at) / 60));
+
+        return [
+            'sold_count' => $sold,
+            'avg_ship_hours' => $hours->count() >= 3 ? round($hours->avg(), 1) : null,
+            'shipped_orders' => $hours->count(),
+        ];
     }
 
     public function acceptsOrders(): bool

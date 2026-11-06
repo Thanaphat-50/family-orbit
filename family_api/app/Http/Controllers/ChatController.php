@@ -6,6 +6,8 @@ use App\Models\AppNotification;
 use App\Models\ChatMessage;
 use App\Models\Conversation;
 use App\Models\FamilyMember;
+use App\Models\Order;
+use App\Models\Shop;
 use App\Models\User;
 use App\Models\UserBlock;
 use App\Services\PushNotifications;
@@ -18,7 +20,7 @@ use Throwable;
 use function Illuminate\Support\defer;
 
 // =======================================================
-// แชทส่วนตัว (เฉพาะคนในครอบครัวเดียวกัน)
+// แชทส่วนตัว (คนในกลุ่มเดียวกัน หรือลูกค้ากับร้านที่ทักจากหน้าสินค้า/ร้าน)
 // - ส่งข้อความ / รูปได้ ยกเลิกการส่งข้อความของตัวเองได้
 // - ออกจากครอบครัวแล้ว: อ่านแชทเก่าได้ แต่ส่งต่อไม่ได้
 // - แอปดึงข้อความใหม่เป็นระยะขณะเปิดห้องแชท + แจ้งเตือนเด้ง
@@ -42,6 +44,7 @@ class ChatController extends Controller
         $familyIds = $this->familyMemberIds($me);
 
         $conversations = Conversation::of($me->id)
+            ->with('shop:id,user_id,name,logo_path')
             ->whereNotNull('last_message_at')
             ->orderByDesc('last_message_at')
             ->get();
@@ -73,7 +76,8 @@ class ChatController extends Controller
 
             return [
                 'id' => $conversation->id,
-                'user' => $this->userPayload($users->get($otherId), $otherId),
+                'user' => $this->roomUserPayload($conversation, $me, $users->get($otherId), $otherId),
+                'shop' => $this->shopPayload($conversation, $me),
                 'last_message' => $last ? [
                     'body' => $last->body ? Str::limit($last->body, 80) : null,
                     'has_image' => $last->image_path !== null,
@@ -81,7 +85,8 @@ class ChatController extends Controller
                     'created_at' => $last->created_at?->toIso8601String(),
                 ] : null,
                 'unread_count' => $conversation->unreadCountFor($me->id),
-                'can_send' => $familyIds->contains($otherId) && !$blockedIds->contains($otherId),
+                'can_send' => !$blockedIds->contains($otherId)
+                    && ($familyIds->contains($otherId) || $conversation->isShopChatWith($me->id, $otherId)),
             ];
         })->values();
 
@@ -132,16 +137,22 @@ class ChatController extends Controller
     }
 
     // =====================================================
-    // POST /api/chats {user_id} → เปิดห้องแชทกับคนนี้
+    // POST /api/chats {user_id} → เปิดห้องแชทกับคนในกลุ่ม
+    // POST /api/chats {shop_id} → ทักร้าน (ใครก็ทักร้านที่เปิดขายได้)
     // =====================================================
 
     public function open(Request $request)
     {
         $data = $request->validate([
-            'user_id' => 'required|integer',
+            'user_id' => 'required_without:shop_id|nullable|integer',
+            'shop_id' => 'nullable|integer',
         ]);
 
         $me = $request->user();
+
+        if (isset($data['shop_id'])) {
+            return $this->openShopChat($me, (int) $data['shop_id']);
+        }
 
         $otherId = (int) $data['user_id'];
 
@@ -247,7 +258,7 @@ class ChatController extends Controller
 
         $otherId = $conversation->otherUserId($me->id);
 
-        if (!$this->canSend($me, $otherId)) {
+        if (!$this->canSend($me, $otherId, $conversation)) {
             return $this->onlyFamily();
         }
 
@@ -350,10 +361,59 @@ class ChatController extends Controller
             ->unique();
     }
 
-    private function canSend(User $me, int $otherId): bool
+    // คนในกลุ่มเดียวกัน หรือห้องลูกค้า-ร้าน และไม่ได้บล็อกกัน
+    private function canSend(User $me, int $otherId, ?Conversation $conversation = null): bool
     {
+        if ($this->blockedEitherWay($me)->contains($otherId)) {
+            return false;
+        }
+
         return $this->familyMemberIds($me)->contains($otherId)
-            && !$this->blockedEitherWay($me)->contains($otherId);
+            || ($conversation?->isShopChatWith($me->id, $otherId) ?? false);
+    }
+
+    private function openShopChat(User $me, int $shopId)
+    {
+        $shop = Shop::find($shopId);
+
+        // ร้านปิด → ทักได้เฉพาะคนที่เคยสั่งซื้อ (คุยเรื่องคำสั่งซื้อเดิม)
+        $allowed = $shop && ($shop->isActive()
+            || Order::where('shop_id', $shop->id)->where('buyer_id', $me->id)->exists());
+
+        if (!$allowed) {
+            return response()->json([
+                'status' => false,
+                'message' => 'ไม่พบร้านนี้ หรือร้านปิดอยู่',
+            ], 404);
+        }
+
+        $ownerId = (int) $shop->user_id;
+
+        if ($ownerId === (int) $me->id) {
+            return response()->json([
+                'status' => false,
+                'message' => 'นี่คือร้านของคุณ',
+            ], 422);
+        }
+
+        if ($this->blockedEitherWay($me)->contains($ownerId)) {
+            return response()->json([
+                'status' => false,
+                'message' => 'คุณแชทกับร้านนี้ไม่ได้',
+            ], 403);
+        }
+
+        $conversation = Conversation::between($me->id, $ownerId);
+
+        // ห้องเดิม (เช่น อยู่กลุ่มเดียวกัน) → ผูกกับร้านนี้ด้วย
+        if ($conversation->shop_id === null) {
+            $conversation->forceFill(['shop_id' => $shop->id])->save();
+        }
+
+        return response()->json([
+            'status' => true,
+            'conversation' => $this->conversationPayload($conversation->load('shop'), $me),
+        ]);
     }
 
     private function userPayload(?User $user, int $id): array
@@ -365,14 +425,50 @@ class ChatController extends Controller
         ];
     }
 
+    // ลูกค้าเห็นห้องแชทร้านเป็นชื่อ/โลโก้ร้าน (เจ้าของร้านเห็นชื่อลูกค้าตามปกติ)
+    private function roomUserPayload(Conversation $conversation, User $me, ?User $other, int $otherId): array
+    {
+        $shop = $conversation->shop;
+
+        if ($shop && (int) $shop->user_id === $otherId) {
+            return [
+                'id' => $otherId,
+                'name' => $shop->name,
+                'profile_image_url' => $shop->logo_url,
+            ];
+        }
+
+        return $this->userPayload($other, $otherId);
+    }
+
+    private function shopPayload(Conversation $conversation, User $me): ?array
+    {
+        $shop = $conversation->shop;
+
+        return $shop ? [
+            'id' => $shop->id,
+            'name' => $shop->name,
+            'logo_url' => $shop->logo_url,
+            'is_mine' => (int) $shop->user_id === (int) $me->id,
+        ] : null;
+    }
+
     private function conversationPayload(Conversation $conversation, User $me): array
     {
         $otherId = $conversation->otherUserId($me->id);
 
+        $conversation->loadMissing('shop');
+
         return [
             'id' => $conversation->id,
-            'user' => $this->userPayload(User::find($otherId, ['id', 'name', 'profile_photo']), $otherId),
-            'can_send' => $this->canSend($me, $otherId),
+            'user' => $this->roomUserPayload(
+                $conversation,
+                $me,
+                User::find($otherId, ['id', 'name', 'profile_photo']),
+                $otherId
+            ),
+            'shop' => $this->shopPayload($conversation, $me),
+            'can_send' => $this->canSend($me, $otherId, $conversation),
             // อีกฝ่ายอ่านถึงข้อความไหนแล้ว (แสดง "อ่านแล้ว")
             'other_read_id' => $conversation->lastReadId($otherId),
         ];
@@ -399,7 +495,10 @@ class ChatController extends Controller
             return;
         }
 
-        $title = $me->name;
+        // เจ้าของร้านตอบลูกค้า → แสดงเป็นชื่อร้าน
+        $shop = $conversation->shop;
+
+        $title = $shop && (int) $shop->user_id === (int) $me->id ? $shop->name : $me->name;
 
         $body = $message->body
             ? Str::limit($message->body, 100)
@@ -423,7 +522,7 @@ class ChatController extends Controller
     {
         return response()->json([
             'status' => false,
-            'message' => 'แชทได้เฉพาะสมาชิกในกลุ่มเดียวกัน',
+            'message' => 'แชทได้เฉพาะสมาชิกในกลุ่มเดียวกัน หรือร้านที่คุณทักไว้',
         ], 403);
     }
 

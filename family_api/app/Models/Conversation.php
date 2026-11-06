@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 // =======================================================
 // ห้องแชทส่วนตัว 2 คน
 // user_one_id < user_two_id เสมอ (1 คู่มีห้องเดียว)
+// shop_id = เริ่มจากการทักร้าน → ลูกค้ากับเจ้าของร้านคุยกันได้แม้ไม่ได้อยู่กลุ่มเดียวกัน
 // =======================================================
 
 class Conversation extends Model
@@ -15,6 +16,7 @@ class Conversation extends Model
     protected $fillable = [
         'user_one_id',
         'user_two_id',
+        'shop_id',
         'user_one_read_id',
         'user_two_read_id',
         'last_message_at',
@@ -27,6 +29,21 @@ class Conversation extends Model
     public function messages()
     {
         return $this->hasMany(ChatMessage::class);
+    }
+
+    public function shop()
+    {
+        return $this->belongsTo(Shop::class);
+    }
+
+    // ห้องแชทลูกค้า-ร้าน: อีกฝ่าย (หรือเรา) เป็นเจ้าของร้านของห้องนี้
+    public function isShopChatWith(int $userId, int $otherId): bool
+    {
+        $ownerId = (int) $this->shop?->user_id;
+
+        return $this->shop_id !== null
+            && $ownerId !== 0
+            && ($ownerId === $userId || $ownerId === $otherId);
     }
 
     // ห้องของคู่นี้ (ยังไม่มี → สร้างใหม่)

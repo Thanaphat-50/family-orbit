@@ -1,17 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 
+import '../config/app_info.dart';
 import '../data/market_data.dart';
+import '../services/chat_service.dart';
 import '../services/market_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/market_sheets.dart';
 import '../widgets/market_widgets.dart';
 import '../widgets/photo_viewer.dart';
+import 'chat_room_page.dart';
 import 'checkout_page.dart';
 import 'market_shop_page.dart';
 import 'video_player_page.dart';
 
 // =======================================================
-// หน้าสินค้า: รูป ราคา รายละเอียด ร้าน และปุ่มติดต่อ
+// หน้าสินค้า
+// รูป → ราคา/ชื่อ/สถานะ → การจัดส่ง → รายละเอียด → ร้าน → สินค้าอื่นในร้าน
+// แถบล่างติดจอ: แชทกับร้าน + ซื้อเลย
 // =======================================================
 
 class MarketProductPage extends StatefulWidget {
@@ -29,11 +35,15 @@ class MarketProductPage extends StatefulWidget {
 class _MarketProductPageState extends State<MarketProductPage> {
   Map<String, dynamic>? product;
   Map<String, dynamic>? shop;
+  List<Map<String, dynamic>> otherProducts = [];
 
   bool isLoading = true;
   String? loadError;
 
   int imageIndex = 0;
+
+  bool isSaved = false;
+  bool isOpeningChat = false;
 
   @override
   void initState() {
@@ -53,9 +63,18 @@ class _MarketProductPageState extends State<MarketProductPage> {
       if (!mounted) return;
 
       if (result['status'] == true) {
+        final dynamic others = result['other_products'];
+
         setState(() {
           product = Map<String, dynamic>.from(result['product'] as Map);
           shop = Map<String, dynamic>.from(result['shop'] as Map);
+          otherProducts = others is List
+              ? others
+                    .whereType<Map>()
+                    .map((item) => Map<String, dynamic>.from(item))
+                    .toList()
+              : [];
+          isSaved = product?['is_saved'] == true;
         });
       } else {
         setState(() {
@@ -74,6 +93,54 @@ class _MarketProductPageState extends State<MarketProductPage> {
           isLoading = false;
         });
       }
+    }
+  }
+
+  // =====================================================
+  // ปุ่มด้านบน: แชร์ / บันทึก / รายงาน
+  // =====================================================
+
+  Future<void> shareProduct() async {
+    final Map<String, dynamic>? data = product;
+
+    if (data == null) return;
+
+    await SharePlus.instance.share(
+      ShareParams(
+        text: [
+          data['title']?.toString() ?? '',
+          '${formatPrice(data['price'])} · ร้าน ${shop?['name'] ?? ''}',
+          'ดูสินค้านี้ในแอป ${AppInfo.name}',
+        ].join('\n'),
+      ),
+    );
+  }
+
+  // เปลี่ยนไอคอนทันที ไม่สำเร็จ → เปลี่ยนกลับ
+  Future<void> toggleSave() async {
+    final bool next = !isSaved;
+
+    setState(() => isSaved = next);
+
+    try {
+      final result = await MarketService.setProductSaved(
+        widget.productId,
+        next,
+      );
+
+      if (!mounted) return;
+
+      if (result['status'] == true) {
+        showMessage(result['message']?.toString() ?? '');
+      } else {
+        setState(() => isSaved = !next);
+        showMessage(result['message']?.toString() ?? 'บันทึกไม่สำเร็จ');
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() => isSaved = !next);
+      showMessage(e.toString());
     }
   }
 
@@ -107,14 +174,59 @@ class _MarketProductPageState extends State<MarketProductPage> {
   }
 
   void showMessage(String message) {
-    if (!mounted) return;
+    if (!mounted || message.isEmpty) return;
 
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
-  // สั่งซื้อแล้วกลับมา → โหลดใหม่ (สต็อกเปลี่ยน)
+  // =====================================================
+  // แถบล่าง: แชทกับร้าน / ซื้อเลย
+  // =====================================================
+
+  Future<void> openShopChat() async {
+    final int? shopId = (shop?['id'] as num?)?.toInt();
+
+    if (shopId == null || isOpeningChat) return;
+
+    setState(() => isOpeningChat = true);
+
+    try {
+      final result = await ChatService.openShopChat(shopId);
+
+      if (!mounted) return;
+
+      final dynamic conversation = result['conversation'];
+
+      final int? conversationId = conversation is Map
+          ? (conversation['id'] as num?)?.toInt()
+          : null;
+
+      if (result['status'] != true || conversationId == null) {
+        showMessage(result['message']?.toString() ?? 'เปิดแชทไม่สำเร็จ');
+        return;
+      }
+
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => ChatRoomPage(
+            conversationId: conversationId,
+            user: conversation['user'] is Map
+                ? Map<String, dynamic>.from(conversation['user'])
+                : null,
+            draft: 'สอบถามสินค้า "${product?['title'] ?? ''}"',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (mounted) showMessage(e.toString());
+    } finally {
+      if (mounted) setState(() => isOpeningChat = false);
+    }
+  }
+
+  // ซื้อแล้วกลับมา → โหลดใหม่ (สต็อกเปลี่ยน)
   Future<void> openCheckout() async {
     await Navigator.of(context).push(
       MaterialPageRoute(
@@ -125,8 +237,7 @@ class _MarketProductPageState extends State<MarketProductPage> {
     if (mounted) await loadProduct();
   }
 
-  // แถบล่าง: ปุ่มสั่งซื้อ หรือเหตุผลที่สั่งในแอปไม่ได้
-  Widget? buildOrderBar(Map<String, dynamic> data) {
+  Widget? buildBottomBar(Map<String, dynamic> data) {
     if (data['is_mine'] == true) return null;
 
     final Map order = (data['order'] as Map?) ?? const {};
@@ -135,55 +246,108 @@ class _MarketProductPageState extends State<MarketProductPage> {
 
     return SafeArea(
       child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+        padding: const EdgeInsets.fromLTRB(10, 8, 14, 10),
         decoration: BoxDecoration(
           color: AppColors.surface,
           border: Border(top: BorderSide(color: AppColors.border)),
         ),
-        child: available
-            ? FilledButton.icon(
-                style: FilledButton.styleFrom(
-                  backgroundColor: marketColor,
-                  minimumSize: const Size(double.infinity, 52),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18),
+        child: Row(
+          children: [
+            // แชทกับร้าน
+            SizedBox(
+              width: 64,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: isOpeningChat ? null : openShopChat,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      isOpeningChat
+                          ? const SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : Icon(
+                              Icons.chat_bubble_outline_rounded,
+                              color: AppColors.navy,
+                            ),
+                      const SizedBox(height: 3),
+                      Text(
+                        'แชท',
+                        style: TextStyle(
+                          color: AppColors.navy,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                onPressed: openCheckout,
-                icon: const Icon(Icons.shopping_bag_outlined),
-                label: Text('สั่งซื้อ · ${formatPrice(data['price'])}'),
-              )
-            : Row(
-                children: [
-                  Icon(Icons.info_outline_rounded, color: AppColors.muted),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      order['reason']?.toString() ?? 'สั่งซื้อในแอปไม่ได้',
-                      style: TextStyle(
-                        color: AppColors.navy,
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: available
+                  ? FilledButton(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: marketColor,
+                        minimumSize: const Size(0, 52),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      onPressed: openCheckout,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text(
+                            'ซื้อเลย',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          Text(
+                            formatPrice(data['price']),
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    )
+                  : Container(
+                      constraints: const BoxConstraints(minHeight: 52),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.fill,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        order['reason']?.toString() ?? 'สั่งซื้อในแอปไม่ได้',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: AppColors.navy,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  // "มีสินค้า 5 ชิ้น · ค่าส่ง ฿40" / "สินค้าหมด"
-  String stockLine(Map<String, dynamic> data) {
-    if (data['sold_out'] == true) return 'สินค้าหมด';
-
-    final double fee = double.tryParse('${data['shipping_fee'] ?? ''}') ?? 0;
-
-    return [
-      if (data['stock'] != null) 'มีสินค้า ${data['stock']} ชิ้น',
-      fee > 0 ? 'ค่าส่ง ${formatPrice(fee)}' : 'ส่งฟรี',
-    ].join(' · ');
-  }
+  // =====================================================
+  // รูปสินค้า (ปัดดูได้ กดเพื่อดูเต็มจอและซูม)
+  // =====================================================
 
   List<String> imageUrls() {
     final dynamic images = product?['images'];
@@ -196,10 +360,6 @@ class _MarketProductPageState extends State<MarketProductPage> {
         .where((url) => url.isNotEmpty)
         .toList();
   }
-
-  // =====================================================
-  // รูปสินค้า (ปัดดูได้ กดเพื่อดูเต็มจอ)
-  // =====================================================
 
   Widget buildGallery() {
     final List<String> urls = imageUrls();
@@ -255,26 +415,25 @@ class _MarketProductPageState extends State<MarketProductPage> {
           ),
           if (urls.length > 1)
             Positioned(
+              right: 12,
               bottom: 12,
-              left: 0,
-              right: 0,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  for (int i = 0; i < urls.length; i++)
-                    AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      margin: const EdgeInsets.symmetric(horizontal: 3),
-                      width: i == imageIndex ? 18 : 7,
-                      height: 7,
-                      decoration: BoxDecoration(
-                        color: i == imageIndex
-                            ? Colors.white
-                            : Colors.white.withValues(alpha: 0.55),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                    ),
-                ],
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.55),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  '${imageIndex + 1}/${urls.length}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
             ),
         ],
@@ -283,97 +442,50 @@ class _MarketProductPageState extends State<MarketProductPage> {
   }
 
   // =====================================================
-  // การ์ดร้าน → เปิดหน้าร้าน
+  // ส่วนต่าง ๆ ของหน้า
   // =====================================================
 
-  Widget buildShopCard(Map<String, dynamic> data) {
-    final String? logoUrl = data['logo_url']?.toString();
-
-    final int? shopId = (data['id'] as num?)?.toInt();
-
-    return Material(
-      color: AppColors.surface,
-      borderRadius: BorderRadius.circular(20),
-      child: InkWell(
+  Widget section({required Widget child, String? title}) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(20),
-        onTap: shopId == null
-            ? null
-            : () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => MarketShopPage(shopId: shopId),
-                  ),
-                );
-              },
-        child: Ink(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            border: AppDecorations.cardBorder,
-            boxShadow: AppDecorations.cardShadow,
-          ),
-          child: Row(
-            children: [
-              CircleAvatar(
-                radius: 24,
-                backgroundColor: marketColor.withValues(alpha: 0.10),
-                foregroundImage: logoUrl != null ? NetworkImage(logoUrl) : null,
-                child: const Icon(Icons.storefront_rounded, color: marketColor),
+        border: AppDecorations.cardBorder,
+        boxShadow: AppDecorations.cardShadow,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (title != null) ...[
+            Text(
+              title,
+              style: TextStyle(
+                color: AppColors.navy,
+                fontSize: 15.5,
+                fontWeight: FontWeight.w800,
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      data['name']?.toString() ?? '',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: AppColors.navy,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      shopArea(data),
-                      style: TextStyle(color: AppColors.muted, fontSize: 12.5),
-                    ),
-                  ],
-                ),
-              ),
-              const Text(
-                'ดูร้าน',
-                style: TextStyle(
-                  color: marketColor,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const Icon(Icons.chevron_right_rounded, color: marketColor),
-            ],
-          ),
-        ),
+            ),
+            const SizedBox(height: 10),
+          ],
+          child,
+        ],
       ),
     );
   }
 
-  Widget buildDetails(
-    Map<String, dynamic> data,
-    Map<String, dynamic> shopData,
-  ) {
-    final MarketCategory? category = findMarketCategory(data['category']);
+  // ราคา ชื่อ สถานะพร้อมขาย
+  Widget buildHeadline(Map<String, dynamic> data) {
+    final int sold = (data['sold_count'] as num?)?.toInt() ?? 0;
 
-    final String description = data['description']?.toString().trim() ?? '';
+    final bool soldOut = data['sold_out'] == true;
 
-    final bool mine = data['is_mine'] == true;
-
-    final String? videoUrl = data['video_url']?.toString();
-
-    final String? videoThumbnail = data['video_thumbnail_url']?.toString();
+    final Color statusColor = soldOut ? AppColors.danger : AppColors.success;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 18, 18, 32),
+      padding: const EdgeInsets.fromLTRB(2, 0, 2, 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -381,15 +493,27 @@ class _MarketProductPageState extends State<MarketProductPage> {
             const FeaturedProductBadge(),
             const SizedBox(height: 8),
           ],
-          Text(
-            formatPrice(data['price']),
-            style: const TextStyle(
-              color: marketColor,
-              fontSize: 26,
-              fontWeight: FontWeight.w800,
-            ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: Text(
+                  formatPrice(data['price']),
+                  style: const TextStyle(
+                    color: marketColor,
+                    fontSize: 28,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              if (sold > 0)
+                Text(
+                  'ขายแล้ว $sold ชิ้น',
+                  style: TextStyle(color: AppColors.muted, fontSize: 13),
+                ),
+            ],
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 4),
           Text(
             data['title']?.toString() ?? '',
             style: TextStyle(
@@ -399,64 +523,205 @@ class _MarketProductPageState extends State<MarketProductPage> {
               fontWeight: FontWeight.w800,
             ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            stockLine(data),
-            style: TextStyle(
-              color: data['sold_out'] == true
-                  ? AppColors.danger
-                  : AppColors.muted,
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: statusColor.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(999),
             ),
-          ),
-          // วิดีโอแนะนำสินค้า
-          if (videoUrl != null) ...[
-            const SizedBox(height: 14),
-            GestureDetector(
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => VideoPlayerPage(url: videoUrl),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  soldOut ? Icons.block_rounded : Icons.check_circle_rounded,
+                  size: 15,
+                  color: statusColor,
                 ),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(18),
-                child: AspectRatio(
-                  aspectRatio: 16 / 9,
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      videoThumbnail != null
-                          ? Image.network(videoThumbnail, fit: BoxFit.cover)
-                          : const ColoredBox(color: Colors.black),
-                      const ColoredBox(color: Color(0x33000000)),
-                      const Center(
-                        child: Icon(
-                          Icons.play_circle_fill_rounded,
-                          size: 56,
-                          color: Colors.white,
-                        ),
-                      ),
-                      const Positioned(
-                        left: 12,
-                        bottom: 10,
-                        child: Text(
-                          'วิดีโอแนะนำสินค้า',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                    ],
+                const SizedBox(width: 5),
+                Text(
+                  soldOut
+                      ? 'สินค้าหมด'
+                      : 'พร้อมขาย · เหลือ ${data['stock'] ?? 0} ชิ้น',
+                  style: TextStyle(
+                    color: statusColor,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // วิธีรับสินค้า + ค่าส่ง + ระยะเวลาจัดส่ง (จากข้อมูลจริงของร้าน)
+  Widget buildShipping(
+    Map<String, dynamic> data,
+    Map<String, dynamic> shopData,
+  ) {
+    final List options = (data['delivery_options'] as List?) ?? const [];
+
+    final int? shipDays = (shopData['ship_within_days'] as num?)?.toInt();
+
+    final Map stats = (shopData['stats'] as Map?) ?? const {};
+
+    final double? avgHours = (stats['avg_ship_hours'] as num?)?.toDouble();
+
+    final List payments = (shopData['payment_methods'] as List?) ?? const [];
+
+    Widget line(IconData icon, String text, {String? trailing}) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          children: [
+            Icon(icon, size: 19, color: AppColors.muted),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                text,
+                style: TextStyle(color: AppColors.navy, fontSize: 13.5),
               ),
             ),
+            if (trailing != null)
+              Text(
+                trailing,
+                style: TextStyle(
+                  color: AppColors.navy,
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
           ],
-          if (category != null) ...[
-            const SizedBox(height: 10),
+        ),
+      );
+    }
+
+    return section(
+      title: 'การจัดส่ง',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (options.isEmpty)
+            Text(
+              'ร้านยังไม่ได้ระบุวิธีรับสินค้า',
+              style: TextStyle(color: AppColors.muted, fontSize: 13),
+            ),
+          for (final option in options)
+            if (option is Map)
+              line(
+                findDeliveryMethod(option['key']?.toString() ?? '')?.icon ??
+                    Icons.local_shipping_outlined,
+                option['label']?.toString() ?? '',
+                trailing: ((option['shipping_fee'] as num?) ?? 0) > 0
+                    ? formatPrice(option['shipping_fee'])
+                    : option['key'] == 'shipping' || option['key'] == 'delivery'
+                    ? 'ส่งฟรี'
+                    : 'ไม่มีค่าส่ง',
+              ),
+          if (shipDays != null || avgHours != null) const Divider(height: 18),
+          if (shipDays != null)
+            line(
+              Icons.schedule_rounded,
+              'ร้านจัดส่งภายใน $shipDays วันหลังชำระเงิน',
+            ),
+          if (avgHours != null)
+            line(
+              Icons.speed_rounded,
+              'ส่งจริงเฉลี่ย ${formatShipTime(avgHours)} '
+              '(${stats['shipped_orders'] ?? 0} ออเดอร์ล่าสุด)',
+            ),
+          if (payments.isNotEmpty) ...[
+            const Divider(height: 18),
+            line(
+              Icons.payments_outlined,
+              'ชำระได้: ${payments.map((key) => findPaymentMethod(key.toString())?.label ?? key).join(' · ')}',
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // 30 ชม. → "1 วัน 6 ชม." / 5.5 → "5.5 ชม."
+  String formatShipTime(double hours) {
+    if (hours < 24) {
+      final bool whole = hours == hours.roundToDouble();
+
+      return '${hours.toStringAsFixed(whole ? 0 : 1)} ชม.';
+    }
+
+    final int days = hours ~/ 24;
+    final int rest = (hours - days * 24).round();
+
+    return rest == 0 ? '$days วัน' : '$days วัน $rest ชม.';
+  }
+
+  Widget buildVideo(Map<String, dynamic> data) {
+    final String videoUrl = data['video_url'].toString();
+
+    final String? videoThumbnail = data['video_thumbnail_url']?.toString();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: GestureDetector(
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => VideoPlayerPage(url: videoUrl),
+          ),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: AspectRatio(
+            aspectRatio: 16 / 9,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                videoThumbnail != null
+                    ? Image.network(videoThumbnail, fit: BoxFit.cover)
+                    : const ColoredBox(color: Colors.black),
+                const ColoredBox(color: Color(0x33000000)),
+                const Center(
+                  child: Icon(
+                    Icons.play_circle_fill_rounded,
+                    size: 56,
+                    color: Colors.white,
+                  ),
+                ),
+                const Positioned(
+                  left: 12,
+                  bottom: 10,
+                  child: Text(
+                    'วิดีโอแนะนำสินค้า',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget buildDescription(Map<String, dynamic> data) {
+    final MarketCategory? category = findMarketCategory(data['category']);
+
+    final String description = data['description']?.toString().trim() ?? '';
+
+    return section(
+      title: 'รายละเอียดสินค้า',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (category != null)
             Container(
+              margin: const EdgeInsets.only(bottom: 10),
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
               decoration: BoxDecoration(
                 color: marketColor.withValues(alpha: 0.08),
@@ -478,44 +743,242 @@ class _MarketProductPageState extends State<MarketProductPage> {
                 ],
               ),
             ),
-          ],
-          if (description.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            Text(
-              description,
-              style: TextStyle(
-                color: AppColors.subtle,
-                fontSize: 14.5,
-                height: 1.55,
-              ),
+          Text(
+            description.isEmpty
+                ? 'ร้านไม่ได้ใส่รายละเอียดเพิ่มเติม'
+                : description,
+            style: TextStyle(
+              color: description.isEmpty ? AppColors.muted : AppColors.subtle,
+              fontSize: 14.5,
+              height: 1.55,
             ),
-          ],
-          const SizedBox(height: 20),
-          buildShopCard(shopData),
-          const SizedBox(height: 14),
-          if (mine)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: AppColors.softPrimary,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Text(
-                'นี่คือสินค้าของร้านคุณ (ผู้ซื้อจะเห็นหน้านี้แบบเดียวกัน)',
-                style: TextStyle(color: AppColors.navy, fontSize: 13),
-              ),
-            )
-          else ...[
-            ShopContactButtons(
-              phone: shopData['phone']?.toString(),
-              lineId: shopData['line_id']?.toString(),
-            ),
-            const SizedBox(height: 14),
-            const MarketSafetyNote(),
-          ],
+          ),
         ],
       ),
+    );
+  }
+
+  // ร้าน + ความน่าเชื่อถือ (คะแนนรีวิว ยอดขาย จำนวนสินค้า เปิดร้านมานาน)
+  Widget buildShop(Map<String, dynamic> shopData) {
+    final String? logoUrl = shopData['logo_url']?.toString();
+
+    final int? shopId = (shopData['id'] as num?)?.toInt();
+
+    final Map rating = (shopData['rating'] as Map?) ?? const {};
+    final Map stats = (shopData['stats'] as Map?) ?? const {};
+
+    final int reviewCount = (rating['count'] as num?)?.toInt() ?? 0;
+
+    final String since = durationSince(shopData['member_since']);
+
+    Widget stat(String value, String label) {
+      return Expanded(
+        child: Column(
+          children: [
+            Text(
+              value,
+              style: TextStyle(
+                color: AppColors.navy,
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: TextStyle(color: AppColors.muted, fontSize: 11.5),
+            ),
+          ],
+        ),
+      );
+    }
+
+    void openShop() {
+      if (shopId == null) return;
+
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (context) => MarketShopPage(shopId: shopId)),
+      );
+    }
+
+    return section(
+      child: Column(
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: openShop,
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 24,
+                  backgroundColor: marketColor.withValues(alpha: 0.10),
+                  foregroundImage: logoUrl != null
+                      ? NetworkImage(logoUrl)
+                      : null,
+                  child: const Icon(
+                    Icons.storefront_rounded,
+                    color: marketColor,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        shopData['name']?.toString() ?? '',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: AppColors.navy,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        [
+                          shopArea(shopData),
+                          if (since.isNotEmpty) 'เปิดร้านมา $since',
+                        ].where((part) => part.isNotEmpty).join(' · '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 12.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                OutlinedButton(
+                  // ธีมของแอปให้ปุ่มกว้างเต็มจอ → ในแถวต้องกำหนดขนาดเอง
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: marketColor,
+                    side: const BorderSide(color: marketColor),
+                    minimumSize: const Size(0, 38),
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                  ),
+                  onPressed: openShop,
+                  child: const Text('ดูร้าน'),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 22),
+          Row(
+            children: [
+              stat(
+                reviewCount > 0 ? '★ ${rating['average']}' : '-',
+                reviewCount > 0 ? '$reviewCount รีวิว' : 'ยังไม่มีรีวิว',
+              ),
+              stat('${stats['sold_count'] ?? 0}', 'ขายแล้ว (ชิ้น)'),
+              stat('${shopData['products_count'] ?? 0}', 'สินค้า'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildOtherProducts() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(2, 8, 2, 10),
+          child: Text(
+            'สินค้าอื่นในร้านนี้',
+            style: TextStyle(
+              color: AppColors.navy,
+              fontSize: 15.5,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+        SizedBox(
+          height: 236,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: otherProducts.length,
+            separatorBuilder: (context, index) => const SizedBox(width: 10),
+            itemBuilder: (context, index) {
+              final Map<String, dynamic> item = otherProducts[index];
+
+              final int? id = (item['id'] as num?)?.toInt();
+
+              return SizedBox(
+                width: 150,
+                child: MarketProductCard(
+                  product: item,
+                  showShop: false,
+                  onTap: () {
+                    if (id == null) return;
+
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            MarketProductPage(productId: id, preview: item),
+                      ),
+                    );
+                  },
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 12),
+      ],
+    );
+  }
+
+  Widget buildBody(Map<String, dynamic> data, Map<String, dynamic> shopData) {
+    final bool mine = data['is_mine'] == true;
+
+    final bool canOrder = (data['order'] as Map?)?['available'] == true;
+
+    return ListView(
+      padding: EdgeInsets.zero,
+      children: [
+        buildGallery(),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 16, 14, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              buildHeadline(data),
+              if (mine)
+                Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: AppColors.softPrimary,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Text(
+                    'นี่คือสินค้าของร้านคุณ (ผู้ซื้อจะเห็นหน้านี้แบบเดียวกัน)',
+                    style: TextStyle(color: AppColors.navy, fontSize: 13),
+                  ),
+                ),
+              buildShipping(data, shopData),
+              if (data['video_url'] != null) buildVideo(data),
+              buildDescription(data),
+              buildShop(shopData),
+              if (otherProducts.isNotEmpty) buildOtherProducts(),
+              // ร้านยังไม่เปิดรับคำสั่งซื้อในแอป → ติดต่อร้านโดยตรงได้
+              if (!mine && !canOrder) ...[
+                ShopContactButtons(
+                  phone: shopData['phone']?.toString(),
+                  lineId: shopData['line_id']?.toString(),
+                ),
+                const SizedBox(height: 12),
+              ],
+              if (!mine) const MarketSafetyNote(),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -528,6 +991,23 @@ class _MarketProductPageState extends State<MarketProductPage> {
       appBar: AppBar(
         title: const Text('รายละเอียดสินค้า'),
         actions: [
+          if (data != null) ...[
+            IconButton(
+              tooltip: 'แชร์สินค้า',
+              onPressed: shareProduct,
+              icon: const Icon(Icons.share_outlined),
+            ),
+            IconButton(
+              tooltip: isSaved ? 'เอาออกจากที่บันทึก' : 'บันทึกสินค้า',
+              onPressed: toggleSave,
+              icon: Icon(
+                isSaved
+                    ? Icons.bookmark_rounded
+                    : Icons.bookmark_border_rounded,
+                color: isSaved ? marketColor : null,
+              ),
+            ),
+          ],
           if (data != null && data['is_mine'] != true)
             PopupMenuButton<String>(
               tooltip: 'ตัวเลือก',
@@ -578,13 +1058,13 @@ class _MarketProductPageState extends State<MarketProductPage> {
                 ),
               ),
             )
-          : ListView(
-              padding: EdgeInsets.zero,
-              children: [buildGallery(), buildDetails(data, shopData)],
+          : RefreshIndicator(
+              onRefresh: loadProduct,
+              child: buildBody(data, shopData),
             ),
       bottomNavigationBar: data == null || loadError != null
           ? null
-          : buildOrderBar(data),
+          : buildBottomBar(data),
     );
   }
 }

@@ -211,6 +211,7 @@ class MyShopController extends Controller
             'province' => ['required', Rule::in(config('market.provinces'))],
             'district' => 'nullable|string|max:80',
             'opening_hours' => 'nullable|string|max:200',
+            'ship_within_days' => 'nullable|integer|min:1|max:30',
             'delivery_methods' => 'nullable|array',
             'delivery_methods.*' => ['distinct', Rule::in(array_keys(config('market.delivery_methods')))],
             'logo' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:4096',
@@ -231,6 +232,7 @@ class MyShopController extends Controller
             'province.*' => 'กรุณาเลือกจังหวัด',
             'district.max' => 'อำเภอ/เขต ยาวได้ไม่เกิน 80 ตัวอักษร',
             'opening_hours.max' => 'เวลาเปิด-ปิดยาวได้ไม่เกิน 200 ตัวอักษร',
+            'ship_within_days.*' => 'จัดส่งภายในต้องเป็น 1 – 30 วัน',
             'delivery_methods.*' => 'วิธีรับสินค้าไม่ถูกต้อง',
             'payment_methods.*' => 'วิธีรับเงินไม่ถูกต้อง',
             'promptpay_id.required' => 'กรุณาใส่เบอร์หรือเลขพร้อมเพย์ของร้าน',
@@ -257,6 +259,8 @@ class MyShopController extends Controller
             'district' => $data['district'] ?? null,
             'opening_hours' => filled($data['opening_hours'] ?? null) ? trim($data['opening_hours']) : null,
             'delivery_methods' => array_values(array_unique($data['delivery_methods'] ?? [])) ?: null,
+            // แอปเวอร์ชันเก่าไม่ส่ง = ไม่เปลี่ยน
+            ...(array_key_exists('ship_within_days', $data) ? ['ship_within_days' => $data['ship_within_days']] : []),
             ...(!empty($data['payment_settings']) ? [
                 'payment_methods' => array_values(array_unique($data['payment_methods'] ?? [])) ?: null,
                 // เก็บแบบตัวเลขล้วน

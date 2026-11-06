@@ -6,6 +6,7 @@ use App\Models\AppNotification;
 use App\Models\Product;
 use App\Models\ProductPromotion;
 use App\Models\ProductReport;
+use App\Models\SavedProduct;
 use App\Models\Shop;
 use App\Models\ShopReview;
 use App\Models\ShopReport;
@@ -93,6 +94,10 @@ class MarketController extends Controller
             Product::whereKey($product->id)->toBase()->increment('views');
         }
 
+        $shop = $product->shop;
+
+        $fee = (float) ($product->shipping_fee ?? 0);
+
         return response()->json([
             'status' => true,
             'product' => [
@@ -100,6 +105,17 @@ class MarketController extends Controller
                     'id', 'title', 'description', 'price', 'stock', 'shipping_fee',
                     'category', 'status', 'created_at',
                 ]),
+                'sold_count' => $product->soldCount(),
+                'is_saved' => SavedProduct::where('user_id', $user->id)->where('product_id', $product->id)->exists(),
+                // วิธีรับสินค้าของร้าน + ค่าส่งของสินค้านี้
+                'delivery_options' => collect($shop->delivery_methods ?? [])
+                    ->filter(fn ($key) => is_string($key) && array_key_exists($key, config('market.delivery_methods')))
+                    ->map(fn (string $key) => [
+                        'key' => $key,
+                        'label' => config("market.delivery_methods.{$key}"),
+                        'shipping_fee' => in_array($key, config('market.shipping_fee_methods'), true) ? $fee : 0,
+                    ])
+                    ->values(),
                 'images' => $product->images,
                 'video_url' => $product->video_url,
                 'video_thumbnail_url' => $product->video_thumbnail_url,
@@ -112,7 +128,80 @@ class MarketController extends Controller
                     'reason' => $reason,
                 ],
             ],
-            'shop' => $this->shopPayload($product->shop),
+            'shop' => [
+                ...$this->shopPayload($shop),
+                'rating' => ShopReview::summaryFor($shop->id),
+                'stats' => $shop->salesStats(),
+                'products_count' => $this->onlyShown($shop->products())->count(),
+                'member_since' => $shop->approved_at ?? $shop->created_at,
+            ],
+            // สินค้าอื่นของร้านเดียวกัน
+            'other_products' => $this->visibleProductsFor($user)
+                ->where('shop_id', $shop->id)
+                ->whereKeyNot($product->id)
+                ->with(['images', 'shop'])
+                ->latest()
+                ->limit(10)
+                ->get()
+                ->map(fn (Product $other) => $this->productCard($other, false))
+                ->values(),
+        ]);
+    }
+
+    // =====================================================
+    // POST / DELETE /api/market/products/{product}/save  บันทึกสินค้า
+    // GET /api/market/saved-products                     สินค้าที่บันทึกไว้
+    // =====================================================
+
+    public function save(Request $request, Product $product)
+    {
+        $user = $request->user();
+
+        if (!$this->visibleProductsFor($user)->whereKey($product->id)->exists()
+            && (int) $product->shop?->user_id !== (int) $user->id) {
+            return $this->productNotFound();
+        }
+
+        SavedProduct::firstOrCreate(['user_id' => $user->id, 'product_id' => $product->id]);
+
+        return response()->json([
+            'status' => true,
+            'message' => 'บันทึกสินค้าแล้ว',
+            'is_saved' => true,
+        ]);
+    }
+
+    public function unsave(Request $request, Product $product)
+    {
+        SavedProduct::where('user_id', $request->user()->id)->where('product_id', $product->id)->delete();
+
+        return response()->json([
+            'status' => true,
+            'message' => 'เอาออกจากที่บันทึกแล้ว',
+            'is_saved' => false,
+        ]);
+    }
+
+    public function savedProducts(Request $request)
+    {
+        $user = $request->user();
+
+        $paginator = $this->visibleProductsFor($user)
+            ->join('saved_products', 'saved_products.product_id', '=', 'products.id')
+            ->where('saved_products.user_id', $user->id)
+            ->select('products.*')
+            ->with(['images', 'shop'])
+            ->orderByDesc('saved_products.created_at')
+            ->orderByDesc('saved_products.id')
+            ->simplePaginate(self::PAGE_SIZE);
+
+        return response()->json([
+            'status' => true,
+            'products' => collect($paginator->items())
+                ->map(fn (Product $product) => $this->productCard($product))
+                ->values(),
+            'page' => $paginator->currentPage(),
+            'has_more' => $paginator->hasMorePages(),
         ]);
     }
 
@@ -410,6 +499,7 @@ class MarketController extends Controller
             'district',
             'opening_hours',
             'delivery_methods',
+            'ship_within_days',
             'logo_url',
             'video_url',
             'video_thumbnail_url',

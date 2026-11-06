@@ -68,6 +68,14 @@ class Product extends Model
         return $this->hasMany(Order::class);
     }
 
+    // ขายแล้วกี่ชิ้น (นับเฉพาะคำสั่งซื้อที่สำเร็จ)
+    public function soldCount(): int
+    {
+        return (int) Order::where('product_id', $this->id)
+            ->where('status', Order::STATUS_COMPLETED)
+            ->sum('quantity');
+    }
+
     public function isSoldOut(): bool
     {
         return (int) $this->stock <= 0;

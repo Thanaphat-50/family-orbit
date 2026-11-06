@@ -49,6 +49,10 @@ class _ShopFormPageState extends State<ShopFormPage> {
     text: initialText('opening_hours'),
   );
 
+  late final TextEditingController shipDaysController = TextEditingController(
+    text: initialText('ship_within_days'),
+  );
+
   // วิธีรับสินค้าที่เลือก (key ตาม deliveryMethods)
   late final Set<String> delivery = {
     for (final method
@@ -276,6 +280,7 @@ class _ShopFormPageState extends State<ShopFormPage> {
           'province': province ?? '',
           'district': districtController.text.trim(),
           'opening_hours': hoursController.text.trim(),
+          'ship_within_days': shipDaysController.text.trim(),
           'promptpay_id': promptPayController.text.trim(),
           'bank_name': bankName ?? '',
           'bank_account_number': accountNumberController.text.trim(),
@@ -930,6 +935,29 @@ class _ShopFormPageState extends State<ShopFormPage> {
                     ),
                 ],
               ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: shipDaysController,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: 'จัดส่งภายในกี่วันหลังชำระเงิน (ไม่บังคับ)',
+                  hintText: 'เช่น 2',
+                  helperText: 'ลูกค้าเห็นในหน้าสินค้า',
+                  prefixIcon: const Icon(Icons.local_shipping_outlined),
+                  errorText: serverErrors['ship_within_days'],
+                ),
+                validator: (value) {
+                  final String text = (value ?? '').trim();
+
+                  if (text.isEmpty) return null;
+
+                  final int? days = int.tryParse(text);
+
+                  return days == null || days < 1 || days > 30
+                      ? 'ใส่ 1 – 30 วัน'
+                      : null;
+                },
+              ),
               const SizedBox(height: 24),
               buildSectionLabel('วิธีรับเงิน'),
               buildPayments(),
@@ -991,6 +1019,7 @@ class _ShopFormPageState extends State<ShopFormPage> {
     lineController.dispose();
     districtController.dispose();
     hoursController.dispose();
+    shipDaysController.dispose();
     promptPayController.dispose();
     accountNumberController.dispose();
     accountNameController.dispose();
