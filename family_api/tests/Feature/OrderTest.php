@@ -9,6 +9,7 @@ use App\Models\Shop;
 use App\Models\User;
 use App\Support\MediaStorage;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
 use Tests\Concerns\FakesImages;
@@ -139,22 +140,40 @@ class OrderTest extends TestCase
             ->assertJsonPath('orders.0.actions', ['cancel'])
             ->assertJsonPath('orders.0.payment', null);
 
-        // แนบสลิป → รอร้านจัดส่งทันที
+        // แนบสลิป → ระบบตรวจสลิปผ่าน → รอร้านจัดส่งทันที
+        config(['market.slip_verify.easyslip_key' => 'test-key']);
+
+        Http::fake(['api.easyslip.com/*' => Http::response([
+            'success' => true,
+            'data' => [
+                'isDuplicate' => false,
+                'amountInSlip' => 240,
+                'rawSlip' => [
+                    'transRef' => 'TX-FLOW-1',
+                    'date' => now()->toIso8601String(),
+                    'amount' => ['amount' => 240],
+                    'receiver' => ['account' => ['proxy' => ['type' => 'MSISDN', 'account' => '089xxxx999']]],
+                ],
+            ],
+        ])]);
+
         Sanctum::actingAs($buyer);
 
         $this->post("/api/orders/{$id}/slip", ['slip' => $this->fakePng('slip.png')], ['Accept' => 'application/json'])
             ->assertOk()
+            ->assertJsonPath('message', 'ชำระเงินสำเร็จ ระบบตรวจสลิปแล้ว รอร้านจัดส่ง')
             ->assertJsonPath('order.status', Order::STATUS_PREPARING)
             ->assertJsonPath('order.status_label', 'รอร้านจัดส่ง')
             ->assertJsonPath('order.actions', [])
-            ->assertJsonPath('order.payment', null);
+            ->assertJsonPath('order.payment', null)
+            ->assertJsonPath('order.payments.0.status', 'verified');
 
         // ร้านส่งสินค้า
         Sanctum::actingAs($seller);
 
         $this->getJson('/api/my-shop/orders?filter=todo')
             ->assertJsonPath('todo', 1)
-            ->assertJsonPath('orders.0.actions', ['ship', 'reject_slip', 'cancel']);
+            ->assertJsonPath('orders.0.actions', ['ship', 'cancel']);
 
         $this->postJson("/api/orders/{$id}/ship", ['tracking_number' => 'TH123456789'])
             ->assertOk()
@@ -183,9 +202,17 @@ class OrderTest extends TestCase
         $buyer = User::factory()->create();
 
         $order = $this->placeOrder($buyer, $product);
+
+        // ยังไม่ได้ตั้งคีย์ตรวจสลิป → ร้านตรวจยอดเอง
         $order->attachSlip($this->fakePng('slip.png'));
 
+        $this->assertSame(Order::STATUS_PAYMENT_REVIEW, $order->refresh()->status);
+        $this->assertNull($order->paid_at);
+
         Sanctum::actingAs($seller);
+
+        $this->getJson("/api/orders/{$order->id}")
+            ->assertJsonPath('order.actions', ['confirm_payment', 'reject_slip', 'cancel']);
 
         $this->postJson("/api/orders/{$order->id}/reject-slip")->assertJsonValidationErrors('reason');
 
@@ -369,6 +396,15 @@ class OrderTest extends TestCase
 
         $order = $this->placeOrder($buyer, $product);
         $order->attachSlip($this->fakePng('slip.png'));
+
+        // ร้านเช็กยอดแล้วยืนยันรับเงิน
+        Sanctum::actingAs($seller);
+        $this->postJson("/api/orders/{$order->id}/confirm-payment")
+            ->assertOk()
+            ->assertJsonPath('order.status', Order::STATUS_PREPARING)
+            ->assertJsonPath('order.payments.0.status', 'confirmed');
+
+        $order->refresh();
 
         // โอนแล้ว ร้านยังไม่เกินกำหนดส่ง → ยกเลิกเองไม่ได้
         Sanctum::actingAs($buyer);

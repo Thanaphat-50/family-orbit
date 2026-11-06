@@ -281,6 +281,12 @@ ShopStatusStyle orderStatusStyle(dynamic status) {
         color: Color(0xFFDC6803),
         icon: Icons.payments_outlined,
       );
+    case 'payment_review':
+      return const ShopStatusStyle(
+        label: 'รอตรวจสอบการชำระเงิน',
+        color: Color(0xFFDC6803),
+        icon: Icons.receipt_long_rounded,
+      );
     case 'preparing':
       return const ShopStatusStyle(
         label: 'รอร้านจัดส่ง',

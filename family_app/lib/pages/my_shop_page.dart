@@ -555,7 +555,7 @@ class _MyShopPageState extends State<MyShopPage> {
                       !accepts
                           ? 'ตั้งวิธีรับเงินและวิธีรับสินค้า เพื่อให้ลูกค้าสั่งซื้อในแอปได้'
                           : orderTodo > 0
-                          ? 'มี $orderTodo รายการรอคุณจัดส่ง'
+                          ? 'มี $orderTodo รายการรอคุณจัดการ'
                           : 'ดูคำสั่งซื้อทั้งหมดของลูกค้า',
                       style: TextStyle(
                         color: !accepts ? AppColors.danger : AppColors.muted,

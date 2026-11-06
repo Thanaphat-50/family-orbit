@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\SlipVerifier;
 use App\Support\MediaStorage;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -28,6 +29,8 @@ use RuntimeException;
 class Order extends Model
 {
     public const STATUS_AWAITING_PAYMENT = 'awaiting_payment';
+    // ตรวจสลิปอัตโนมัติไม่ได้ → ร้านตรวจยอดเงินเอง
+    public const STATUS_PAYMENT_REVIEW = 'payment_review';
     public const STATUS_PREPARING = 'preparing';
     public const STATUS_SHIPPED = 'shipped';
     public const STATUS_COMPLETED = 'completed';
@@ -35,6 +38,7 @@ class Order extends Model
 
     public const STATUS_LABELS = [
         self::STATUS_AWAITING_PAYMENT => 'รอชำระเงิน',
+        self::STATUS_PAYMENT_REVIEW => 'รอตรวจสอบการชำระเงิน',
         self::STATUS_PREPARING => 'รอร้านจัดส่ง',
         self::STATUS_SHIPPED => 'ส่งสินค้าแล้ว',
         self::STATUS_COMPLETED => 'สำเร็จ',
@@ -44,12 +48,14 @@ class Order extends Model
     // ยังไม่จบ
     public const OPEN_STATUSES = [
         self::STATUS_AWAITING_PAYMENT,
+        self::STATUS_PAYMENT_REVIEW,
         self::STATUS_PREPARING,
         self::STATUS_SHIPPED,
     ];
 
     // ร้านต้องจัดส่ง (ตัวเลขบนปุ่มออเดอร์ของร้าน)
     public const SELLER_TODO_STATUSES = [
+        self::STATUS_PAYMENT_REVIEW,
         self::STATUS_PREPARING,
     ];
 
@@ -143,6 +149,11 @@ class Order extends Model
     public function items()
     {
         return $this->hasMany(OrderItem::class)->orderBy('id');
+    }
+
+    public function payments()
+    {
+        return $this->hasMany(PaymentTransaction::class)->orderBy('id');
     }
 
     public function histories()
@@ -297,36 +308,97 @@ class Order extends Model
     // =====================================================
 
     // ผู้ซื้อแนบสลิป → รอร้านจัดส่งทันที
-    public function attachSlip(UploadedFile $file): void
+    // ผู้ซื้อแนบสลิป → ตรวจสลิป (App\Services\SlipVerifier)
+    // ผ่าน = ชำระแล้ว (รอร้านจัดส่ง) / ไม่ผ่าน = แนบใหม่ / ตรวจไม่ได้ = ร้านตรวจยอดเอง
+    public function attachSlip(UploadedFile $file): PaymentTransaction
     {
+        $check = app(SlipVerifier::class)->check(
+            (string) file_get_contents($file->getRealPath()),
+            $file->getClientOriginalName() ?: 'slip.jpg',
+            $this
+        );
+
+        $payment = $this->payments()->create([
+            ...$check,
+            'method' => $this->payment_method,
+            'amount' => $this->total,
+            'verified_at' => $check['status'] === PaymentTransaction::STATUS_VERIFIED ? now() : null,
+        ]);
+
+        // สลิปไม่ผ่าน → ไม่เก็บรูป ให้แนบใหม่
+        if ($payment->status === PaymentTransaction::STATUS_REJECTED) {
+            $this->forceFill(['payment_note' => $payment->reason])->save();
+
+            $this->recordStatus(self::BY_SYSTEM, 'สลิปไม่ผ่าน: ' . $payment->reason);
+
+            return $payment;
+        }
+
         $path = $file->store('order_slips/' . $this->buyer_id, MediaStorage::disk())
             ?: throw new RuntimeException('Could not store the slip.');
 
         $old = $this->slip_path;
 
+        $verified = $payment->status === PaymentTransaction::STATUS_VERIFIED;
+
         $this->forceFill([
             'slip_path' => $path,
             'slip_uploaded_at' => now(),
-            'paid_at' => now(),
+            'paid_at' => $verified ? now() : null,
             'payment_note' => null,
             'payment_due_at' => null,
-            'status' => self::STATUS_PREPARING,
+            'status' => $verified ? self::STATUS_PREPARING : self::STATUS_PAYMENT_REVIEW,
         ])->save();
 
         MediaStorage::delete([$old]);
 
-        $this->recordStatus(self::BY_BUYER, 'แนบสลิปการโอน');
+        if ($verified) {
+            $this->recordStatus(self::BY_SYSTEM, 'ระบบตรวจสลิปแล้ว ชำระเงินสำเร็จ');
 
-        $this->notifySeller(
-            'ลูกค้าโอนเงินแล้ว',
-            "คำสั่งซื้อ {$this->code} · " . self::baht($this->total)
-                . ' เช็กยอดเงินในบัญชี แล้วจัดส่งสินค้าได้เลย'
-        );
+            $this->notifySeller(
+                'ลูกค้าชำระเงินแล้ว',
+                "คำสั่งซื้อ {$this->code} · " . self::baht($this->total) . ' ระบบตรวจสลิปแล้ว จัดส่งสินค้าได้เลย'
+            );
+        } else {
+            $this->recordStatus(self::BY_BUYER, 'แนบสลิป · ' . $payment->reason);
+
+            $this->notifySeller(
+                'ลูกค้าแนบสลิปแล้ว',
+                "คำสั่งซื้อ {$this->code} · " . self::baht($this->total)
+                    . ' กรุณาเช็กยอดเงินในบัญชีแล้วกดยืนยันรับเงิน'
+            );
+        }
+
+        return $payment;
+    }
+
+    // ร้านเช็กยอดในบัญชีแล้ว (ตอนตรวจสลิปอัตโนมัติไม่ได้)
+    public function confirmPayment(): void
+    {
+        $this->payments()->where('status', PaymentTransaction::STATUS_REVIEW)->update([
+            'status' => PaymentTransaction::STATUS_CONFIRMED,
+            'reason' => null,
+            'verified_at' => now(),
+        ]);
+
+        $this->forceFill([
+            'status' => self::STATUS_PREPARING,
+            'paid_at' => now(),
+        ])->save();
+
+        $this->recordStatus(self::BY_SELLER, 'ร้านยืนยันว่าได้รับเงินแล้ว');
+
+        $this->notifyBuyer('ร้านได้รับเงินแล้ว', "คำสั่งซื้อ {$this->code} รอร้านจัดส่งสินค้า");
     }
 
     // ร้านเช็กแล้วเงินไม่เข้า → ผู้ซื้อแนบสลิปใหม่ (นับเวลาชำระใหม่)
     public function rejectSlip(string $reason): void
     {
+        $this->payments()->where('status', PaymentTransaction::STATUS_REVIEW)->update([
+            'status' => PaymentTransaction::STATUS_REJECTED,
+            'reason' => $reason,
+        ]);
+
         $this->forceFill([
             'status' => self::STATUS_AWAITING_PAYMENT,
             'paid_at' => null,
@@ -490,9 +562,8 @@ class Order extends Model
         if ($this->isSeller($user)) {
             return match ($this->status) {
                 self::STATUS_AWAITING_PAYMENT => ['cancel'],
-                self::STATUS_PREPARING => $this->isTransfer() && $this->slip_path !== null
-                    ? ['ship', 'reject_slip', 'cancel']
-                    : ['ship', 'cancel'],
+                self::STATUS_PAYMENT_REVIEW => ['confirm_payment', 'reject_slip', 'cancel'],
+                self::STATUS_PREPARING => ['ship', 'cancel'],
                 default => [],
             };
         }
@@ -521,7 +592,7 @@ class Order extends Model
 
     public function toPayload(User $viewer): array
     {
-        $this->loadMissing(['shop', 'buyer', 'product.images', 'items.product.images', 'histories']);
+        $this->loadMissing(['shop', 'buyer', 'product.images', 'items.product.images', 'histories', 'payments']);
 
         $isBuyer = $this->isBuyer($viewer);
 
@@ -550,6 +621,9 @@ class Order extends Model
             'image_url' => $this->items->first()?->product?->images->first()?->url
                 ?? $this->product?->images->first()?->url,
             'items' => $this->items->map(fn (OrderItem $item) => $item->toPayload())->values(),
+            // ประวัติการชำระเงิน (ทุกครั้งที่แนบสลิป) ใหม่สุดอยู่บน
+            'payments' => $this->payments->reverse()->map(fn (PaymentTransaction $payment) => $payment->toPayload())->values(),
+            'slip_check' => app(SlipVerifier::class)->enabled(),
             // ประวัติสถานะ ใหม่สุดอยู่บน
             'history' => $this->histories->reverse()->map(fn (OrderStatusHistory $history) => [
                 'status' => $history->status,

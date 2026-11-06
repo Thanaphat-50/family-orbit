@@ -6,6 +6,7 @@ use App\Models\Address;
 use App\Models\CartItem;
 use App\Models\Order;
 use App\Models\OutOfStock;
+use App\Models\PaymentTransaction;
 use App\Models\Product;
 use App\Models\Shop;
 use App\Models\User;
@@ -432,17 +433,47 @@ class OrderController extends Controller
             ['slip.*' => 'สลิปต้องเป็นรูป JPG, PNG หรือ WEBP ไม่เกิน 6 MB']
         );
 
-        return $this->act($request, $order, 'pay', 'ส่งสลิปแล้ว รอร้านจัดส่ง', function () use ($request, $order) {
+        // ข้อความขึ้นกับผลตรวจสลิป (ตั้งหลังตรวจเสร็จ)
+        $message = 'ส่งสลิปแล้ว';
+
+        return $this->act($request, $order, 'pay', function () use (&$message) {
+            return $message;
+        }, function () use ($request, $order, &$message) {
             try {
-                $order->attachSlip($request->file('slip'));
+                $payment = $order->attachSlip($request->file('slip'));
             } catch (Throwable $e) {
                 Log::error('Order slip upload failed', ['order_id' => $order->id, 'error' => $e->getMessage()]);
 
                 return $this->fail('อัปโหลดสลิปไม่สำเร็จ กรุณาลองอีกครั้ง', 500);
             }
 
+            if ($payment->status === PaymentTransaction::STATUS_REJECTED) {
+                return response()->json([
+                    'status' => false,
+                    'code' => 'slip_rejected',
+                    'message' => 'สลิปไม่ผ่าน: ' . $payment->reason,
+                    'order' => $order->refresh()->toPayload($request->user()),
+                ], 422);
+            }
+
+            $message = $payment->status === PaymentTransaction::STATUS_VERIFIED
+                ? 'ชำระเงินสำเร็จ ระบบตรวจสลิปแล้ว รอร้านจัดส่ง'
+                : 'ส่งสลิปแล้ว ' . $payment->reason;
+
             return null;
         });
+    }
+
+    // ร้านยืนยันว่าได้รับเงินแล้ว (ตอนตรวจสลิปอัตโนมัติไม่ได้)
+    public function confirmPayment(Request $request, Order $order)
+    {
+        return $this->act(
+            $request,
+            $order,
+            'confirm_payment',
+            'ยืนยันรับเงินแล้ว จัดส่งสินค้าได้เลย',
+            fn () => $order->confirmPayment()
+        );
     }
 
     public function received(Request $request, Order $order)
@@ -597,7 +628,8 @@ class OrderController extends Controller
 
     // ตรวจว่าทำรายการนี้ได้ แล้วทำ → ส่งคำสั่งซื้อล่าสุดกลับ
     // work คืน JsonResponse เมื่อไม่สำเร็จ
-    private function act(Request $request, Order $order, string $action, string $message, callable $work)
+    // message เป็น Closure ได้ (ข้อความที่รู้หลังทำเสร็จ เช่น ผลตรวจสลิป)
+    private function act(Request $request, Order $order, string $action, string|\Closure $message, callable $work)
     {
         $user = $request->user();
 
@@ -625,7 +657,7 @@ class OrderController extends Controller
 
         return response()->json([
             'status' => true,
-            'message' => $message,
+            'message' => $message instanceof \Closure ? $message() : $message,
             'order' => $order->refresh()->toPayload($user),
         ]);
     }

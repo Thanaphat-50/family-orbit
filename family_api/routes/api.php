@@ -592,6 +592,11 @@ Route::middleware('auth:sanctum')->group(function () {
         'uploadSlip'
     ])->middleware('throttle:ugc');
 
+    Route::post('/orders/{order}/confirm-payment', [
+        OrderController::class,
+        'confirmPayment'
+    ]);
+
     Route::post('/orders/{order}/reject-slip', [
         OrderController::class,
         'rejectSlip'

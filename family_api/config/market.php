@@ -97,6 +97,12 @@ return [
     'max_order_quantity' => 99,
     'max_stock' => 99999,
 
+    // ตรวจสลิปอัตโนมัติ (EasySlip) ไม่ตั้งคีย์ = ร้านตรวจยอดเงินแล้วกดยืนยันเอง
+    'slip_verify' => [
+        'easyslip_key' => env('EASYSLIP_API_KEY'),
+        'easyslip_url' => env('EASYSLIP_API_URL', 'https://api.easyslip.com/v2/verify/bank'),
+    ],
+
     // ร้านควรส่งภายในกี่วัน (เกินแล้วผู้ซื้อยกเลิกเองได้ แม้โอนเงินแล้ว)
     'order_ship_days' => (int) env('ORDER_SHIP_DAYS', 3),
 

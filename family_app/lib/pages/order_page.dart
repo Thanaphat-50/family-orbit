@@ -221,9 +221,11 @@ class _OrderPageState extends State<OrderPage> {
       return switch (status) {
         'awaiting_payment' =>
           'รอลูกค้าโอน $total ภายใน ${formatDateTime(data['payment_deadline'])}',
+        'payment_review' =>
+          'ลูกค้าแนบสลิปแล้ว แต่ระบบตรวจอัตโนมัติไม่ได้ เช็กในแอปธนาคารว่าเงินเข้าครบ $total แล้วกดยืนยัน',
         'preparing' =>
           transfer
-              ? 'ลูกค้าโอน $total แล้ว เช็กยอดในแอปธนาคาร แล้ว${handover ? 'ส่งมอบสินค้า' : 'ส่งสินค้า'}ได้เลย'
+              ? 'ลูกค้าชำระ $total แล้ว ${handover ? 'ส่งมอบสินค้า' : 'ส่งสินค้า'}ได้เลย'
               : handover
               ? 'เตรียมสินค้า เก็บเงิน $total ตอนลูกค้ารับของ แล้วกด "ส่งมอบสินค้าแล้ว"'
               : 'ส่งสินค้า (เก็บเงินปลายทาง $total) แล้วกด "ส่งสินค้าแล้ว"',
@@ -236,9 +238,10 @@ class _OrderPageState extends State<OrderPage> {
     return switch (status) {
       'awaiting_payment' =>
         'กรุณาโอน $total แล้วแนบสลิปภายใน ${formatDateTime(data['payment_deadline'])}',
+      'payment_review' => 'ส่งสลิปแล้ว รอร้านตรวจยอดเงินในบัญชี',
       'preparing' =>
         transfer
-            ? 'โอนเงินแล้ว รอร้านจัดส่งสินค้า'
+            ? 'ชำระเงินแล้ว รอร้านจัดส่งสินค้า'
             : 'รอร้านจัดส่ง เตรียมเงิน $total ไว้จ่ายตอนรับของ',
       'shipped' =>
         'ได้รับสินค้าแล้วกด "ได้รับสินค้าแล้ว" '
@@ -969,6 +972,19 @@ class _OrderPageState extends State<OrderPage> {
     }
 
     return [
+      // ระบบตรวจสลิปไม่ได้ → ร้านเช็กยอดในบัญชีเอง
+      if (can.contains('confirm_payment'))
+        primary(
+          'ยืนยันว่าได้รับเงินแล้ว',
+          Icons.verified_rounded,
+          () => confirmThen(
+            title: 'เงินเข้าบัญชีแล้ว?',
+            message:
+                'เช็กในแอปธนาคารแล้วว่าได้รับ ${formatPrice(data['total'])} ครบ',
+            confirmLabel: 'ยืนยันรับเงิน',
+            onConfirm: () => act('confirm-payment'),
+          ),
+        ),
       if (can.contains('ship'))
         primary(
           handover ? 'ส่งมอบสินค้าแล้ว' : 'ส่งสินค้าแล้ว',
@@ -1022,9 +1038,86 @@ class _OrderPageState extends State<OrderPage> {
           if (data['slip_url'] != null) buildSlip(data),
           ...buildActions(data),
           buildItem(data),
+          if (((data['payments'] as List?) ?? const []).isNotEmpty)
+            buildPayments(data),
           buildDelivery(data),
           buildParty(data),
           buildTimes(data),
+        ],
+      ),
+    );
+  }
+
+  // ประวัติการชำระเงิน (ทุกครั้งที่แนบสลิป + ผลตรวจ)
+  Widget buildPayments(Map<String, dynamic> data) {
+    final List payments = (data['payments'] as List?) ?? const [];
+
+    Color colorOf(dynamic status) => switch (status) {
+      'verified' || 'confirmed' => AppColors.success,
+      'rejected' => AppColors.danger,
+      _ => const Color(0xFF2E90FA),
+    };
+
+    return card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          title('ประวัติการชำระเงิน'),
+          for (final payment in payments)
+            if (payment is Map)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      payment['status'] == 'rejected'
+                          ? Icons.cancel_rounded
+                          : payment['status'] == 'review'
+                          ? Icons.hourglass_top_rounded
+                          : Icons.check_circle_rounded,
+                      size: 20,
+                      color: colorOf(payment['status']),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            payment['status_label']?.toString() ?? '',
+                            style: TextStyle(
+                              color: colorOf(payment['status']),
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          if ((payment['reason']?.toString() ?? '').isNotEmpty)
+                            Text(
+                              payment['reason'].toString(),
+                              style: TextStyle(
+                                color: AppColors.navy,
+                                fontSize: 12.5,
+                                height: 1.4,
+                              ),
+                            ),
+                          Text(
+                            [
+                              if (payment['slip_amount'] != null)
+                                'ยอดในสลิป ${formatPrice(payment['slip_amount'])}',
+                              formatDateTime(payment['created_at']),
+                            ].join(' · '),
+                            style: TextStyle(
+                              color: AppColors.muted,
+                              fontSize: 11.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
         ],
       ),
     );

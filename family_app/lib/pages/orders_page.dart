@@ -23,7 +23,7 @@ class OrdersPage extends StatefulWidget {
 class _OrdersPageState extends State<OrdersPage> {
   // แท็บ (key ส่งเป็น filter ไปเซิร์ฟเวอร์)
   late final List<(String, String)> tabs = [
-    if (widget.seller) ('todo', 'ต้องจัดส่ง'),
+    if (widget.seller) ('todo', 'ต้องจัดการ'),
     ('open', 'กำลังดำเนินการ'),
     ('completed', 'สำเร็จ'),
     ('cancelled', 'ยกเลิก'),
