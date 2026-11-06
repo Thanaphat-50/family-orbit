@@ -3,6 +3,8 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AccountDeletionRequestController;
+use App\Http\Controllers\AddressController;
+use App\Http\Controllers\CartController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\FamilyController;
 use App\Http\Controllers\FamilyInvitationController;
@@ -513,9 +515,61 @@ Route::middleware('auth:sanctum')->group(function () {
         'checkout'
     ]);
 
+    Route::post('/orders/preview', [
+        OrderController::class,
+        'preview'
+    ]);
+
     Route::get('/orders', [
         OrderController::class,
         'index'
+    ]);
+
+    // ตะกร้าสินค้า
+    Route::get('/cart', [
+        CartController::class,
+        'index'
+    ]);
+
+    Route::get('/cart/count', [
+        CartController::class,
+        'count'
+    ]);
+
+    Route::post('/cart', [
+        CartController::class,
+        'store'
+    ])->middleware('throttle:ugc');
+
+    Route::patch('/cart/{cartItem}', [
+        CartController::class,
+        'update'
+    ]);
+
+    Route::delete('/cart/{cartItem}', [
+        CartController::class,
+        'destroy'
+    ]);
+
+    // ที่อยู่จัดส่งของฉัน
+    Route::get('/addresses', [
+        AddressController::class,
+        'index'
+    ]);
+
+    Route::post('/addresses', [
+        AddressController::class,
+        'store'
+    ])->middleware('throttle:ugc');
+
+    Route::put('/addresses/{address}', [
+        AddressController::class,
+        'update'
+    ]);
+
+    Route::delete('/addresses/{address}', [
+        AddressController::class,
+        'destroy'
     ]);
 
     Route::post('/orders', [

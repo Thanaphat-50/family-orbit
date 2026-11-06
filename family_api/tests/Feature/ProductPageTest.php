@@ -61,7 +61,7 @@ class ProductPageTest extends TestCase
         $buyer = User::factory()->create();
 
         foreach ([20, 24, 28] as $hours) {
-            Order::create([
+            $order = Order::create([
                 'code' => 'OR' . $hours,
                 'buyer_id' => $buyer->id,
                 'shop_id' => $shop->id,
@@ -76,7 +76,17 @@ class ProductPageTest extends TestCase
                 'recipient_phone' => '0811111111',
                 'status' => Order::STATUS_COMPLETED,
                 'shipped_at' => now()->subDays(2)->addHours($hours),
-            ])->forceFill(['created_at' => now()->subDays(2)])->save();
+            ]);
+
+            $order->forceFill(['created_at' => now()->subDays(2)])->save();
+
+            $order->items()->create([
+                'product_id' => $product->id,
+                'title' => $product->title,
+                'unit_price' => 100,
+                'quantity' => 1,
+                'subtotal' => 100,
+            ]);
         }
 
         Sanctum::actingAs(User::factory()->create());

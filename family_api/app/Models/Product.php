@@ -27,6 +27,7 @@ class Product extends Model
         'video_path',
         'video_thumbnail_path',
         'card_media',
+        'option_name',
     ];
 
     protected $hidden = [
@@ -68,11 +69,44 @@ class Product extends Model
         return $this->hasMany(Order::class);
     }
 
+    public function variants()
+    {
+        return $this->hasMany(ProductVariant::class)->orderBy('sort')->orderBy('id');
+    }
+
+    public function orderItems()
+    {
+        return $this->hasMany(OrderItem::class);
+    }
+
+    public function hasVariants(): bool
+    {
+        return $this->variants->isNotEmpty();
+    }
+
+    // สินค้าที่มีตัวเลือก: สต็อกรวม = ผลรวมของทุกตัวเลือก
+    public function syncStockFromVariants(): void
+    {
+        if ($this->variants()->exists()) {
+            $this->forceFill(['stock' => (int) $this->variants()->sum('stock')])->saveQuietly();
+        }
+    }
+
+    // ราคาต่ำสุด-สูงสุดของตัวเลือก (ไม่มีตัวเลือก = null)
+    public function priceRange(): ?array
+    {
+        $prices = $this->variants
+            ->map(fn (ProductVariant $variant) => $variant->effectivePrice())
+            ->filter(fn ($price) => $price !== null);
+
+        return $prices->isEmpty() ? null : ['min' => $prices->min(), 'max' => $prices->max()];
+    }
+
     // ขายแล้วกี่ชิ้น (นับเฉพาะคำสั่งซื้อที่สำเร็จ)
     public function soldCount(): int
     {
-        return (int) Order::where('product_id', $this->id)
-            ->where('status', Order::STATUS_COMPLETED)
+        return (int) OrderItem::where('product_id', $this->id)
+            ->whereHas('order', fn ($orders) => $orders->where('status', Order::STATUS_COMPLETED))
             ->sum('quantity');
     }
 
@@ -92,7 +126,7 @@ class Product extends Model
     {
         return match (true) {
             (int) $this->shop->user_id === (int) $user->id => 'นี่คือสินค้าของร้านคุณ',
-            $this->price === null => 'สินค้านี้ให้สอบถามราคากับร้านก่อน',
+            $this->price === null && $this->priceRange() === null => 'สินค้านี้ให้สอบถามราคากับร้านก่อน',
             $this->isSoldOut() => 'สินค้าหมดแล้ว',
             !$this->shop->acceptsOrders() => 'ร้านนี้ยังไม่เปิดรับคำสั่งซื้อในแอป ติดต่อร้านได้โดยตรง',
             default => null,

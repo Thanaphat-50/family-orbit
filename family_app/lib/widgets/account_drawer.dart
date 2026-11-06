@@ -20,6 +20,7 @@ enum AccountMenuItem {
   notifications,
   orders,
   savedProducts,
+  addresses,
   shop,
   settings,
   logout,
@@ -345,6 +346,13 @@ class AccountDrawer extends StatelessWidget {
                   item: AccountMenuItem.savedProducts,
                   icon: Icons.bookmark_border_rounded,
                   title: 'สินค้าที่บันทึก',
+                  color: marketColor,
+                ),
+                buildItem(
+                  context,
+                  item: AccountMenuItem.addresses,
+                  icon: Icons.location_on_outlined,
+                  title: 'ที่อยู่จัดส่ง',
                   color: marketColor,
                 ),
                 buildItem(

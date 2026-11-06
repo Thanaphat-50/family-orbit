@@ -59,12 +59,14 @@ class Order extends Model
 
     protected $fillable = [
         'code',
+        'checkout_id',
         'buyer_id',
         'shop_id',
         'product_id',
         'product_title',
         'unit_price',
         'quantity',
+        'items_total',
         'shipping_fee',
         'total',
         'delivery_method',
@@ -94,6 +96,7 @@ class Order extends Model
 
     protected $casts = [
         'unit_price' => 'decimal:2',
+        'items_total' => 'decimal:2',
         'shipping_fee' => 'decimal:2',
         'total' => 'decimal:2',
         'quantity' => 'integer',
@@ -137,62 +140,156 @@ class Order extends Model
         });
     }
 
-    // =====================================================
-    // สั่งซื้อ: จองสต็อกแล้วสร้างคำสั่งซื้อ (สต็อกไม่พอ → OutOfStock)
-    // data ผ่านการตรวจใน OrderController แล้ว
-    // =====================================================
-
-    public static function place(User $buyer, Product $product, array $data): self
+    public function items()
     {
-        $quantity = (int) $data['quantity'];
+        return $this->hasMany(OrderItem::class)->orderBy('id');
+    }
 
-        $shippingFee = in_array($data['delivery_method'], config('market.shipping_fee_methods'), true)
-            ? (float) ($product->shipping_fee ?? 0)
-            : 0.0;
+    public function histories()
+    {
+        return $this->hasMany(OrderStatusHistory::class)->orderBy('id');
+    }
+
+    // =====================================================
+    // สั่งซื้อ (1 ร้าน หลายรายการ): จองสต็อกแล้วสร้างคำสั่งซื้อ
+    // lines = [['product' => Product, 'variant' => ?ProductVariant, 'quantity' => int, 'unit_price' => float]]
+    // ราคามาจาก OrderController ที่อ่านจากฐานข้อมูล (ไม่เชื่อราคาจากแอป)
+    // สต็อกไม่พอ → OutOfStock (เรียกใน DB::transaction ของ Controller → ยกเลิกทั้งหมด)
+    // =====================================================
+
+    public static function placeGroup(User $buyer, Shop $shop, array $lines, array $data, ?string $checkoutId = null): self
+    {
+        foreach ($lines as $line) {
+            self::reserveStock($line['product'], $line['variant'], (int) $line['quantity']);
+        }
+
+        [$itemsTotal, $shippingFee] = self::totalsFor($lines, $data['delivery_method']);
 
         $transfer = (bool) config("market.payment_methods.{$data['payment_method']}.transfer", false);
 
-        $order = DB::transaction(function () use ($buyer, $product, $data, $quantity, $shippingFee, $transfer) {
-            // ลดสต็อกแบบมีเงื่อนไข (คนสั่งพร้อมกันก็ไม่ขายเกิน)
-            $reserved = Product::whereKey($product->id)
+        $first = $lines[0];
+
+        $order = self::create([
+            'code' => self::newCode(),
+            'checkout_id' => $checkoutId,
+            'buyer_id' => $buyer->id,
+            'shop_id' => $shop->id,
+            // สรุปไว้ที่คำสั่งซื้อ (แอปเวอร์ชันเก่าแสดงจากช่องนี้) รายการจริงอยู่ใน order_items
+            'product_id' => $first['product']->id,
+            'product_title' => Str::limit(
+                $first['product']->title . (count($lines) > 1 ? ' และอีก ' . (count($lines) - 1) . ' รายการ' : ''),
+                117
+            ),
+            'unit_price' => $first['unit_price'],
+            'quantity' => array_sum(array_map(fn (array $line) => (int) $line['quantity'], $lines)),
+            'items_total' => $itemsTotal,
+            'shipping_fee' => $shippingFee,
+            'total' => round($itemsTotal + $shippingFee, 2),
+            'delivery_method' => $data['delivery_method'],
+            'payment_method' => $data['payment_method'],
+            'recipient_name' => trim($data['recipient_name']),
+            'recipient_phone' => preg_replace('/[\s\-]/', '', $data['recipient_phone']),
+            'address' => filled($data['address'] ?? null) ? trim($data['address']) : null,
+            'note' => filled($data['note'] ?? null) ? trim($data['note']) : null,
+            // โอนเงิน → รอสลิป / เก็บเงินปลายทาง เงินสด → ร้านจัดส่งได้เลย
+            'status' => $transfer ? self::STATUS_AWAITING_PAYMENT : self::STATUS_PREPARING,
+            'payment_due_at' => $transfer ? now()->addHours(config('market.order_payment_hours')) : null,
+        ]);
+
+        foreach ($lines as $line) {
+            $order->items()->create([
+                'product_id' => $line['product']->id,
+                'variant_id' => $line['variant']?->id,
+                'title' => $line['product']->title,
+                'variant_name' => $line['variant']?->name,
+                'unit_price' => $line['unit_price'],
+                'quantity' => (int) $line['quantity'],
+                'subtotal' => round($line['unit_price'] * $line['quantity'], 2),
+            ]);
+        }
+
+        $order->recordStatus(self::BY_BUYER, 'สั่งซื้อ');
+
+        return $order;
+    }
+
+    // [ยอดสินค้า, ค่าส่ง] ของคำสั่งซื้อ 1 ร้าน (ใช้ทั้งตอนแสดงหน้าสั่งซื้อและตอนบันทึก)
+    // ค่าส่งคิดครั้งเดียวต่อคำสั่งซื้อ: ใช้ค่าส่งสูงสุดของสินค้าในคำสั่งซื้อ
+    public static function totalsFor(array $lines, string $deliveryMethod): array
+    {
+        $itemsTotal = round(array_sum(array_map(
+            fn (array $line) => (float) $line['unit_price'] * (int) $line['quantity'],
+            $lines
+        )), 2);
+
+        $shippingFee = in_array($deliveryMethod, config('market.shipping_fee_methods'), true) && $lines !== []
+            ? (float) max(array_map(fn (array $line) => (float) ($line['product']->shipping_fee ?? 0), $lines))
+            : 0.0;
+
+        return [$itemsTotal, $shippingFee];
+    }
+
+    // แจ้งร้านว่ามีคำสั่งซื้อใหม่ (เรียกหลังบันทึกคำสั่งซื้อทั้งหมดสำเร็จ)
+    public function announceToSeller(): void
+    {
+        $this->notifySeller(
+            'มีคำสั่งซื้อใหม่',
+            "{$this->product_title} · {$this->quantity} ชิ้น · " . self::baht($this->total) . ' · '
+                . ($this->isTransfer() ? 'รอลูกค้าโอนเงิน' : $this->paymentLabel() . ' เตรียมจัดส่งได้เลย')
+        );
+    }
+
+    // ลดสต็อกแบบมีเงื่อนไข (คนสั่งพร้อมกันก็ไม่ขายเกิน)
+    private static function reserveStock(Product $product, ?ProductVariant $variant, int $quantity): void
+    {
+        if ($variant) {
+            $reserved = ProductVariant::whereKey($variant->id)
                 ->where('stock', '>=', $quantity)
                 ->decrement('stock', $quantity);
 
             if ($reserved === 0) {
-                throw new OutOfStock((int) Product::whereKey($product->id)->value('stock'));
+                throw new OutOfStock(
+                    (int) ProductVariant::whereKey($variant->id)->value('stock'),
+                    "{$product->title} ({$variant->name})"
+                );
             }
 
-            $unitPrice = (float) $product->price;
+            // สต็อกรวมของสินค้า = ผลรวมของตัวเลือก
+            Product::whereKey($product->id)->where('stock', '>=', $quantity)->decrement('stock', $quantity);
 
-            return self::create([
-                'code' => self::newCode(),
-                'buyer_id' => $buyer->id,
-                'shop_id' => $product->shop_id,
-                'product_id' => $product->id,
-                'product_title' => $product->title,
-                'unit_price' => $unitPrice,
-                'quantity' => $quantity,
-                'shipping_fee' => $shippingFee,
-                'total' => round($unitPrice * $quantity + $shippingFee, 2),
-                'delivery_method' => $data['delivery_method'],
-                'payment_method' => $data['payment_method'],
-                'recipient_name' => trim($data['recipient_name']),
-                'recipient_phone' => preg_replace('/[\s\-]/', '', $data['recipient_phone']),
-                'address' => filled($data['address'] ?? null) ? trim($data['address']) : null,
-                'note' => filled($data['note'] ?? null) ? trim($data['note']) : null,
-                // โอนเงิน → รอสลิป / เก็บเงินปลายทาง เงินสด → ร้านจัดส่งได้เลย
-                'status' => $transfer ? self::STATUS_AWAITING_PAYMENT : self::STATUS_PREPARING,
-                'payment_due_at' => $transfer ? now()->addHours(config('market.order_payment_hours')) : null,
-            ]);
-        });
+            return;
+        }
 
-        $order->notifySeller(
-            'มีคำสั่งซื้อใหม่',
-            "{$order->product_title} × {$order->quantity} · " . self::baht($order->total) . ' · '
-                . ($transfer ? 'รอลูกค้าโอนเงิน' : $order->paymentLabel() . ' เตรียมจัดส่งได้เลย')
-        );
+        $reserved = Product::whereKey($product->id)
+            ->where('stock', '>=', $quantity)
+            ->decrement('stock', $quantity);
 
-        return $order;
+        if ($reserved === 0) {
+            throw new OutOfStock((int) Product::whereKey($product->id)->value('stock'), $product->title);
+        }
+    }
+
+    // คืนสต็อกเมื่อยกเลิก
+    private function restoreStock(): void
+    {
+        foreach ($this->items()->get() as $item) {
+            if ($item->variant_id !== null) {
+                ProductVariant::whereKey($item->variant_id)->increment('stock', $item->quantity);
+            }
+
+            if ($item->product_id !== null) {
+                Product::whereKey($item->product_id)->increment('stock', $item->quantity);
+            }
+        }
+    }
+
+    public function recordStatus(string $actor, ?string $note = null): void
+    {
+        $this->histories()->create([
+            'status' => $this->status,
+            'actor' => $actor,
+            'note' => $note === null ? null : Str::limit($note, 297),
+        ]);
     }
 
     // =====================================================
@@ -218,6 +315,8 @@ class Order extends Model
 
         MediaStorage::delete([$old]);
 
+        $this->recordStatus(self::BY_BUYER, 'แนบสลิปการโอน');
+
         $this->notifySeller(
             'ลูกค้าโอนเงินแล้ว',
             "คำสั่งซื้อ {$this->code} · " . self::baht($this->total)
@@ -235,6 +334,8 @@ class Order extends Model
             'payment_due_at' => now()->addHours(config('market.order_payment_hours')),
         ])->save();
 
+        $this->recordStatus(self::BY_SELLER, 'สลิปไม่ถูกต้อง: ' . $reason);
+
         $this->notifyBuyer('ร้านแจ้งว่าสลิปไม่ถูกต้อง', $reason . ' (แนบสลิปใหม่ได้ในคำสั่งซื้อ)');
     }
 
@@ -246,6 +347,8 @@ class Order extends Model
             'tracking_number' => $trackingNumber,
             'seller_note' => $sellerNote,
         ])->save();
+
+        $this->recordStatus(self::BY_SELLER, $trackingNumber ? "เลขพัสดุ {$trackingNumber}" : null);
 
         $this->notifyBuyer(
             $this->isHandover() ? 'ร้านส่งมอบสินค้าแล้ว' : 'ร้านส่งสินค้าแล้ว',
@@ -264,6 +367,8 @@ class Order extends Model
             // เก็บเงินปลายทาง / เงินสด: จ่ายตอนรับของ
             'paid_at' => $this->paid_at ?? now(),
         ])->save();
+
+        $this->recordStatus($by, $by === self::BY_SYSTEM ? 'ครบกำหนด ระบบยืนยันรับสินค้าให้' : 'ได้รับสินค้าแล้ว');
 
         $this->notifySeller(
             'คำสั่งซื้อสำเร็จ',
@@ -287,9 +392,9 @@ class Order extends Model
                 'payment_due_at' => null,
             ])->save();
 
-            if ($this->product_id !== null) {
-                Product::whereKey($this->product_id)->increment('stock', $this->quantity);
-            }
+            $this->restoreStock();
+
+            $this->recordStatus($by, $reason);
         });
 
         $message = "คำสั่งซื้อ {$this->code} \"{$this->product_title}\"" . ($reason ? " · {$reason}" : '');
@@ -416,7 +521,7 @@ class Order extends Model
 
     public function toPayload(User $viewer): array
     {
-        $this->loadMissing(['shop', 'buyer', 'product.images']);
+        $this->loadMissing(['shop', 'buyer', 'product.images', 'items.product.images', 'histories']);
 
         $isBuyer = $this->isBuyer($viewer);
 
@@ -428,7 +533,7 @@ class Order extends Model
         return [
             ...$this->only([
                 'id', 'code', 'status', 'product_id', 'product_title',
-                'unit_price', 'quantity', 'shipping_fee', 'total',
+                'unit_price', 'quantity', 'items_total', 'shipping_fee', 'total',
                 'delivery_method', 'payment_method',
                 'recipient_name', 'recipient_phone', 'address', 'note',
                 'payment_note', 'tracking_number', 'seller_note',
@@ -442,7 +547,17 @@ class Order extends Model
             'payment_label' => $this->paymentLabel(),
             'is_transfer' => $this->isTransfer(),
             'is_handover' => $this->isHandover(),
-            'image_url' => $this->product?->images->first()?->url,
+            'image_url' => $this->items->first()?->product?->images->first()?->url
+                ?? $this->product?->images->first()?->url,
+            'items' => $this->items->map(fn (OrderItem $item) => $item->toPayload())->values(),
+            // ประวัติสถานะ ใหม่สุดอยู่บน
+            'history' => $this->histories->reverse()->map(fn (OrderStatusHistory $history) => [
+                'status' => $history->status,
+                'status_label' => self::STATUS_LABELS[$history->status] ?? $history->status,
+                'actor' => $history->actor,
+                'note' => $history->note,
+                'created_at' => $history->created_at,
+            ])->values(),
             'slip_url' => $this->slip_url,
             'payment_deadline' => $this->status === self::STATUS_AWAITING_PAYMENT ? $this->payment_due_at : null,
             'ship_deadline' => $this->shipDeadline(),

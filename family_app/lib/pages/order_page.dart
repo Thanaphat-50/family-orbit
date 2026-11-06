@@ -621,48 +621,97 @@ class _OrderPageState extends State<OrderPage> {
       );
     }
 
+    // คำสั่งซื้อเก่าที่ไม่มีรายการแยก → ใช้ข้อมูลสรุปของคำสั่งซื้อ
+    final List items = (data['items'] as List?)?.isNotEmpty == true
+        ? data['items'] as List
+        : [
+            {
+              'title': data['product_title'],
+              'unit_price': data['unit_price'],
+              'quantity': data['quantity'],
+              'subtotal':
+                  (double.tryParse('${data['unit_price']}') ?? 0) *
+                  ((data['quantity'] as num?) ?? 1),
+              'image_url': imageUrl,
+            },
+          ];
+
+    final double itemsTotal = items.fold(
+      0,
+      (sum, item) => sum + (double.tryParse('${item['subtotal'] ?? 0}') ?? 0),
+    );
+
     return card(
       child: Column(
         children: [
-          Row(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(14),
-                child: SizedBox(
-                  width: 64,
-                  height: 64,
-                  child: imageUrl == null
-                      ? ColoredBox(color: AppColors.fill)
-                      : Image.network(
-                          imageUrl,
-                          fit: BoxFit.cover,
-                          cacheWidth: 200,
-                        ),
+          for (final item in items)
+            if (item is Map)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Row(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(14),
+                      child: SizedBox(
+                        width: 60,
+                        height: 60,
+                        child: item['image_url'] == null
+                            ? ColoredBox(color: AppColors.fill)
+                            : Image.network(
+                                item['image_url'].toString(),
+                                fit: BoxFit.cover,
+                                cacheWidth: 200,
+                                errorBuilder: (context, error, stackTrace) =>
+                                    ColoredBox(color: AppColors.fill),
+                              ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            item['title']?.toString() ?? '',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: AppColors.navy,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          if (item['variant_name'] != null)
+                            Text(
+                              'ตัวเลือก: ${item['variant_name']}',
+                              style: TextStyle(
+                                color: AppColors.muted,
+                                fontSize: 12.5,
+                              ),
+                            ),
+                          Text(
+                            '${formatPrice(item['unit_price'])} × ${item['quantity']}',
+                            style: TextStyle(
+                              color: AppColors.muted,
+                              fontSize: 12.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Text(
+                      formatPrice(item['subtotal']),
+                      style: TextStyle(
+                        color: AppColors.navy,
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  data['product_title']?.toString() ?? '',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: AppColors.navy,
-                    fontSize: 14.5,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          line(
-            '${formatPrice(data['unit_price'])} × ${data['quantity']}',
-            formatPrice(
-              (double.tryParse('${data['unit_price']}') ?? 0) *
-                  ((data['quantity'] as num?) ?? 1),
-            ),
-          ),
+          const Divider(height: 12),
+          line('ค่าสินค้า', formatPrice(itemsTotal)),
           line('ค่าส่ง', shipping > 0 ? formatPrice(shipping) : 'ไม่มี'),
           const Divider(height: 16),
           line('ยอดรวม', formatPrice(data['total']), bold: true),
@@ -787,31 +836,87 @@ class _OrderPageState extends State<OrderPage> {
     );
   }
 
+  // ประวัติสถานะ (ใหม่สุดอยู่บน) จากเซิร์ฟเวอร์
   Widget buildTimes(Map<String, dynamic> data) {
-    final List<(String, dynamic)> times = [
-      ('สั่งซื้อ', data['created_at']),
-      ('ชำระเงิน', data['paid_at']),
-      (
-        data['is_handover'] == true ? 'ส่งมอบ' : 'ส่งสินค้า',
-        data['shipped_at'],
-      ),
-      ('สำเร็จ', data['completed_at']),
-      ('ยกเลิก', data['cancelled_at']),
-    ];
+    final List history = (data['history'] as List?) ?? const [];
+
+    String actorLabel(dynamic actor) => switch (actor) {
+      'buyer' => isSeller ? 'ลูกค้า' : 'คุณ',
+      'seller' => isSeller ? 'คุณ' : 'ร้าน',
+      _ => 'ระบบ',
+    };
 
     return card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           title('เลขที่ ${data['code'] ?? ''}'),
-          for (final (label, time) in times)
-            if (time != null)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Text(
-                  '$label: ${formatDateTime(time)}',
-                  style: TextStyle(color: AppColors.muted, fontSize: 12.5),
-                ),
+          if (history.isEmpty)
+            Text(
+              'สั่งซื้อเมื่อ ${formatDateTime(data['created_at'])}',
+              style: TextStyle(color: AppColors.muted, fontSize: 12.5),
+            ),
+          for (int i = 0; i < history.length; i++)
+            if (history[i] is Map)
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Column(
+                    children: [
+                      Icon(
+                        i == 0
+                            ? Icons.radio_button_checked_rounded
+                            : Icons.circle,
+                        size: i == 0 ? 16 : 9,
+                        color: i == 0
+                            ? orderStatusStyle(data['status']).color
+                            : AppColors.muted,
+                      ),
+                      if (i < history.length - 1)
+                        Container(
+                          width: 2,
+                          height: 30,
+                          color: AppColors.border,
+                        ),
+                    ],
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${history[i]['status_label'] ?? ''} · ${actorLabel(history[i]['actor'])}',
+                            style: TextStyle(
+                              color: i == 0 ? AppColors.navy : AppColors.muted,
+                              fontSize: 13,
+                              fontWeight: i == 0
+                                  ? FontWeight.w800
+                                  : FontWeight.w600,
+                            ),
+                          ),
+                          if ((history[i]['note']?.toString() ?? '').isNotEmpty)
+                            Text(
+                              history[i]['note'].toString(),
+                              style: TextStyle(
+                                color: AppColors.muted,
+                                fontSize: 12.5,
+                              ),
+                            ),
+                          Text(
+                            formatDateTime(history[i]['created_at']),
+                            style: TextStyle(
+                              color: AppColors.muted,
+                              fontSize: 11.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
         ],
       ),

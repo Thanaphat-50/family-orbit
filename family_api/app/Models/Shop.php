@@ -163,9 +163,10 @@ class Shop extends Model
     // (ต้องมีอย่างน้อย 3 ออเดอร์ใน 90 วัน ไม่งั้นไม่แสดงค่าเฉลี่ย)
     public function salesStats(): array
     {
-        $sold = (int) Order::where('shop_id', $this->id)
-            ->where('status', Order::STATUS_COMPLETED)
-            ->sum('quantity');
+        $sold = (int) OrderItem::whereHas(
+            'order',
+            fn ($orders) => $orders->where('shop_id', $this->id)->where('status', Order::STATUS_COMPLETED)
+        )->sum('quantity');
 
         $hours = Order::where('shop_id', $this->id)
             ->whereNotNull('shipped_at')

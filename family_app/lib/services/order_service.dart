@@ -39,8 +39,18 @@ class OrderService {
     return ApiHelper.decode(response);
   }
 
-  // fields: product_id, quantity, delivery_method, payment_method,
-  //         recipient_name, recipient_phone, address, note
+  // items: [{product_id, variant_id, quantity}]
+  // → groups (แยกตามร้าน) ราคาปัจจุบัน วิธีรับ/วิธีจ่าย ค่าส่ง ที่อยู่ที่บันทึกไว้
+  static Future<Map<String, dynamic>> preview(
+    List<Map<String, dynamic>> items,
+  ) async {
+    return _post('/orders/preview', {'items': items});
+  }
+
+  // fields: checkout_id, items, groups[{shop_id, delivery_method,
+  //         payment_method, note}], address_id | recipient_name + recipient_phone,
+  //         expected_total
+  // 409 code=checkout_changed → ราคา/สต็อกเปลี่ยน (มีข้อมูลหน้าสรุปใหม่มาด้วย)
   static Future<Map<String, dynamic>> placeOrder(
     Map<String, dynamic> fields,
   ) async {

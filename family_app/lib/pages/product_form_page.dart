@@ -62,6 +62,16 @@ class _ProductFormPageState extends State<ProductFormPage> {
   );
 
   // หน้าปกการ์ดในหน้าร้านค้า: image = รูปแรก / video = เล่นวิดีโอเอง
+  // ตัวเลือกสินค้า (สี ขนาด รุ่น) แต่ละแบบมีราคา/สต็อกของตัวเอง
+  late final TextEditingController optionNameController = TextEditingController(
+    text: widget.product?['option_name']?.toString() ?? '',
+  );
+
+  late final List<_VariantRow> variantRows = [
+    for (final item in (widget.product?['variants'] as List?) ?? const [])
+      if (item is Map) _VariantRow.from(Map<String, dynamic>.from(item)),
+  ];
+
   late String cardMedia = widget.product?['card_media'] == 'video'
       ? 'video'
       : 'image';
@@ -255,6 +265,7 @@ class _ProductFormPageState extends State<ProductFormPage> {
           'stock': stockController.text.trim(),
           'shipping_fee': shippingController.text.trim().replaceAll(',', ''),
           'card_media': hasVideo ? cardMedia : 'image',
+          ...variantFields(),
         },
         newImagePaths: newImages.map((image) => image.path).toList(),
         removeImageIds: removedImageIds,
@@ -470,6 +481,147 @@ class _ProductFormPageState extends State<ProductFormPage> {
     );
   }
 
+  // ส่งตัวเลือกทั้งหมดทุกครั้ง (ไม่มีแถว = ลบตัวเลือกทั้งหมด)
+  Map<String, String> variantFields() {
+    return {
+      'variants_present': '1',
+      'option_name': optionNameController.text.trim(),
+      for (int i = 0; i < variantRows.length; i++) ...{
+        if (variantRows[i].id != null)
+          'variants[$i][id]': '${variantRows[i].id}',
+        'variants[$i][name]': variantRows[i].name.text.trim(),
+        'variants[$i][price]': variantRows[i].price.text.trim().replaceAll(
+          ',',
+          '',
+        ),
+        'variants[$i][stock]': variantRows[i].stock.text.trim(),
+      },
+    };
+  }
+
+  Widget buildVariants() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'เช่น สี ขนาด รุ่น แต่ละแบบใส่ราคาและสต็อกแยกได้ '
+          '(ไม่ใส่ราคา = ใช้ราคาสินค้า)',
+          style: TextStyle(color: AppColors.muted, fontSize: 12.5),
+        ),
+        if (variantRows.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          TextFormField(
+            controller: optionNameController,
+            maxLength: 40,
+            decoration: const InputDecoration(
+              labelText: 'ชื่อหัวข้อ (เช่น สี / ขนาด)',
+              prefixIcon: Icon(Icons.tune_rounded),
+            ),
+          ),
+        ],
+        for (int i = 0; i < variantRows.length; i++)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  flex: 5,
+                  child: TextFormField(
+                    controller: variantRows[i].name,
+                    maxLength: 60,
+                    decoration: InputDecoration(
+                      labelText: 'แบบที่ ${i + 1}',
+                      hintText: 'เช่น สีแดง M',
+                      counterText: '',
+                    ),
+                    validator: (value) {
+                      final String name = (value ?? '').trim();
+
+                      if (name.isEmpty) return 'ใส่ชื่อ';
+
+                      final int same = variantRows
+                          .where((row) => row.name.text.trim() == name)
+                          .length;
+
+                      return same > 1 ? 'ชื่อซ้ำ' : null;
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  flex: 3,
+                  child: TextFormField(
+                    controller: variantRows[i].price,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(labelText: 'ราคา'),
+                    validator: (value) {
+                      final String text = (value ?? '').trim().replaceAll(
+                        ',',
+                        '',
+                      );
+
+                      if (text.isEmpty) return null;
+
+                      final double? price = double.tryParse(text);
+
+                      return price == null || price < 0 ? 'ไม่ถูกต้อง' : null;
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  flex: 3,
+                  child: TextFormField(
+                    controller: variantRows[i].stock,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: 'สต็อก'),
+                    validator: (value) {
+                      final int? stock = int.tryParse((value ?? '').trim());
+
+                      return stock == null || stock < 0 ? 'ใส่ 0+' : null;
+                    },
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'ลบแบบนี้',
+                  onPressed: isSaving
+                      ? null
+                      : () => setState(() {
+                          variantRows.removeAt(i).dispose();
+                        }),
+                  icon: Icon(
+                    Icons.remove_circle_outline_rounded,
+                    color: AppColors.danger,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        if (serverErrors.keys.any((key) => key.startsWith('variants')))
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              serverErrors.entries
+                  .firstWhere((entry) => entry.key.startsWith('variants'))
+                  .value,
+              style: TextStyle(color: AppColors.danger, fontSize: 12),
+            ),
+          ),
+        if (variantRows.length < 20)
+          TextButton.icon(
+            onPressed: isSaving
+                ? null
+                : () => setState(() => variantRows.add(_VariantRow.empty())),
+            icon: const Icon(Icons.add_rounded),
+            label: const Text('เพิ่มตัวเลือก'),
+          ),
+      ],
+    );
+  }
+
   // เลือกให้การ์ดในหน้าร้านค้าแสดงรูป หรือเล่นวิดีโอ
   Widget buildCardMedia() {
     final bool canUseVideo = hasVideo;
@@ -618,13 +770,19 @@ class _ProductFormPageState extends State<ProductFormPage> {
                       controller: stockController,
                       keyboardType: TextInputType.number,
                       textInputAction: TextInputAction.next,
+                      // มีตัวเลือก → สต็อกรวมจากตัวเลือก
+                      enabled: variantRows.isEmpty,
                       decoration: InputDecoration(
                         labelText: 'จำนวนในสต็อก',
-                        helperText: 'ขายได้ระบบลดให้เอง',
+                        helperText: variantRows.isEmpty
+                            ? 'ขายได้ระบบลดให้เอง'
+                            : 'รวมจากตัวเลือกด้านล่าง',
                         prefixIcon: const Icon(Icons.inventory_2_outlined),
                         errorText: serverErrors['stock'],
                       ),
                       validator: (value) {
+                        if (variantRows.isNotEmpty) return null;
+
                         final int? stock = int.tryParse((value ?? '').trim());
 
                         if (stock == null || stock < 0 || stock > 99999) {
@@ -674,6 +832,9 @@ class _ProductFormPageState extends State<ProductFormPage> {
                   style: TextStyle(color: AppColors.muted, fontSize: 12),
                 ),
               ),
+              const SizedBox(height: 20),
+              buildSectionLabel('ตัวเลือกสินค้า (ไม่บังคับ)'),
+              buildVariants(),
               const SizedBox(height: 16),
               buildSectionLabel('หมวดสินค้า'),
               Wrap(
@@ -758,8 +919,49 @@ class _ProductFormPageState extends State<ProductFormPage> {
     priceController.dispose();
     descriptionController.dispose();
     stockController.dispose();
+    optionNameController.dispose();
+
+    for (final row in variantRows) {
+      row.dispose();
+    }
     shippingController.dispose();
 
     super.dispose();
+  }
+}
+
+// ตัวเลือกสินค้า 1 แบบในฟอร์ม (id = null → แบบใหม่)
+class _VariantRow {
+  final int? id;
+  final TextEditingController name;
+  final TextEditingController price;
+  final TextEditingController stock;
+
+  _VariantRow(this.id, String name, String price, String stock)
+    : name = TextEditingController(text: name),
+      price = TextEditingController(text: price),
+      stock = TextEditingController(text: stock);
+
+  factory _VariantRow.empty() => _VariantRow(null, '', '', '1');
+
+  factory _VariantRow.from(Map<String, dynamic> data) {
+    final double? price = double.tryParse('${data['price'] ?? ''}');
+
+    return _VariantRow(
+      (data['id'] as num?)?.toInt(),
+      data['name']?.toString() ?? '',
+      price == null
+          ? ''
+          : price == price.roundToDouble()
+          ? price.toStringAsFixed(0)
+          : price.toStringAsFixed(2),
+      '${data['stock'] ?? 0}',
+    );
+  }
+
+  void dispose() {
+    name.dispose();
+    price.dispose();
+    stock.dispose();
   }
 }

@@ -9,6 +9,8 @@ import 'package:share_plus/share_plus.dart';
 import '../config/app_info.dart';
 import '../services/auth_service.dart';
 import '../services/background_location.dart';
+import '../data/market_data.dart' show marketColor;
+import '../services/cart_service.dart';
 import '../services/chat_service.dart';
 import '../services/family_service.dart';
 import '../services/location_tracker.dart';
@@ -25,6 +27,8 @@ import '../widgets/swipe_sections.dart';
 import '../widgets/user_avatar.dart';
 
 import 'activity_page.dart';
+import 'addresses_page.dart';
+import 'cart_page.dart';
 import 'chat_list_page.dart';
 import 'chat_room_page.dart';
 import 'feed_page.dart';
@@ -1258,6 +1262,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       case AccountMenuItem.orders:
         await openMyOrders();
 
+      case AccountMenuItem.addresses:
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => const AddressesPage(picking: false),
+          ),
+        );
+
       case AccountMenuItem.savedProducts:
         await Navigator.of(
           context,
@@ -1709,7 +1720,21 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
-  // ปุ่ม 🧾 คำสั่งซื้อของฉัน (หน้าตลาด และเมนูบัญชี)
+  // ปุ่ม 🛒 ตะกร้า (หน้าตลาด)
+  Future<void> openCart() async {
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (context) => const CartPage()));
+
+    // สั่งซื้อจากตะกร้า → สต็อกสินค้าในตลาดเปลี่ยน
+    if (mounted) {
+      setState(() {
+        marketRefreshToken++;
+      });
+    }
+  }
+
+  // คำสั่งซื้อของฉัน (เมนูบัญชี)
   Future<void> openMyOrders() async {
     final dynamic changed = await Navigator.of(context).push(
       MaterialPageRoute(builder: (context) => const OrdersPage()),
@@ -1887,10 +1912,19 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
       actions: [
         if (selectedIndex == tabMarket) ...[
-          IconButton(
-            tooltip: 'คำสั่งซื้อของฉัน',
-            onPressed: openMyOrders,
-            icon: const Icon(Icons.receipt_long_outlined, size: 25),
+          // ตะกร้า (คำสั่งซื้อของฉัน อยู่ในหน้าตะกร้าและเมนูบัญชี)
+          ValueListenableBuilder<int>(
+            valueListenable: CartService.cartCount,
+            builder: (context, count, child) => IconButton(
+              tooltip: 'ตะกร้าสินค้า',
+              onPressed: openCart,
+              icon: Badge(
+                isLabelVisible: count > 0,
+                label: Text(count > 99 ? '99+' : '$count'),
+                backgroundColor: marketColor,
+                child: const Icon(Icons.shopping_cart_outlined, size: 25),
+              ),
+            ),
           ),
           IconButton(
             tooltip: 'บัญชีผู้ขาย',
@@ -1933,6 +1967,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     });
 
     loadUnreadNotificationCount();
+
+    // เปิดแท็บร้านค้า → ตัวเลขบนไอคอนตะกร้า
+    if (index == tabMarket) CartService.refreshCount();
 
     if (index != tabActivity) {
       loadFamily(showLoading: false);

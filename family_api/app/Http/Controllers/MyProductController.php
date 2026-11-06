@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Product;
 use App\Models\ProductImage;
+use App\Models\ProductVariant;
 use App\Models\Shop;
 use App\Support\MarketVideo;
 use App\Support\MediaStorage;
@@ -95,6 +96,10 @@ class MyProductController extends Controller
                     ]);
                 }
 
+                if (!empty($data['variants_present'])) {
+                    $this->syncVariants($product, $data['variants'] ?? []);
+                }
+
                 return $product;
             });
         } catch (Throwable $e) {
@@ -166,6 +171,10 @@ class MyProductController extends Controller
         try {
             DB::transaction(function () use ($product, $data, $removed, $kept, $newPaths) {
                 $product->fill($this->productFields($data))->save();
+
+                if (!empty($data['variants_present'])) {
+                    $this->syncVariants($product, $data['variants'] ?? []);
+                }
 
                 ProductImage::whereIn('id', $removed->pluck('id'))->delete();
 
@@ -328,8 +337,13 @@ class MyProductController extends Controller
     // ข้อมูลสินค้าฝั่งผู้ขาย + วิดีโอ + สถานะช่องแนะนำ
     private function sellerPayload(Product $product): array
     {
+        $product->loadMissing('variants');
+
         return [
             ...$product->toArray(),
+            'variants' => $product->variants
+                ->map(fn (ProductVariant $variant) => $variant->only(['id', 'name', 'price', 'stock']))
+                ->values(),
             'video_url' => $product->video_url,
             'video_thumbnail_url' => $product->video_thumbnail_url,
             'featured_until' => $product->featured_until,
@@ -353,6 +367,14 @@ class MyProductController extends Controller
             'stock' => 'sometimes|required|integer|min:0|max:' . config('market.max_stock'),
             'shipping_fee' => 'nullable|numeric|min:0|max:99999',
             'card_media' => ['sometimes', Rule::in(['image', 'video'])],
+            // variants_present = 1 → บันทึกตัวเลือกสินค้าด้วย (ไม่ส่ง = ไม่เปลี่ยน)
+            'variants_present' => 'nullable|boolean',
+            'option_name' => 'nullable|string|max:40',
+            'variants' => 'nullable|array|max:20',
+            'variants.*.id' => 'nullable|integer',
+            'variants.*.name' => 'required|string|max:60|distinct',
+            'variants.*.price' => 'nullable|numeric|min:0|max:9999999',
+            'variants.*.stock' => 'required|integer|min:0|max:' . config('market.max_stock'),
         ];
     }
 
@@ -369,6 +391,13 @@ class MyProductController extends Controller
             'stock.*' => 'จำนวนในสต็อกต้องเป็นตัวเลข 0 – ' . number_format(config('market.max_stock')),
             'shipping_fee.*' => 'ค่าส่งต้องเป็นตัวเลข 0 – 99,999 บาท',
             'card_media.*' => 'เลือกหน้าปกการ์ดเป็นรูปหรือวิดีโอ',
+            'option_name.*' => 'ชื่อหัวข้อตัวเลือกยาวได้ไม่เกิน 40 ตัวอักษร',
+            'variants.max' => 'ตัวเลือกสินค้าได้ไม่เกิน 20 แบบ',
+            'variants.*.name.required' => 'กรุณาใส่ชื่อตัวเลือกให้ครบ',
+            'variants.*.name.max' => 'ชื่อตัวเลือกยาวได้ไม่เกิน 60 ตัวอักษร',
+            'variants.*.name.distinct' => 'ชื่อตัวเลือกซ้ำกัน',
+            'variants.*.price.*' => 'ราคาตัวเลือกต้องเป็นตัวเลข',
+            'variants.*.stock.*' => 'สต็อกของตัวเลือกต้องเป็นตัวเลข 0 ขึ้นไป',
             'images.required' => 'กรุณาเพิ่มรูปสินค้าอย่างน้อย 1 รูป',
             'images.min' => 'กรุณาเพิ่มรูปสินค้าอย่างน้อย 1 รูป',
             'images.max' => "สินค้าแต่ละชิ้นมีรูปได้สูงสุด {$maxImages} รูป",
@@ -387,7 +416,51 @@ class MyProductController extends Controller
             'price' => $data['price'] ?? null,
             'category' => $data['category'],
             ...array_intersect_key($data, array_flip(['stock', 'shipping_fee', 'card_media'])),
+            ...(!empty($data['variants_present']) ? ['option_name' => filled($data['option_name'] ?? null) ? trim($data['option_name']) : null] : []),
         ];
+    }
+
+    // ตัวเลือกสินค้า: แก้ตัวเดิม (มี id) / เพิ่มใหม่ / ลบตัวที่ไม่ได้ส่งมา
+    // มีตัวเลือก → สต็อกรวมของสินค้า = ผลรวมสต็อกของตัวเลือก
+    private function syncVariants(Product $product, array $rows): void
+    {
+        $keep = [];
+
+        foreach (array_values($rows) as $index => $row) {
+            $variant = isset($row['id'])
+                ? $product->variants()->whereKey((int) $row['id'])->first()
+                : null;
+
+            $variant ??= new ProductVariant(['product_id' => $product->id]);
+
+            $variant->fill([
+                'name' => trim($row['name']),
+                'price' => $row['price'] ?? null,
+                'stock' => (int) $row['stock'],
+                'sort' => $index,
+            ])->save();
+
+            $keep[] = $variant->id;
+        }
+
+        $product->variants()->whereNotIn('id', $keep)->delete();
+
+        $product->unsetRelation('variants');
+
+        if ($keep === []) {
+            return;
+        }
+
+        $product->syncStockFromVariants();
+
+        // ไม่ได้ตั้งราคาหลัก → ใช้ราคาต่ำสุดของตัวเลือก (การ์ดสินค้าแสดงราคานี้)
+        if ($product->price === null) {
+            $min = $product->load('variants')->priceRange()['min'] ?? null;
+
+            if ($min !== null) {
+                $product->forceFill(['price' => $min])->saveQuietly();
+            }
+        }
     }
 
     // คืน path ที่เก็บแล้ว / null ถ้าเก็บไฟล์ไม่สำเร็จ

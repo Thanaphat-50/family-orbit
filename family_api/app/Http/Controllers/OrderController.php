@@ -2,13 +2,18 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Address;
+use App\Models\CartItem;
 use App\Models\Order;
 use App\Models\OutOfStock;
 use App\Models\Product;
 use App\Models\Shop;
 use App\Models\User;
+use App\Services\OrderLines;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Throwable;
@@ -82,10 +87,170 @@ class OrderController extends Controller
     }
 
     // =====================================================
+    // POST /api/orders/preview {items: [{product_id, variant_id, quantity}]}
+    // หน้าสรุปคำสั่งซื้อ: แยกตามร้าน ราคาปัจจุบัน วิธีรับสินค้า/วิธีจ่าย ค่าส่ง ที่อยู่ที่บันทึกไว้
+    // =====================================================
+
+    public function preview(Request $request)
+    {
+        $data = $request->validate($this->itemRules(), $this->itemMessages());
+
+        $user = $request->user();
+
+        return response()->json([
+            'status' => true,
+            ...$this->previewPayload($user, $data['items']),
+        ]);
+    }
+
+    // =====================================================
     // POST /api/orders
+    // แอปใหม่: {checkout_id, items[], groups[{shop_id, delivery_method, payment_method, note}],
+    //          address_id | recipient_name + recipient_phone, expected_total}
+    //          → 1 คำสั่งซื้อต่อ 1 ร้าน, checkout_id เดิม = ได้คำสั่งซื้อเดิม (กันกดซ้ำ)
+    // แอปเวอร์ชันเก่า: สินค้าเดียว {product_id, quantity, delivery_method, ...}
     // =====================================================
 
     public function store(Request $request)
+    {
+        return $request->has('items')
+            ? $this->storeCheckout($request)
+            : $this->storeSingle($request);
+    }
+
+    private function storeCheckout(Request $request)
+    {
+        $data = $request->validate([
+            ...$this->itemRules(),
+            'checkout_id' => 'required|string|max:40',
+            'groups' => 'required|array|min:1',
+            'groups.*.shop_id' => 'required|integer',
+            'groups.*.delivery_method' => ['required', Rule::in(array_keys(config('market.delivery_methods')))],
+            'groups.*.payment_method' => ['required', Rule::in(array_keys(config('market.payment_methods')))],
+            'groups.*.note' => 'nullable|string|max:500',
+            'address_id' => 'nullable|integer',
+            'recipient_name' => 'required_without:address_id|nullable|string|max:100',
+            'recipient_phone' => ['required_without:address_id', 'nullable', 'string', 'regex:/^\+?[0-9][0-9\s\-]{7,18}$/'],
+            'expected_total' => 'nullable|numeric',
+        ], [
+            ...$this->itemMessages(),
+            'groups.*.delivery_method.*' => 'กรุณาเลือกวิธีรับสินค้าของทุกร้าน',
+            'groups.*.payment_method.*' => 'กรุณาเลือกวิธีชำระเงินของทุกร้าน',
+            'groups.*.note.max' => 'ฝากถึงร้านยาวได้ไม่เกิน 500 ตัวอักษร',
+            'recipient_name.*' => 'กรุณาใส่ชื่อผู้รับ',
+            'recipient_phone.required_without' => 'กรุณาใส่เบอร์โทรผู้รับ',
+            'recipient_phone.regex' => 'เบอร์โทรไม่ถูกต้อง',
+        ]);
+
+        $user = $request->user();
+
+        // กดสั่งซ้ำ (เน็ตช้า / กดสองครั้ง) → คืนคำสั่งซื้อเดิม ไม่สร้างใหม่
+        $existing = Order::where('buyer_id', $user->id)->where('checkout_id', $data['checkout_id'])->get();
+
+        if ($existing->isNotEmpty()) {
+            return $this->ordersResponse($user, $existing, 200);
+        }
+
+        $lines = app(OrderLines::class)->resolve($user, $data['items']);
+
+        if ($lines->contains(fn (array $line) => $line['problem'] !== null)) {
+            return $this->changed($user, $data['items'], 'บางรายการสั่งซื้อไม่ได้แล้ว กรุณาตรวจสอบอีกครั้ง');
+        }
+
+        $groups = collect($data['groups'])->keyBy(fn (array $group) => (int) $group['shop_id']);
+
+        $byShop = $lines->groupBy(fn (array $line) => (int) $line['product']->shop_id);
+
+        $address = isset($data['address_id'])
+            ? Address::where('user_id', $user->id)->find($data['address_id'])
+            : null;
+
+        if (isset($data['address_id']) && !$address) {
+            return $this->fail('ไม่พบที่อยู่นี้ กรุณาเลือกใหม่');
+        }
+
+        $grandTotal = 0.0;
+
+        foreach ($byShop as $shopId => $shopLines) {
+            $group = $groups->get($shopId);
+
+            /** @var Shop $shop */
+            $shop = $shopLines->first()['product']->shop;
+
+            if (!$group) {
+                return $this->fail('กรุณาเลือกวิธีรับสินค้าและวิธีชำระเงินของร้าน ' . $shop->name);
+            }
+
+            if (!in_array($group['delivery_method'], $shop->orderDeliveryMethods(), true)) {
+                return $this->fail("ร้าน {$shop->name} ไม่ได้เปิดวิธีรับสินค้านี้ กรุณาเลือกใหม่");
+            }
+
+            if (!in_array($group['payment_method'], $shop->paymentMethodsFor($group['delivery_method']), true)) {
+                return $this->fail("วิธีชำระเงินที่เลือกใช้กับวิธีรับสินค้าของร้าน {$shop->name} ไม่ได้");
+            }
+
+            if (in_array($group['delivery_method'], config('market.address_methods'), true) && !$address) {
+                return $this->fail('กรุณาเลือกที่อยู่จัดส่ง');
+            }
+
+            [$itemsTotal, $shippingFee] = Order::totalsFor($shopLines->all(), $group['delivery_method']);
+
+            $grandTotal += $itemsTotal + $shippingFee;
+        }
+
+        // ราคา/ค่าส่งเปลี่ยนระหว่างลูกค้าดูหน้าสรุป → ให้ตรวจยอดใหม่ก่อนสั่ง
+        if (isset($data['expected_total']) && abs(round($grandTotal, 2) - (float) $data['expected_total']) > 0.009) {
+            return $this->changed($user, $data['items'], 'ราคาหรือค่าส่งเปลี่ยนแล้ว กรุณาตรวจสอบยอดใหม่');
+        }
+
+        $unpaid = Order::where('buyer_id', $user->id)->unpaidReservation();
+
+        if ((clone $unpaid)->count() + $byShop->count() > self::MAX_UNPAID_PER_BUYER
+            || $byShop->keys()->contains(fn ($shopId) => (clone $unpaid)->where('shop_id', $shopId)->count() >= self::MAX_UNPAID_PER_SHOP)) {
+            return $this->fail('คุณมีคำสั่งซื้อที่ยังไม่ได้ชำระหลายรายการแล้ว ชำระหรือยกเลิกก่อนสั่งเพิ่ม', 429);
+        }
+
+        $recipient = [
+            'recipient_name' => $address?->recipient_name ?? $data['recipient_name'],
+            'recipient_phone' => $address?->phone ?? $data['recipient_phone'],
+        ];
+
+        try {
+            $orders = DB::transaction(fn () => $byShop->map(function (Collection $shopLines, int $shopId) use ($user, $groups, $address, $recipient, $data) {
+                $group = $groups->get($shopId);
+
+                $needsAddress = in_array($group['delivery_method'], config('market.address_methods'), true);
+
+                return Order::placeGroup($user, $shopLines->first()['product']->shop, $shopLines->all(), [
+                    ...$recipient,
+                    'delivery_method' => $group['delivery_method'],
+                    'payment_method' => $group['payment_method'],
+                    'address' => $needsAddress ? $address?->fullAddress() : null,
+                    'note' => $group['note'] ?? null,
+                ], $data['checkout_id']);
+            })->values());
+        } catch (OutOfStock $e) {
+            return $this->changed(
+                $user,
+                $data['items'],
+                $e->remaining > 0 ? "{$e->title} เหลือ {$e->remaining} ชิ้น กรุณาลดจำนวน" : "{$e->title} หมดแล้ว"
+            );
+        }
+
+        $orders->each(fn (Order $order) => $order->announceToSeller());
+
+        // สั่งแล้วเอาออกจากตะกร้า
+        foreach ($lines as $line) {
+            CartItem::where('user_id', $user->id)
+                ->where('product_id', $line['product']->id)
+                ->where('variant_id', $line['variant']?->id)
+                ->delete();
+        }
+
+        return $this->ordersResponse($user, $orders, 201);
+    }
+
+    private function storeSingle(Request $request)
     {
         $needsAddress = in_array($request->input('delivery_method'), config('market.address_methods'), true);
 
@@ -136,14 +301,25 @@ class OrderController extends Controller
             return $this->fail('คุณมีคำสั่งซื้อที่ยังไม่ได้ชำระหลายรายการแล้ว ชำระหรือยกเลิกก่อนสั่งเพิ่ม', 429);
         }
 
+        if ($product->hasVariants()) {
+            return $this->fail('สินค้านี้มีตัวเลือก กรุณาอัปเดตแอปเป็นเวอร์ชันล่าสุดเพื่อสั่งซื้อ');
+        }
+
         try {
-            $order = Order::place($user, $product, $data);
+            $order = DB::transaction(fn () => Order::placeGroup($user, $shop, [[
+                'product' => $product,
+                'variant' => null,
+                'quantity' => (int) $data['quantity'],
+                'unit_price' => (float) $product->price,
+            ]], $data));
         } catch (OutOfStock $e) {
             return $this->fail(
                 $e->remaining > 0 ? "สินค้าเหลือ {$e->remaining} ชิ้น กรุณาลดจำนวน" : 'สินค้าหมดแล้ว',
                 409
             );
         }
+
+        $order->announceToSeller();
 
         return response()->json([
             'status' => true,
@@ -308,6 +484,116 @@ class OrderController extends Controller
     // =====================================================
     // HELPERS
     // =====================================================
+
+    private function itemRules(): array
+    {
+        $max = (int) config('market.max_order_quantity');
+
+        return [
+            'items' => 'required|array|min:1|max:50',
+            'items.*.product_id' => 'required|integer',
+            'items.*.variant_id' => 'nullable|integer',
+            'items.*.quantity' => "required|integer|min:1|max:{$max}",
+        ];
+    }
+
+    private function itemMessages(): array
+    {
+        $max = (int) config('market.max_order_quantity');
+
+        return [
+            'items.required' => 'ยังไม่ได้เลือกสินค้า',
+            'items.max' => 'สั่งได้ครั้งละไม่เกิน 50 รายการ',
+            'items.*.quantity.*' => "จำนวนต้องเป็น 1 – {$max} ชิ้น",
+        ];
+    }
+
+    // ข้อมูลหน้าสรุปคำสั่งซื้อ (แยกตามร้าน)
+    private function previewPayload(User $user, array $items): array
+    {
+        $lines = app(OrderLines::class)->resolve($user, $items);
+
+        $groups = $lines
+            ->filter(fn (array $line) => $line['product'] !== null)
+            ->groupBy(fn (array $line) => (int) $line['product']->shop_id)
+            ->map(function (Collection $shopLines) {
+                /** @var Shop $shop */
+                $shop = $shopLines->first()['product']->shop;
+
+                $orderable = $shopLines->filter(fn (array $line) => $line['problem'] === null)->all();
+
+                return [
+                    'shop' => [
+                        ...$shop->only(['id', 'name']),
+                        'logo_url' => $shop->logo_url,
+                    ],
+                    'items' => $shopLines->map(fn (array $line) => OrderLines::payload($line))->values(),
+                    'delivery_methods' => collect($shop->orderDeliveryMethods())->map(function (string $key) use ($shop, $orderable) {
+                        [$itemsTotal, $shippingFee] = Order::totalsFor($orderable, $key);
+
+                        return [
+                            'key' => $key,
+                            'label' => config("market.delivery_methods.{$key}"),
+                            'shipping_fee' => $shippingFee,
+                            'items_total' => $itemsTotal,
+                            'needs_address' => in_array($key, config('market.address_methods'), true),
+                            'payment_methods' => collect($shop->paymentMethodsFor($key))->map(fn (string $method) => [
+                                'key' => $method,
+                                'label' => config("market.payment_methods.{$method}.label"),
+                                'transfer' => (bool) config("market.payment_methods.{$method}.transfer"),
+                            ])->values(),
+                        ];
+                    })->values(),
+                ];
+            })
+            ->values();
+
+        $addresses = Address::where('user_id', $user->id)
+            ->orderByDesc('is_default')
+            ->latest('id')
+            ->get();
+
+        $last = Order::where('buyer_id', $user->id)->latest('id')->first();
+
+        return [
+            'groups' => $groups,
+            // สินค้าที่ไม่มีขายแล้ว (ไม่รู้ว่าร้านไหน)
+            'unavailable' => $lines
+                ->filter(fn (array $line) => $line['product'] === null)
+                ->map(fn (array $line) => OrderLines::payload($line))
+                ->values(),
+            'addresses' => $addresses->map(fn (Address $address) => $address->toPayload())->values(),
+            // รับเองที่ร้าน/นัดรับ: ชื่อและเบอร์ผู้รับ (ใช้จากที่อยู่หลัก หรือคำสั่งซื้อล่าสุด)
+            'recipient' => [
+                'name' => $addresses->first()?->recipient_name ?? $last?->recipient_name ?? $user->name,
+                'phone' => $addresses->first()?->phone ?? $last?->recipient_phone ?? '',
+            ],
+        ];
+    }
+
+    // ราคา/สต็อกเปลี่ยน → ส่งหน้าสรุปใหม่ให้แอปแสดง
+    private function changed(User $user, array $items, string $message)
+    {
+        return response()->json([
+            'status' => false,
+            'code' => 'checkout_changed',
+            'message' => $message,
+            ...$this->previewPayload($user, $items),
+        ], 409);
+    }
+
+    private function ordersResponse(User $user, $orders, int $status)
+    {
+        $transfer = $orders->contains(fn (Order $order) => $order->isTransfer());
+
+        return response()->json([
+            'status' => true,
+            'message' => $transfer
+                ? 'สั่งซื้อแล้ว โอนเงินแล้วแนบสลิปในคำสั่งซื้อได้เลย'
+                : 'สั่งซื้อแล้ว รอร้านจัดส่ง',
+            'orders' => $orders->map(fn (Order $order) => $order->toPayload($user))->values(),
+        ], $status);
+    }
 
     // ตรวจว่าทำรายการนี้ได้ แล้วทำ → ส่งคำสั่งซื้อล่าสุดกลับ
     // work คืน JsonResponse เมื่อไม่สำเร็จ

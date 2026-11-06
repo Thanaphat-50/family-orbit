@@ -3,12 +3,15 @@ import 'package:share_plus/share_plus.dart';
 
 import '../config/app_info.dart';
 import '../data/market_data.dart';
+import '../services/cart_service.dart';
 import '../services/chat_service.dart';
 import '../services/market_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/market_sheets.dart';
 import '../widgets/market_widgets.dart';
 import '../widgets/photo_viewer.dart';
+import '../widgets/product_option_sheet.dart';
+import 'cart_page.dart';
 import 'chat_room_page.dart';
 import 'checkout_page.dart';
 import 'market_shop_page.dart';
@@ -44,6 +47,7 @@ class _MarketProductPageState extends State<MarketProductPage> {
 
   bool isSaved = false;
   bool isOpeningChat = false;
+  bool isAddingToCart = false;
 
   @override
   void initState() {
@@ -76,6 +80,9 @@ class _MarketProductPageState extends State<MarketProductPage> {
               : [];
           isSaved = product?['is_saved'] == true;
         });
+
+        // ตัวเลขบนไอคอนตะกร้า
+        CartService.refreshCount();
       } else {
         setState(() {
           loadError = result['message']?.toString() ?? 'ไม่พบสินค้านี้';
@@ -227,12 +234,98 @@ class _MarketProductPageState extends State<MarketProductPage> {
   }
 
   // ซื้อแล้วกลับมา → โหลดใหม่ (สต็อกเปลี่ยน)
-  Future<void> openCheckout() async {
+  List get variants => (product?['variants'] as List?) ?? const [];
+
+  // ซื้อเลย: มีตัวเลือก → เลือกก่อน / ไม่มี → ไปหน้าสั่งซื้อทันที (แก้จำนวนในหน้าสั่งซื้อได้)
+  Future<void> buyNow() async {
+    final Map<String, dynamic>? data = product;
+
+    if (data == null) return;
+
+    ProductChoice choice = (variantId: null, quantity: 1);
+
+    if (variants.isNotEmpty) {
+      final ProductChoice? picked = await showProductOptionSheet(
+        context,
+        product: data,
+        confirmLabel: 'ซื้อเลย',
+      );
+
+      if (picked == null || !mounted) return;
+
+      choice = picked;
+    }
+
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => CheckoutPage(productId: widget.productId),
+        builder: (context) => CheckoutPage(
+          items: [
+            {
+              'product_id': widget.productId,
+              'variant_id': choice.variantId,
+              'quantity': choice.quantity,
+            },
+          ],
+        ),
       ),
     );
+
+    // สั่งแล้วกลับมา → โหลดใหม่ (สต็อกเปลี่ยน)
+    if (mounted) await loadProduct();
+  }
+
+  Future<void> addToCart() async {
+    final Map<String, dynamic>? data = product;
+
+    if (data == null || isAddingToCart) return;
+
+    ProductChoice choice = (variantId: null, quantity: 1);
+
+    if (variants.isNotEmpty) {
+      final ProductChoice? picked = await showProductOptionSheet(
+        context,
+        product: data,
+        confirmLabel: 'เพิ่มลงตะกร้า',
+      );
+
+      if (picked == null || !mounted) return;
+
+      choice = picked;
+    }
+
+    setState(() => isAddingToCart = true);
+
+    try {
+      final result = await CartService.addToCart(
+        productId: widget.productId,
+        variantId: choice.variantId,
+        quantity: choice.quantity,
+      );
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(result['message']?.toString() ?? ''),
+            // มีปุ่ม "ดูตะกร้า" แต่ให้หายเองเหมือนข้อความทั่วไป
+            persist: false,
+            action: result['status'] == true
+                ? SnackBarAction(label: 'ดูตะกร้า', onPressed: openCart)
+                : null,
+          ),
+        );
+    } catch (e) {
+      if (mounted) showMessage(e.toString());
+    } finally {
+      if (mounted) setState(() => isAddingToCart = false);
+    }
+  }
+
+  Future<void> openCart() async {
+    await Navigator.of(context)
+        .push(MaterialPageRoute(builder: (context) => const CartPage()));
 
     if (mounted) await loadProduct();
   }
@@ -289,7 +382,40 @@ class _MarketProductPageState extends State<MarketProductPage> {
               ),
             ),
             const SizedBox(width: 8),
+            if (available) ...[
+              Expanded(
+                child: OutlinedButton(
+                  // ธีมของแอปให้ปุ่มกว้างเต็มจอ → ในแถวต้องกำหนดขนาดเอง
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: marketColor,
+                    side: const BorderSide(color: marketColor, width: 1.4),
+                    minimumSize: const Size(0, 52),
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  onPressed: isAddingToCart ? null : addToCart,
+                  child: isAddingToCart
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text(
+                          'เพิ่มลงตะกร้า',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                ),
+              ),
+              const SizedBox(width: 8),
+            ],
             Expanded(
+              flex: available ? 1 : 2,
               child: available
                   ? FilledButton(
                       style: FilledButton.styleFrom(
@@ -299,7 +425,7 @@ class _MarketProductPageState extends State<MarketProductPage> {
                           borderRadius: BorderRadius.circular(16),
                         ),
                       ),
-                      onPressed: openCheckout,
+                      onPressed: buyNow,
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -498,7 +624,7 @@ class _MarketProductPageState extends State<MarketProductPage> {
             children: [
               Expanded(
                 child: Text(
-                  formatPrice(data['price']),
+                  priceText(data),
                   style: const TextStyle(
                     color: marketColor,
                     fontSize: 28,
@@ -553,6 +679,75 @@ class _MarketProductPageState extends State<MarketProductPage> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  // ราคาเดียว "฿200" / ตัวเลือกราคาต่างกัน "฿200 – ฿250"
+  String priceText(Map<String, dynamic> data) {
+    final Map? range = data['price_range'] as Map?;
+
+    final num? min = range?['min'] as num?;
+    final num? max = range?['max'] as num?;
+
+    if (min != null && max != null && min != max) {
+      return '${formatPrice(min)} – ${formatPrice(max)}';
+    }
+
+    return formatPrice(min ?? data['price']);
+  }
+
+  // ตัวเลือกสินค้า (แตะเพื่อเลือกแล้วซื้อ)
+  Widget buildVariants(Map<String, dynamic> data) {
+    final String optionName =
+        data['option_name']?.toString().trim().isNotEmpty == true
+        ? data['option_name'].toString()
+        : 'ตัวเลือก';
+
+    final bool canOrder = (data['order'] as Map?)?['available'] == true;
+
+    return section(
+      title: '$optionName (${variants.length} แบบ)',
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: canOrder && data['is_mine'] != true ? buyNow : null,
+        child: Row(
+          children: [
+            Expanded(
+              child: Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final variant in variants)
+                    if (variant is Map)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.fill,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          variant['sold_out'] == true
+                              ? '${variant['name']} (หมด)'
+                              : '${variant['name']}',
+                          style: TextStyle(
+                            color: variant['sold_out'] == true
+                                ? AppColors.muted
+                                : AppColors.navy,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                ],
+              ),
+            ),
+            if (canOrder && data['is_mine'] != true)
+              const Icon(Icons.chevron_right_rounded, color: marketColor),
+          ],
+        ),
       ),
     );
   }
@@ -947,6 +1142,7 @@ class _MarketProductPageState extends State<MarketProductPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               buildHeadline(data),
+              if (variants.isNotEmpty) buildVariants(data),
               if (mine)
                 Container(
                   width: double.infinity,
@@ -992,6 +1188,20 @@ class _MarketProductPageState extends State<MarketProductPage> {
         title: const Text('รายละเอียดสินค้า'),
         actions: [
           if (data != null) ...[
+            // ตะกร้า + จำนวนสินค้าในตะกร้า
+            ValueListenableBuilder<int>(
+              valueListenable: CartService.cartCount,
+              builder: (context, count, child) => IconButton(
+                tooltip: 'ตะกร้าสินค้า',
+                onPressed: openCart,
+                icon: Badge(
+                  isLabelVisible: count > 0,
+                  label: Text(count > 99 ? '99+' : '$count'),
+                  backgroundColor: marketColor,
+                  child: const Icon(Icons.shopping_cart_outlined),
+                ),
+              ),
+            ),
             IconButton(
               tooltip: 'แชร์สินค้า',
               onPressed: shareProduct,

@@ -81,7 +81,7 @@ class MarketController extends Controller
     {
         $user = $request->user();
 
-        $product->load(['images', 'shop']);
+        $product->load(['images', 'shop', 'variants']);
 
         $isMine = (int) $product->shop->user_id === (int) $user->id;
 
@@ -106,6 +106,10 @@ class MarketController extends Controller
                     'category', 'status', 'created_at',
                 ]),
                 'sold_count' => $product->soldCount(),
+                // ตัวเลือกสินค้า (สี ขนาด รุ่น) แต่ละตัวมีราคา/สต็อกของตัวเอง
+                'option_name' => $product->option_name,
+                'variants' => $product->variants->map(fn ($variant) => $variant->toPayload())->values(),
+                'price_range' => $product->priceRange(),
                 'is_saved' => SavedProduct::where('user_id', $user->id)->where('product_id', $product->id)->exists(),
                 // วิธีรับสินค้าของร้าน + ค่าส่งของสินค้านี้
                 'delivery_options' => collect($shop->delivery_methods ?? [])
