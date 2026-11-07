@@ -624,6 +624,12 @@ class Order extends Model
             // ประวัติการชำระเงิน (ทุกครั้งที่แนบสลิป) ใหม่สุดอยู่บน
             'payments' => $this->payments->reverse()->map(fn (PaymentTransaction $payment) => $payment->toPayload())->values(),
             'slip_check' => app(SlipVerifier::class)->enabled(),
+            // ผู้ซื้อ: รีวิวสินค้าได้เมื่อสำเร็จ + คะแนนที่ให้ไว้แล้ว (product_id → รีวิว)
+            'can_review' => $isBuyer && $this->status === self::STATUS_COMPLETED,
+            'my_reviews' => $isBuyer && $this->status === self::STATUS_COMPLETED
+                ? ProductReview::where('order_id', $this->id)->get(['product_id', 'rating', 'comment'])
+                    ->mapWithKeys(fn (ProductReview $review) => [(string) $review->product_id => $review->only(['rating', 'comment'])])
+                : (object) [],
             // ประวัติสถานะ ใหม่สุดอยู่บน
             'history' => $this->histories->reverse()->map(fn (OrderStatusHistory $history) => [
                 'status' => $history->status,
@@ -684,6 +690,24 @@ class Order extends Model
 
         if ($sellerId) {
             $this->notify((int) $sellerId, self::BY_SELLER, $title, $message);
+        }
+    }
+
+    // แจ้งร้านด้วยประเภทอื่น (เช่น shop_review → เปิดหน้าร้าน)
+    public function notifySellerAbout(string $type, string $title, string $message): void
+    {
+        $sellerId = $this->shop?->user_id ?? Shop::whereKey($this->shop_id)->value('user_id');
+
+        if ($sellerId) {
+            AppNotification::create([
+                'user_id' => (int) $sellerId,
+                'family_id' => null,
+                'type' => $type,
+                'title' => $title,
+                'message' => $message,
+                'data' => ['shop_id' => $this->shop_id, 'order_id' => $this->id],
+                'is_read' => false,
+            ]);
         }
     }
 

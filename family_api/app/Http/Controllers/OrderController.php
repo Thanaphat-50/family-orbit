@@ -8,6 +8,7 @@ use App\Models\Order;
 use App\Models\OutOfStock;
 use App\Models\PaymentTransaction;
 use App\Models\Product;
+use App\Models\ProductReview;
 use App\Models\Shop;
 use App\Models\User;
 use App\Services\OrderLines;
@@ -16,6 +17,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Throwable;
 
@@ -28,6 +30,17 @@ use Throwable;
 class OrderController extends Controller
 {
     private const PAGE_SIZE = 20;
+
+    // แท็บในหน้ารายการคำสั่งซื้อ → สถานะ
+    private const FILTERS = [
+        'todo' => Order::SELLER_TODO_STATUSES,
+        'open' => Order::OPEN_STATUSES,
+        'to_pay' => [Order::STATUS_AWAITING_PAYMENT, Order::STATUS_PAYMENT_REVIEW],
+        'to_ship' => [Order::STATUS_PREPARING],
+        'shipping' => [Order::STATUS_SHIPPED],
+        'completed' => [Order::STATUS_COMPLETED],
+        'cancelled' => [Order::STATUS_CANCELLED],
+    ];
 
     // คำสั่งซื้อที่ยังไม่จ่ายค้างพร้อมกันได้ (กันจองสต็อกทิ้งไว้)
     private const MAX_UNPAID_PER_BUYER = 10;
@@ -340,7 +353,15 @@ class OrderController extends Controller
     {
         $user = $request->user();
 
-        return $this->list($request, Order::where('buyer_id', $user->id), $user);
+        $mine = fn () => Order::where('buyer_id', $user->id);
+
+        return $this->list($request, $mine(), $user, [
+            'counts' => [
+                'to_pay' => $mine()->whereIn('status', self::FILTERS['to_pay'])->count(),
+                'to_ship' => $mine()->whereIn('status', self::FILTERS['to_ship'])->count(),
+                'shipping' => $mine()->whereIn('status', self::FILTERS['shipping'])->count(),
+            ],
+        ]);
     }
 
     public function shopIndex(Request $request)
@@ -479,6 +500,65 @@ class OrderController extends Controller
     public function received(Request $request, Order $order)
     {
         return $this->act($request, $order, 'received', 'ขอบคุณที่ยืนยัน คำสั่งซื้อสำเร็จแล้ว', fn () => $order->complete());
+    }
+
+    // =====================================================
+    // POST /api/orders/{order}/reviews {product_id, rating, comment}
+    // รีวิวสินค้าได้เมื่อคำสั่งซื้อสำเร็จ (แก้รีวิวเดิมได้)
+    // =====================================================
+
+    public function review(Request $request, Order $order)
+    {
+        $user = $request->user();
+
+        if (!$order->isBuyer($user)) {
+            return $this->notFound();
+        }
+
+        $data = $request->validate([
+            'product_id' => 'required|integer',
+            'rating' => 'required|integer|min:1|max:5',
+            'comment' => 'nullable|string|max:500',
+        ], [
+            'rating.*' => 'กรุณาให้คะแนน 1 – 5 ดาว',
+            'comment.max' => 'รีวิวยาวได้ไม่เกิน 500 ตัวอักษร',
+        ]);
+
+        if ($order->status !== Order::STATUS_COMPLETED) {
+            return $this->fail('รีวิวได้เมื่อได้รับสินค้าแล้ว');
+        }
+
+        $item = $order->items()->where('product_id', $data['product_id'])->first();
+
+        if (!$item || !Product::whereKey($data['product_id'])->exists()) {
+            return $this->fail('ไม่พบสินค้านี้ในคำสั่งซื้อ', 404);
+        }
+
+        $review = ProductReview::updateOrCreate(
+            ['order_id' => $order->id, 'product_id' => $item->product_id],
+            [
+                'user_id' => $user->id,
+                'shop_id' => $order->shop_id,
+                'rating' => $data['rating'],
+                'comment' => filled($data['comment'] ?? null) ? trim($data['comment']) : null,
+                'variant_name' => $item->variant_name,
+            ]
+        );
+
+        if ($review->wasRecentlyCreated) {
+            $order->notifySellerAbout(
+                'shop_review',
+                'มีรีวิวสินค้าใหม่',
+                str_repeat('★', $review->rating) . ' "' . $item->title . '"'
+                    . ($review->comment ? ' · ' . Str::limit($review->comment, 80) : '')
+            );
+        }
+
+        return response()->json([
+            'status' => true,
+            'message' => 'ขอบคุณสำหรับรีวิว',
+            'order' => $order->refresh()->toPayload($user),
+        ]);
     }
 
     // =====================================================
@@ -665,17 +745,13 @@ class OrderController extends Controller
     private function list(Request $request, $query, User $user, array $extra = [])
     {
         $data = $request->validate([
-            'filter' => ['nullable', Rule::in(['todo', 'open', 'completed', 'cancelled'])],
+            'filter' => ['nullable', Rule::in(array_keys(self::FILTERS))],
         ]);
 
         Order::expireStale();
 
         $paginator = $query
-            ->when($data['filter'] ?? null, fn ($orders, string $filter) => match ($filter) {
-                'todo' => $orders->whereIn('status', Order::SELLER_TODO_STATUSES),
-                'open' => $orders->whereIn('status', Order::OPEN_STATUSES),
-                default => $orders->where('status', $filter),
-            })
+            ->when($data['filter'] ?? null, fn ($orders, string $filter) => $orders->whereIn('status', self::FILTERS[$filter]))
             ->with(['shop', 'buyer', 'product.images'])
             ->latest('id')
             ->simplePaginate(self::PAGE_SIZE);

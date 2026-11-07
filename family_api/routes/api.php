@@ -351,6 +351,11 @@ Route::middleware('auth:sanctum')->group(function () {
     ])->middleware('throttle:ugc');
 
     // ร้านแนะนำ (ร้านที่เช่าพื้นที่) บนสุดของตลาด
+    Route::get('/market/products/{product}/reviews', [
+        MarketController::class,
+        'productReviews'
+    ]);
+
     Route::post('/market/products/{product}/save', [
         MarketController::class,
         'save'
@@ -606,6 +611,11 @@ Route::middleware('auth:sanctum')->group(function () {
         OrderController::class,
         'ship'
     ]);
+
+    Route::post('/orders/{order}/reviews', [
+        OrderController::class,
+        'review'
+    ])->middleware('throttle:ugc');
 
     Route::post('/orders/{order}/received', [
         OrderController::class,

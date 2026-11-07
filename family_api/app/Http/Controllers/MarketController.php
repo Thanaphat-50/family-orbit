@@ -6,6 +6,7 @@ use App\Models\AppNotification;
 use App\Models\Product;
 use App\Models\ProductPromotion;
 use App\Models\ProductReport;
+use App\Models\ProductReview;
 use App\Models\SavedProduct;
 use App\Models\Shop;
 use App\Models\ShopReview;
@@ -139,6 +140,17 @@ class MarketController extends Controller
                 'products_count' => $this->onlyShown($shop->products())->count(),
                 'member_since' => $shop->approved_at ?? $shop->created_at,
             ],
+            // รีวิวจากผู้ซื้อจริง (ล่าสุด 3 รายการ)
+            'reviews' => ProductReview::where('product_id', $product->id)
+                ->visible()
+                ->whereNotIn('user_id', $user->blockedUsers()->pluck('users.id'))
+                ->with('user')
+                ->latest()
+                ->limit(3)
+                ->get()
+                ->map(fn (ProductReview $review) => $review->toPayload($user->id))
+                ->values(),
+            'review_summary' => ProductReview::summaryFor($product->id),
             // สินค้าอื่นของร้านเดียวกัน
             'other_products' => $this->visibleProductsFor($user)
                 ->where('shop_id', $shop->id)
@@ -149,6 +161,33 @@ class MarketController extends Controller
                 ->get()
                 ->map(fn (Product $other) => $this->productCard($other, false))
                 ->values(),
+        ]);
+    }
+
+    // =====================================================
+    // GET /api/market/products/{product}/reviews?page=  รีวิวสินค้าทั้งหมด
+    // =====================================================
+
+    public function productReviews(Request $request, Product $product)
+    {
+        $user = $request->user();
+
+        $paginator = ProductReview::where('product_id', $product->id)
+            ->visible()
+            ->whereNotIn('user_id', $user->blockedUsers()->pluck('users.id'))
+            ->with('user')
+            ->latest()
+            ->latest('id')
+            ->simplePaginate(self::PAGE_SIZE);
+
+        return response()->json([
+            'status' => true,
+            'summary' => ProductReview::summaryFor($product->id),
+            'reviews' => collect($paginator->items())
+                ->map(fn (ProductReview $review) => $review->toPayload($user->id))
+                ->values(),
+            'page' => $paginator->currentPage(),
+            'has_more' => $paginator->hasMorePages(),
         ]);
     }
 
