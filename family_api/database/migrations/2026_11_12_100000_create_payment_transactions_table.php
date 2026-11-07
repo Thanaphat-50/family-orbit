@@ -14,6 +14,11 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // รันซ้ำได้ (deploy ที่ล้มกลางทาง)
+        if (Schema::hasTable('payment_transactions')) {
+            return;
+        }
+
         Schema::create('payment_transactions', function (Blueprint $table) {
             $table->id();
 
