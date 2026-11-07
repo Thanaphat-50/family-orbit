@@ -23,6 +23,7 @@ use RuntimeException;
 // preparing ─ร้านส่ง─▶ shipped ─ผู้ซื้อกดได้รับสินค้า (หรือครบกำหนด)─▶ completed
 //
 // ยกเลิกได้ก่อนร้านส่ง → cancelled (คืนสต็อก)
+// ยกเลิกหลังโอนเงินแล้ว → refund_status pending ─ร้านคืนเงินแล้วกดยืนยัน─▶ refunded
 // สต็อกถูกจองตั้งแต่ตอนสั่ง จึงขายเกินจำนวนที่มีไม่ได้
 // =======================================================
 
@@ -63,6 +64,10 @@ class Order extends Model
     public const BY_SELLER = 'seller';
     public const BY_SYSTEM = 'system';
 
+    // ยกเลิกหลังลูกค้าจ่ายเงินแล้ว → ร้านต้องคืนเงิน
+    public const REFUND_PENDING = 'pending';
+    public const REFUND_DONE = 'refunded';
+
     protected $fillable = [
         'code',
         'checkout_id',
@@ -87,9 +92,13 @@ class Order extends Model
         'slip_uploaded_at',
         'payment_note',
         'tracking_number',
+        'carrier',
         'seller_note',
         'cancel_reason',
         'cancelled_by',
+        'refund_status',
+        'refund_note',
+        'refunded_at',
         'paid_at',
         'shipped_at',
         'completed_at',
@@ -112,6 +121,7 @@ class Order extends Model
         'shipped_at' => 'datetime',
         'completed_at' => 'datetime',
         'cancelled_at' => 'datetime',
+        'refunded_at' => 'datetime',
     ];
 
     public function buyer()
@@ -127,6 +137,16 @@ class Order extends Model
     public function product()
     {
         return $this->belongsTo(Product::class);
+    }
+
+    // ร้านต้องจัดการ: ตรวจยอดเงิน / จัดส่ง / คืนเงินคำสั่งซื้อที่ยกเลิกหลังจ่ายแล้ว
+    public function scopeSellerTodo(Builder $query): Builder
+    {
+        return $query->where(fn (Builder $todo) => $todo
+            ->whereIn('status', self::SELLER_TODO_STATUSES)
+            ->orWhere(fn (Builder $refund) => $refund
+                ->where('status', self::STATUS_CANCELLED)
+                ->where('refund_status', self::REFUND_PENDING)));
     }
 
     public function scopeOpen(Builder $query): Builder
@@ -411,22 +431,69 @@ class Order extends Model
         $this->notifyBuyer('ร้านแจ้งว่าสลิปไม่ถูกต้อง', $reason . ' (แนบสลิปใหม่ได้ในคำสั่งซื้อ)');
     }
 
-    public function ship(?string $trackingNumber, ?string $sellerNote): void
+    // carrier = key ใน config market.carriers (รับที่ร้าน / นัดรับ ไม่มี)
+    public function ship(?string $trackingNumber, ?string $sellerNote, ?string $carrier = null): void
     {
         $this->forceFill([
             'status' => self::STATUS_SHIPPED,
             'shipped_at' => now(),
+            'carrier' => $carrier,
             'tracking_number' => $trackingNumber,
             'seller_note' => $sellerNote,
         ])->save();
 
-        $this->recordStatus(self::BY_SELLER, $trackingNumber ? "เลขพัสดุ {$trackingNumber}" : null);
+        // "Flash Express · เลขพัสดุ TH123"
+        $shipping = collect([
+            $this->carrierLabel(),
+            $trackingNumber ? "เลขพัสดุ {$trackingNumber}" : null,
+        ])->filter()->join(' · ');
+
+        $this->recordStatus(self::BY_SELLER, $shipping !== '' ? $shipping : null);
 
         $this->notifyBuyer(
             $this->isHandover() ? 'ร้านส่งมอบสินค้าแล้ว' : 'ร้านส่งสินค้าแล้ว',
             '"' . $this->product_title . '"'
-                . ($trackingNumber ? " · เลขพัสดุ {$trackingNumber}" : '')
+                . ($shipping !== '' ? " · {$shipping}" : '')
                 . ' ได้รับแล้วกด "ได้รับสินค้าแล้ว" ในคำสั่งซื้อ'
+        );
+    }
+
+    public function carrierLabel(): ?string
+    {
+        return $this->carrier
+            ? config("market.carriers.{$this->carrier}.label", $this->carrier)
+            : null;
+    }
+
+    // บริษัทขนส่งที่เลือกได้สำหรับวิธีรับสินค้านี้ (รับที่ร้าน / นัดรับ = ไม่มี)
+    public function carrierOptions(): array
+    {
+        return collect(config('market.carriers'))
+            ->filter(fn (array $carrier) => in_array($this->delivery_method, $carrier['methods'], true))
+            ->map(fn (array $carrier, string $key) => [
+                'key' => $key,
+                'label' => $carrier['label'],
+                'tracking' => $carrier['tracking'],
+            ])
+            ->values()
+            ->all();
+    }
+
+    // ร้านคืนเงินให้ลูกค้าแล้ว (คำสั่งซื้อที่ยกเลิกหลังจ่ายเงิน)
+    public function markRefunded(string $note): void
+    {
+        $this->forceFill([
+            'refund_status' => self::REFUND_DONE,
+            'refund_note' => $note,
+            'refunded_at' => now(),
+        ])->save();
+
+        $this->recordStatus(self::BY_SELLER, 'คืนเงินแล้ว: ' . $note);
+
+        $this->notifyBuyer(
+            'ร้านคืนเงินให้คุณแล้ว',
+            'คำสั่งซื้อ ' . $this->code . ' คืน ' . self::baht($this->total) . ' · ' . $note
+                . ' (ยังไม่ได้รับเงิน แชทกับร้านได้ในคำสั่งซื้อ)'
         );
     }
 
@@ -453,15 +520,18 @@ class Order extends Model
     // ยกเลิก + คืนสต็อก แล้วแจ้งอีกฝ่าย
     public function cancel(string $by, ?string $reason): void
     {
-        $paid = $this->paid_at !== null;
+        // โอนแล้ว (ระบบ/ร้านยืนยันแล้ว หรือส่งสลิปรอร้านตรวจ) → ร้านต้องคืนเงิน
+        $paid = $this->isTransfer()
+            && ($this->paid_at !== null || $this->status === self::STATUS_PAYMENT_REVIEW);
 
-        DB::transaction(function () use ($by, $reason) {
+        DB::transaction(function () use ($by, $reason, $paid) {
             $this->forceFill([
                 'status' => self::STATUS_CANCELLED,
                 'cancelled_at' => now(),
                 'cancelled_by' => $by,
                 'cancel_reason' => $reason,
                 'payment_due_at' => null,
+                'refund_status' => $paid ? self::REFUND_PENDING : null,
             ])->save();
 
             $this->restoreStock();
@@ -481,7 +551,7 @@ class Order extends Model
         if ($by !== self::BY_SELLER) {
             $this->notifySeller(
                 'คำสั่งซื้อถูกยกเลิก',
-                $message . ($paid ? ' · ลูกค้าโอนเงินแล้ว กรุณาคืนเงินให้ลูกค้า' : '')
+                $message . ($paid ? ' · ลูกค้าโอนเงินแล้ว กรุณาคืนเงินให้ลูกค้า แล้วกด "คืนเงินแล้ว"' : '')
             );
         }
     }
@@ -564,6 +634,8 @@ class Order extends Model
                 self::STATUS_AWAITING_PAYMENT => ['cancel'],
                 self::STATUS_PAYMENT_REVIEW => ['confirm_payment', 'reject_slip', 'cancel'],
                 self::STATUS_PREPARING => ['ship', 'cancel'],
+                // ยกเลิกหลังลูกค้าจ่ายแล้ว → ร้านคืนเงินแล้วกดยืนยัน
+                self::STATUS_CANCELLED => $this->refund_status === self::REFUND_PENDING ? ['refund'] : [],
                 default => [],
             };
         }
@@ -575,6 +647,12 @@ class Order extends Model
     {
         if ($this->status === self::STATUS_SHIPPED && $this->isHandover()) {
             return 'ส่งมอบสินค้าแล้ว';
+        }
+
+        if ($this->status === self::STATUS_CANCELLED && $this->refund_status !== null) {
+            return $this->refund_status === self::REFUND_DONE
+                ? 'ยกเลิกแล้ว · คืนเงินแล้ว'
+                : 'ยกเลิกแล้ว · รอร้านคืนเงิน';
         }
 
         return self::STATUS_LABELS[$this->status] ?? $this->status;
@@ -607,11 +685,15 @@ class Order extends Model
                 'unit_price', 'quantity', 'items_total', 'shipping_fee', 'total',
                 'delivery_method', 'payment_method',
                 'recipient_name', 'recipient_phone', 'address', 'note',
-                'payment_note', 'tracking_number', 'seller_note',
+                'payment_note', 'tracking_number', 'carrier', 'seller_note',
                 'cancel_reason', 'cancelled_by',
+                'refund_status', 'refund_note', 'refunded_at',
                 'created_at', 'slip_uploaded_at', 'paid_at',
                 'shipped_at', 'completed_at', 'cancelled_at',
             ]),
+            'carrier_label' => $this->carrierLabel(),
+            // ร้าน: บริษัทขนส่งให้เลือกตอนกดส่งสินค้า
+            'carriers' => !$isBuyer && $this->status === self::STATUS_PREPARING ? $this->carrierOptions() : [],
             'role' => $isBuyer ? self::BY_BUYER : self::BY_SELLER,
             'status_label' => $this->statusLabel(),
             'delivery_label' => config("market.delivery_methods.{$this->delivery_method}", $this->delivery_method),

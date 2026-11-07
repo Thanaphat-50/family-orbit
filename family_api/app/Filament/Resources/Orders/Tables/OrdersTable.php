@@ -47,7 +47,8 @@ class OrdersTable
                 TextColumn::make('status')
                     ->label('สถานะ')
                     ->formatStateUsing(fn (string $state, Order $record) => $record->statusLabel())
-                    ->description(fn (Order $record) => $record->cancel_reason)
+                    ->description(fn (Order $record) => $record->cancel_reason
+                        ?? collect([$record->carrierLabel(), $record->tracking_number])->filter()->join(' · '))
                     ->badge()
                     ->color(fn (string $state) => match ($state) {
                         Order::STATUS_COMPLETED => 'success',
@@ -64,6 +65,13 @@ class OrdersTable
                 SelectFilter::make('status')
                     ->label('สถานะ')
                     ->options(Order::STATUS_LABELS),
+                // ยกเลิกหลังลูกค้าจ่ายเงิน: ร้านคืนเงินแล้วหรือยัง
+                SelectFilter::make('refund_status')
+                    ->label('การคืนเงิน')
+                    ->options([
+                        Order::REFUND_PENDING => 'รอร้านคืนเงิน',
+                        Order::REFUND_DONE => 'คืนเงินแล้ว',
+                    ]),
             ]);
     }
 }

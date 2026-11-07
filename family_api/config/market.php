@@ -76,6 +76,23 @@ return [
     // วิธีรับสินค้าที่ต้องกรอกที่อยู่
     'address_methods' => ['shipping', 'delivery'],
 
+    // บริษัทขนส่งที่ร้านเลือกตอนกด "ส่งสินค้าแล้ว"
+    // tracking = true → ต้องกรอกเลขพัสดุ
+    // methods = ใช้กับวิธีรับสินค้าแบบไหน (ส่งพัสดุ / ส่งถึงบ้าน)
+    'carriers' => [
+        'thailand_post' => ['label' => 'ไปรษณีย์ไทย', 'tracking' => true, 'methods' => ['shipping']],
+        'flash' => ['label' => 'Flash Express', 'tracking' => true, 'methods' => ['shipping']],
+        'kex' => ['label' => 'KEX (Kerry Express)', 'tracking' => true, 'methods' => ['shipping']],
+        'jt' => ['label' => 'J&T Express', 'tracking' => true, 'methods' => ['shipping']],
+        'spx' => ['label' => 'SPX Express', 'tracking' => true, 'methods' => ['shipping']],
+        'ninjavan' => ['label' => 'Ninja Van', 'tracking' => true, 'methods' => ['shipping']],
+        'lalamove' => ['label' => 'Lalamove', 'tracking' => false, 'methods' => ['shipping', 'delivery']],
+        'grab' => ['label' => 'Grab Express', 'tracking' => false, 'methods' => ['shipping', 'delivery']],
+        'lineman' => ['label' => 'LINE MAN', 'tracking' => false, 'methods' => ['shipping', 'delivery']],
+        'own' => ['label' => 'ร้านไปส่งเอง', 'tracking' => false, 'methods' => ['shipping', 'delivery']],
+        'other' => ['label' => 'ขนส่งอื่น ๆ', 'tracking' => false, 'methods' => ['shipping', 'delivery']],
+    ],
+
     'banks' => [
         'ธนาคารกสิกรไทย',
         'ธนาคารไทยพาณิชย์',

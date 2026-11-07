@@ -587,6 +587,11 @@ Route::middleware('auth:sanctum')->group(function () {
         'shopIndex'
     ]);
 
+    Route::get('/my-shop/sales', [
+        OrderController::class,
+        'shopSales'
+    ]);
+
     Route::get('/orders/{order}', [
         OrderController::class,
         'show'
@@ -625,6 +630,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/orders/{order}/cancel', [
         OrderController::class,
         'cancel'
+    ]);
+
+    Route::post('/orders/{order}/refund', [
+        OrderController::class,
+        'refund'
     ]);
 
     Route::get('/activities', [

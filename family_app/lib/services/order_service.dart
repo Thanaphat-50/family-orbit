@@ -77,6 +77,17 @@ class OrderService {
     return ApiHelper.decode(response);
   }
 
+  // ร้าน: สรุปยอดขาย (วันนี้ / เดือนนี้ / ทั้งหมด / 7 วันล่าสุด / สินค้าขายดี)
+  static Future<Map<String, dynamic>> getSales() async {
+    final headers = await _headers();
+
+    final response = await ApiHelper.request(
+      () => http.get(Uri.parse('$baseUrl/my-shop/sales'), headers: headers),
+    );
+
+    return ApiHelper.decode(response);
+  }
+
   static Future<Map<String, dynamic>> getOrder(int orderId) async {
     final headers = await _headers();
 

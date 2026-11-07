@@ -4,6 +4,7 @@ import '../data/market_data.dart';
 import '../services/order_service.dart';
 import '../theme/app_theme.dart';
 import 'order_page.dart';
+import 'shop_sales_page.dart';
 
 // =======================================================
 // รายการคำสั่งซื้อ
@@ -14,7 +15,10 @@ import 'order_page.dart';
 class OrdersPage extends StatefulWidget {
   final bool seller;
 
-  const OrdersPage({super.key, this.seller = false});
+  // แท็บที่เปิดก่อน (เช่น completed = ประวัติการขาย)
+  final String? initialFilter;
+
+  const OrdersPage({super.key, this.seller = false, this.initialFilter});
 
   @override
   State<OrdersPage> createState() => _OrdersPageState();
@@ -40,7 +44,9 @@ class _OrdersPageState extends State<OrdersPage> {
   // ผู้ซื้อ: จำนวนในแต่ละแท็บ (to_pay / to_ship / shipping)
   Map<String, int> counts = {};
 
-  late String filter = tabs.first.$1;
+  late String filter = tabs.any((tab) => tab.$1 == widget.initialFilter)
+      ? widget.initialFilter!
+      : tabs.first.$1;
 
   final List<Map<String, dynamic>> orders = [];
   bool isLoading = true;
@@ -194,14 +200,16 @@ class _OrdersPageState extends State<OrdersPage> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Material(
-        color: AppColors.surface,
+        color: Colors.transparent,
         borderRadius: BorderRadius.circular(22),
         child: InkWell(
           borderRadius: BorderRadius.circular(22),
           onTap: () => openOrder(order),
           child: Ink(
             padding: const EdgeInsets.all(12),
+            // สีพื้นต้องอยู่ใน Ink (ไม่งั้นเงาทะลุเป็นสีเทา)
             decoration: BoxDecoration(
+              color: AppColors.surface,
               borderRadius: BorderRadius.circular(22),
               border: AppDecorations.cardBorder,
               boxShadow: AppDecorations.cardShadow,
@@ -383,6 +391,21 @@ class _OrdersPageState extends State<OrdersPage> {
       child: Scaffold(
         appBar: AppBar(
           title: Text(widget.seller ? 'ออเดอร์ของร้าน' : 'คำสั่งซื้อของฉัน'),
+          actions: [
+            if (widget.seller)
+              TextButton.icon(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const ShopSalesPage(),
+                  ),
+                ),
+                icon: const Icon(Icons.bar_chart_rounded, color: marketColor),
+                label: const Text(
+                  'ยอดขาย',
+                  style: TextStyle(color: marketColor),
+                ),
+              ),
+          ],
         ),
         body: Column(
           children: [

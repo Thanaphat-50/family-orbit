@@ -10,6 +10,7 @@ import 'orders_page.dart';
 import 'product_form_page.dart';
 import 'promotion_page.dart';
 import 'shop_form_page.dart';
+import 'shop_sales_page.dart';
 
 // =======================================================
 // บัญชีผู้ขาย
@@ -592,6 +593,51 @@ class _MyShopPageState extends State<MyShopPage> {
     );
   }
 
+  // ยอดขาย + ประวัติการขาย
+  Widget buildSalesCard() {
+    return Material(
+      color: AppColors.surface,
+      borderRadius: BorderRadius.circular(24),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(24),
+        onTap: () => Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (context) => const ShopSalesPage())),
+        child: Ink(
+          padding: const EdgeInsets.fromLTRB(16, 14, 10, 14),
+          decoration: cardDecoration(),
+          child: Row(
+            children: [
+              const Icon(Icons.bar_chart_rounded, color: marketColor, size: 28),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'ยอดขาย',
+                      style: TextStyle(
+                        color: AppColors.navy,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'ยอดวันนี้ เดือนนี้ สินค้าขายดี และประวัติการขาย',
+                      style: TextStyle(color: AppColors.muted, fontSize: 12.5),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded, color: marketColor),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   // ช่องร้านแนะนำ (แบนเนอร์ใหญ่บนสุดของหน้าร้านค้า)
   Widget buildShopPromotionCard(Map<String, dynamic> data) {
     final bool featured = data['is_featured'] == true;
@@ -1126,6 +1172,10 @@ class _MyShopPageState extends State<MyShopPage> {
                     if (data['status'] == 'active' || orderTodo > 0) ...[
                       const SizedBox(height: 14),
                       buildOrdersCard(data),
+                      if (data['accepts_orders'] == true) ...[
+                        const SizedBox(height: 10),
+                        buildSalesCard(),
+                      ],
                     ],
                     if (data['status'] == 'active') ...[
                       const SizedBox(height: 14),

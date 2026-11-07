@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Address;
 use App\Models\CartItem;
 use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\OutOfStock;
 use App\Models\PaymentTransaction;
 use App\Models\Product;
@@ -375,7 +376,7 @@ class OrderController extends Controller
         }
 
         return $this->list($request, Order::where('shop_id', $shop->id), $user, [
-            'todo' => Order::where('shop_id', $shop->id)->whereIn('status', Order::SELLER_TODO_STATUSES)->count(),
+            'todo' => Order::where('shop_id', $shop->id)->sellerTodo()->count(),
         ]);
     }
 
@@ -421,15 +422,36 @@ class OrderController extends Controller
         );
     }
 
+    // ส่งพัสดุ: ต้องเลือกบริษัทขนส่ง (+ เลขพัสดุ ถ้าเป็นขนส่งที่มีเลขพัสดุ)
+    // ส่งถึงบ้าน: เลือกขนส่งได้ (ไม่บังคับ) / รับที่ร้าน นัดรับ: ไม่มีขนส่ง
     public function ship(Request $request, Order $order)
     {
+        if ($denied = $this->denied($request, $order, 'ship')) {
+            return $denied;
+        }
+
+        $carriers = collect($order->carrierOptions());
+
         $data = $request->validate([
+            'carrier' => [
+                $order->delivery_method === 'shipping' ? 'required' : 'nullable',
+                'string',
+                Rule::in($carriers->pluck('key')->all()),
+            ],
             'tracking_number' => 'nullable|string|max:60',
             'seller_note' => 'nullable|string|max:500',
         ], [
+            'carrier.*' => 'กรุณาเลือกบริษัทขนส่ง',
             'tracking_number.*' => 'เลขพัสดุยาวได้ไม่เกิน 60 ตัวอักษร',
             'seller_note.*' => 'ข้อความยาวได้ไม่เกิน 500 ตัวอักษร',
         ]);
+
+        $carrier = $data['carrier'] ?? null;
+        $tracking = filled($data['tracking_number'] ?? null) ? trim($data['tracking_number']) : null;
+
+        if ($carrier && $tracking === null && ($carriers->firstWhere('key', $carrier)['tracking'] ?? false)) {
+            return $this->fail('กรุณากรอกเลขพัสดุ ลูกค้าจะได้ติดตามพัสดุได้', 422);
+        }
 
         return $this->act(
             $request,
@@ -437,10 +459,121 @@ class OrderController extends Controller
             'ship',
             'บันทึกการส่งสินค้าแล้ว',
             fn () => $order->ship(
-                filled($data['tracking_number'] ?? null) ? trim($data['tracking_number']) : null,
-                filled($data['seller_note'] ?? null) ? trim($data['seller_note']) : null
+                $tracking,
+                filled($data['seller_note'] ?? null) ? trim($data['seller_note']) : null,
+                $carrier
             )
         );
+    }
+
+    // =====================================================
+    // POST /api/orders/{order}/refund {note}
+    // ร้าน: คืนเงินให้ลูกค้าแล้ว (คำสั่งซื้อที่ยกเลิกหลังลูกค้าจ่ายเงิน)
+    // =====================================================
+
+    public function refund(Request $request, Order $order)
+    {
+        if ($denied = $this->denied($request, $order, 'refund')) {
+            return $denied;
+        }
+
+        $data = $request->validate(
+            ['note' => 'required|string|max:300'],
+            ['note.*' => 'กรุณาบอกว่าคืนเงินช่องทางไหน เช่น โอนกลับบัญชีเดิม เลขอ้างอิง (ไม่เกิน 300 ตัวอักษร)']
+        );
+
+        return $this->act(
+            $request,
+            $order,
+            'refund',
+            'บันทึกการคืนเงินแล้ว แจ้งลูกค้าแล้ว',
+            fn () => $order->markRefunded(trim($data['note']))
+        );
+    }
+
+    // =====================================================
+    // GET /api/my-shop/sales  สรุปยอดขายของร้าน
+    // ยอดขาย = คำสั่งซื้อที่สำเร็จ (ลูกค้าได้รับสินค้าแล้ว) นับตามวันที่สำเร็จ (เวลาไทย)
+    // =====================================================
+
+    public function shopSales(Request $request)
+    {
+        $shop = Shop::where('user_id', $request->user()->id)->first();
+
+        if (!$shop) {
+            return $this->fail('คุณยังไม่มีร้าน', 404);
+        }
+
+        Order::expireStale();
+
+        $timezone = config('market.timezone');
+        $today = now($timezone)->startOfDay();
+        $monthStart = now($timezone)->startOfMonth();
+
+        $orders = fn () => Order::where('shop_id', $shop->id);
+        $completed = fn () => $orders()->where('status', Order::STATUS_COMPLETED);
+
+        $sum = fn ($query) => [
+            'total' => round((float) (clone $query)->sum('total'), 2),
+            'orders' => (clone $query)->count(),
+        ];
+
+        // 7 วันล่าสุด (วันนี้อยู่ท้าย)
+        $recent = $completed()
+            ->where('completed_at', '>=', $today->copy()->subDays(6)->utc())
+            ->get(['total', 'completed_at'])
+            ->groupBy(fn (Order $order) => $order->completed_at->setTimezone($timezone)->toDateString());
+
+        $days = collect(range(6, 0))->map(function (int $ago) use ($today, $recent) {
+            $date = $today->copy()->subDays($ago)->toDateString();
+            $group = $recent->get($date, collect());
+
+            return [
+                'date' => $date,
+                'total' => round((float) $group->sum('total'), 2),
+                'orders' => $group->count(),
+            ];
+        });
+
+        // สินค้าขายดีเดือนนี้
+        $top = OrderItem::query()
+            ->join('orders', 'orders.id', '=', 'order_items.order_id')
+            ->where('orders.shop_id', $shop->id)
+            ->where('orders.status', Order::STATUS_COMPLETED)
+            ->where('orders.completed_at', '>=', $monthStart->copy()->utc())
+            ->groupBy('order_items.product_id')
+            ->selectRaw('order_items.product_id, max(order_items.title) as title, sum(order_items.quantity) as quantity, sum(order_items.subtotal) as total')
+            ->orderByDesc('quantity')
+            ->limit(5)
+            ->get()
+            ->map(fn ($row) => [
+                'product_id' => $row->product_id,
+                'title' => $row->title,
+                'quantity' => (int) $row->quantity,
+                'total' => round((float) $row->total, 2),
+            ]);
+
+        return response()->json([
+            'status' => true,
+            'today' => $sum($completed()->where('completed_at', '>=', $today->copy()->utc())),
+            'month' => $sum($completed()->where('completed_at', '>=', $monthStart->copy()->utc())),
+            'all' => $sum($completed()),
+            // รอร้านจัดส่ง / กำลังจัดส่ง (ยังไม่นับเป็นยอดขาย)
+            'in_progress' => $sum($orders()->whereIn('status', [
+                Order::STATUS_PAYMENT_REVIEW,
+                Order::STATUS_PREPARING,
+                Order::STATUS_SHIPPED,
+            ])),
+            'cancelled_month' => $orders()
+                ->where('status', Order::STATUS_CANCELLED)
+                ->where('cancelled_at', '>=', $monthStart->copy()->utc())
+                ->count(),
+            'refund_pending' => $sum($orders()
+                ->where('status', Order::STATUS_CANCELLED)
+                ->where('refund_status', Order::REFUND_PENDING)),
+            'days' => $days,
+            'top_products' => $top,
+        ]);
     }
 
     // =====================================================
@@ -713,6 +846,29 @@ class OrderController extends Controller
     {
         $user = $request->user();
 
+        if ($denied = $this->denied($request, $order, $action)) {
+            return $denied;
+        }
+
+        $failed = $work();
+
+        if ($failed instanceof JsonResponse) {
+            return $failed;
+        }
+
+        return response()->json([
+            'status' => true,
+            'message' => $message instanceof \Closure ? $message() : $message,
+            'order' => $order->refresh()->toPayload($user),
+        ]);
+    }
+
+    // ทำรายการนี้ไม่ได้ → 404 (ไม่ใช่คำสั่งซื้อของเรา) / 409 (สถานะเปลี่ยนไปแล้ว)
+    // เรียกก่อนตรวจข้อมูลที่ส่งมาได้ (ผู้ซื้อกดส่งสินค้า → 409 ไม่ใช่ "กรุณาเลือกขนส่ง")
+    private function denied(Request $request, Order $order, string $action): ?JsonResponse
+    {
+        $user = $request->user();
+
         Order::expireStale();
 
         $order->refresh();
@@ -729,17 +885,7 @@ class OrderController extends Controller
             ], 409);
         }
 
-        $failed = $work();
-
-        if ($failed instanceof JsonResponse) {
-            return $failed;
-        }
-
-        return response()->json([
-            'status' => true,
-            'message' => $message instanceof \Closure ? $message() : $message,
-            'order' => $order->refresh()->toPayload($user),
-        ]);
+        return null;
     }
 
     private function list(Request $request, $query, User $user, array $extra = [])
@@ -751,7 +897,10 @@ class OrderController extends Controller
         Order::expireStale();
 
         $paginator = $query
-            ->when($data['filter'] ?? null, fn ($orders, string $filter) => $orders->whereIn('status', self::FILTERS[$filter]))
+            ->when($data['filter'] ?? null, fn ($orders, string $filter) => $filter === 'todo'
+                // ร้าน: รวมคำสั่งซื้อที่ยกเลิกแล้วแต่ยังไม่คืนเงิน
+                ? $orders->sellerTodo()
+                : $orders->whereIn('status', self::FILTERS[$filter]))
             ->with(['shop', 'buyer', 'product.images'])
             ->latest('id')
             ->simplePaginate(self::PAGE_SIZE);

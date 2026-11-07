@@ -144,11 +144,16 @@ class ChatController extends Controller
     public function open(Request $request)
     {
         $data = $request->validate([
-            'user_id' => 'required_without:shop_id|nullable|integer',
+            'user_id' => 'required_without_all:shop_id,order_id|nullable|integer',
             'shop_id' => 'nullable|integer',
+            'order_id' => 'nullable|integer',
         ]);
 
         $me = $request->user();
+
+        if (isset($data['order_id'])) {
+            return $this->openOrderChat($me, (int) $data['order_id']);
+        }
 
         if (isset($data['shop_id'])) {
             return $this->openShopChat($me, (int) $data['shop_id']);
@@ -370,6 +375,43 @@ class ChatController extends Controller
 
         return $this->familyMemberIds($me)->contains($otherId)
             || ($conversation?->isShopChatWith($me->id, $otherId) ?? false);
+    }
+
+    // แชทจากหน้าคำสั่งซื้อ: ผู้ซื้อ → ร้าน / ร้าน → ลูกค้า (เช่น ถามบัญชีเพื่อคืนเงิน)
+    private function openOrderChat(User $me, int $orderId)
+    {
+        $order = Order::with('shop')->find($orderId);
+
+        if (!$order || !$order->shop || (!$order->isBuyer($me) && !$order->isSeller($me))) {
+            return response()->json([
+                'status' => false,
+                'message' => 'ไม่พบคำสั่งซื้อนี้',
+            ], 404);
+        }
+
+        if ($order->isBuyer($me)) {
+            return $this->openShopChat($me, (int) $order->shop_id);
+        }
+
+        $buyerId = (int) $order->buyer_id;
+
+        if ($this->blockedEitherWay($me)->contains($buyerId)) {
+            return response()->json([
+                'status' => false,
+                'message' => 'คุณแชทกับลูกค้าคนนี้ไม่ได้',
+            ], 403);
+        }
+
+        $conversation = Conversation::between($me->id, $buyerId);
+
+        if ($conversation->shop_id === null) {
+            $conversation->forceFill(['shop_id' => $order->shop_id])->save();
+        }
+
+        return response()->json([
+            'status' => true,
+            'conversation' => $this->conversationPayload($conversation->load('shop'), $me),
+        ]);
     }
 
     private function openShopChat(User $me, int $shopId)

@@ -175,9 +175,10 @@ class OrderTest extends TestCase
             ->assertJsonPath('todo', 1)
             ->assertJsonPath('orders.0.actions', ['ship', 'cancel']);
 
-        $this->postJson("/api/orders/{$id}/ship", ['tracking_number' => 'TH123456789'])
+        $this->postJson("/api/orders/{$id}/ship", ['carrier' => 'flash', 'tracking_number' => 'TH123456789'])
             ->assertOk()
             ->assertJsonPath('order.status', Order::STATUS_SHIPPED)
+            ->assertJsonPath('order.carrier_label', 'Flash Express')
             ->assertJsonPath('order.tracking_number', 'TH123456789');
 
         // ผู้ซื้อได้รับสินค้า

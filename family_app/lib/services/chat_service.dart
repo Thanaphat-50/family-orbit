@@ -96,6 +96,21 @@ class ChatService {
     return ApiHelper.decode(response);
   }
 
+  // แชทจากหน้าคำสั่งซื้อ (ผู้ซื้อ → ร้าน / ร้าน → ลูกค้า)
+  static Future<Map<String, dynamic>> openOrderChat(int orderId) async {
+    final headers = await _headers();
+
+    final response = await ApiHelper.request(
+      () => http.post(
+        Uri.parse('$baseUrl/chats'),
+        headers: headers,
+        body: jsonEncode({'order_id': orderId}),
+      ),
+    );
+
+    return ApiHelper.decode(response);
+  }
+
   // afterId: ข้อความใหม่กว่านี้ / beforeId: ข้อความเก่ากว่านี้
   static Future<Map<String, dynamic>> getMessages(
     int conversationId, {

@@ -4,12 +4,14 @@ import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../data/market_data.dart';
+import '../services/chat_service.dart';
 import '../services/order_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/market_widgets.dart' show ShopContactButtons;
 import '../widgets/photo_viewer.dart';
 import '../widgets/promptpay_qr.dart';
 import '../widgets/shop_trust_widgets.dart' show StarRow, showStarReviewSheet;
+import 'chat_room_page.dart';
 import 'market_shop_page.dart';
 
 // =======================================================
@@ -32,6 +34,7 @@ class _OrderPageState extends State<OrderPage> {
   String? loadError;
   bool isLoading = true;
   bool isWorking = false;
+  bool isOpeningChat = false;
   bool changed = false;
 
   bool get isSeller => order?['role'] == 'seller';
@@ -144,9 +147,21 @@ class _OrderPageState extends State<OrderPage> {
   }
 
   Future<void> cancelOrder() async {
+    // โอนเงินแล้ว → ยกเลิกแล้วร้านต้องคืนเงิน
+    final bool paid =
+        order?['is_transfer'] == true &&
+        (order?['paid_at'] != null || order?['status'] == 'payment_review');
+
+    final String total = formatPrice(order?['total']);
+
     final String? reason = await showTextDialog(
       context,
       title: 'ยกเลิกคำสั่งซื้อ?',
+      message: !paid
+          ? null
+          : isSeller
+          ? 'ลูกค้าโอนเงินแล้ว ยกเลิกแล้วต้องคืนเงิน $total ให้ลูกค้า'
+          : 'คุณโอนเงินแล้ว ร้านต้องคืนเงิน $total ให้คุณ',
       label: isSeller ? 'เหตุผล (ลูกค้าจะเห็น)' : 'เหตุผล (ไม่บังคับ)',
       hint: isSeller ? 'เช่น สินค้าหมด' : 'เช่น สั่งผิด',
       confirmLabel: 'ยกเลิกคำสั่งซื้อ',
@@ -177,21 +192,45 @@ class _OrderPageState extends State<OrderPage> {
   Future<void> shipOrder() async {
     final bool handover = order?['is_handover'] == true;
 
-    final ({String tracking, String note})? result = await showShipDialog(
-      context,
-      handover: handover,
-      // โอนเงิน: เตือนให้เช็กยอดในบัญชีก่อนส่ง
-      paidAmount: order?['is_transfer'] == true
-          ? formatPrice(order?['total'])
-          : null,
-    );
+    final ({String? carrier, String tracking, String note})? result =
+        await showShipDialog(
+          context,
+          handover: handover,
+          carriers: [
+            for (final item in (order?['carriers'] as List?) ?? const [])
+              if (item is Map) Map<String, dynamic>.from(item),
+          ],
+          // ส่งพัสดุต้องเลือกบริษัทขนส่ง
+          carrierRequired: order?['delivery_method'] == 'shipping',
+          paidAmount: order?['is_transfer'] == true
+              ? formatPrice(order?['total'])
+              : null,
+        );
 
     if (result == null) return;
 
     await act('ship', {
+      'carrier': ?result.carrier,
       'tracking_number': result.tracking,
       'seller_note': result.note,
     });
+  }
+
+  // ร้าน: คืนเงินให้ลูกค้าแล้ว (คำสั่งซื้อที่ยกเลิกหลังลูกค้าจ่ายเงิน)
+  Future<void> refundOrder() async {
+    final String? note = await showTextDialog(
+      context,
+      title: 'คืนเงิน ${formatPrice(order?['total'])} แล้ว?',
+      label: 'คืนเงินช่องทางไหน (ลูกค้าจะเห็น)',
+      hint: 'เช่น โอนกลับบัญชีเดิม เลขอ้างอิง 0123',
+      confirmLabel: 'ยืนยันคืนเงินแล้ว',
+      required: true,
+      requiredMessage: 'กรุณาบอกช่องทางคืนเงิน',
+    );
+
+    if (note == null) return;
+
+    await act('refund', {'note': note});
   }
 
   // =====================================================
@@ -860,6 +899,7 @@ class _OrderPageState extends State<OrderPage> {
     final String address = data['address']?.toString() ?? '';
     final String note = data['note']?.toString() ?? '';
     final String tracking = data['tracking_number']?.toString() ?? '';
+    final String carrier = data['carrier_label']?.toString() ?? '';
     final String sellerNote = data['seller_note']?.toString() ?? '';
 
     return card(
@@ -891,18 +931,146 @@ class _OrderPageState extends State<OrderPage> {
             ),
           if (note.isNotEmpty)
             infoRow(Icons.sticky_note_2_outlined, 'ฝากถึงร้าน: $note'),
-          if (tracking.isNotEmpty)
+          if (tracking.isNotEmpty || carrier.isNotEmpty)
             infoRow(
               Icons.local_shipping_outlined,
-              'เลขพัสดุ $tracking',
-              trailing: TextButton(
-                onPressed: () => copy(tracking, 'คัดลอกเลขพัสดุแล้ว'),
-                child: const Text('คัดลอก'),
-              ),
+              [
+                if (carrier.isNotEmpty) 'ส่งโดย $carrier',
+                if (tracking.isNotEmpty) 'เลขพัสดุ $tracking',
+              ].join('\n'),
+              trailing: tracking.isEmpty
+                  ? null
+                  : TextButton(
+                      onPressed: () => copy(tracking, 'คัดลอกเลขพัสดุแล้ว'),
+                      child: const Text('คัดลอก'),
+                    ),
             ),
           if (sellerNote.isNotEmpty)
             infoRow(Icons.storefront_outlined, 'ร้านแจ้ง: $sellerNote'),
         ],
+      ),
+    );
+  }
+
+  // ยกเลิกหลังลูกค้าจ่ายเงินแล้ว: รอร้านคืนเงิน / คืนเงินแล้ว
+  Widget buildRefund(Map<String, dynamic> data) {
+    final bool done = data['refund_status'] == 'refunded';
+    final String amount = formatPrice(data['total']);
+    final String note = data['refund_note']?.toString() ?? '';
+
+    final Color color = done ? AppColors.success : const Color(0xFFF79009);
+
+    final String heading = done
+        ? (isSeller
+              ? 'คืนเงิน $amount ให้ลูกค้าแล้ว'
+              : 'ร้านคืนเงิน $amount แล้ว')
+        : (isSeller
+              ? 'ต้องคืนเงิน $amount ให้ลูกค้า'
+              : 'รอร้านคืนเงิน $amount');
+
+    final String detail = done
+        ? [
+            if (note.isNotEmpty) note,
+            formatDateTime(data['refunded_at']),
+            if (!isSeller) 'ยังไม่ได้รับเงิน แชทกับร้านได้ด้านล่าง',
+          ].join('\n')
+        : isSeller
+        ? 'ลูกค้าโอนเงินมาแล้ว โอนคืนบัญชีที่ลูกค้าโอนมา (ดูได้จากสลิป) '
+              'หรือแชทถามบัญชีลูกค้า แล้วกด "คืนเงินให้ลูกค้าแล้ว"'
+        : 'คำสั่งซื้อยกเลิกหลังคุณโอนเงินแล้ว ร้านต้องคืนเงินให้คุณ '
+              'ถ้าร้านต้องการเลขบัญชี แชทกับร้านได้ด้านล่าง';
+
+    return card(
+      color: color.withValues(alpha: 0.08),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            done ? Icons.check_circle_rounded : Icons.currency_exchange_rounded,
+            color: color,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  heading,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  detail,
+                  style: TextStyle(
+                    color: AppColors.navy,
+                    fontSize: 13,
+                    height: 1.45,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // แชทในแอปกับอีกฝ่าย (ผู้ซื้อ → ร้าน / ร้าน → ลูกค้า)
+  Future<void> openChat(Map<String, dynamic> data) async {
+    if (isOpeningChat) return;
+
+    setState(() => isOpeningChat = true);
+
+    try {
+      final result = await ChatService.openOrderChat(widget.orderId);
+
+      if (!mounted) return;
+
+      final dynamic conversation = result['conversation'];
+
+      final int? conversationId = conversation is Map
+          ? (conversation['id'] as num?)?.toInt()
+          : null;
+
+      if (result['status'] != true || conversationId == null) {
+        showMessage(result['message']?.toString() ?? 'เปิดแชทไม่สำเร็จ');
+        return;
+      }
+
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => ChatRoomPage(
+            conversationId: conversationId,
+            user: conversation['user'] is Map
+                ? Map<String, dynamic>.from(conversation['user'])
+                : null,
+            draft: 'คำสั่งซื้อ ${data['code'] ?? ''} ',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (mounted) showMessage(e.toString());
+    } finally {
+      if (mounted) setState(() => isOpeningChat = false);
+    }
+  }
+
+  Widget chatButton(Map<String, dynamic> data) {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: marketColor,
+          side: const BorderSide(color: marketColor),
+          minimumSize: const Size(0, 44),
+        ),
+        onPressed: isOpeningChat ? null : () => openChat(data),
+        icon: const Icon(Icons.chat_bubble_outline_rounded, size: 19),
+        label: Text(isSeller ? 'แชทกับลูกค้า' : 'แชทกับร้าน'),
       ),
     );
   }
@@ -913,9 +1081,15 @@ class _OrderPageState extends State<OrderPage> {
 
     if (isSeller) {
       return card(
-        child: infoRow(
-          Icons.account_circle_outlined,
-          'ลูกค้า: ${buyer?['name'] ?? data['recipient_name'] ?? ''}',
+        child: Column(
+          children: [
+            infoRow(
+              Icons.account_circle_outlined,
+              'ลูกค้า: ${buyer?['name'] ?? data['recipient_name'] ?? ''}',
+            ),
+            const SizedBox(height: 8),
+            chatButton(data),
+          ],
         ),
       );
     }
@@ -954,6 +1128,8 @@ class _OrderPageState extends State<OrderPage> {
             ),
           ),
           const SizedBox(height: 12),
+          chatButton(data),
+          const SizedBox(height: 10),
           ShopContactButtons(
             phone: shop['phone']?.toString(),
             lineId: shop['line_id']?.toString(),
@@ -1115,6 +1291,12 @@ class _OrderPageState extends State<OrderPage> {
           handover ? Icons.handshake_outlined : Icons.local_shipping_outlined,
           shipOrder,
         ),
+      if (can.contains('refund'))
+        primary(
+          'คืนเงินให้ลูกค้าแล้ว',
+          Icons.currency_exchange_rounded,
+          refundOrder,
+        ),
       if (can.contains('reject_slip'))
         secondary('สลิปไม่ถูกต้อง / เงินไม่เข้า', rejectSlip),
       if (can.contains('received'))
@@ -1158,6 +1340,7 @@ class _OrderPageState extends State<OrderPage> {
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
         children: [
           buildStatus(data),
+          if (data['refund_status'] != null) buildRefund(data),
           if (showPayment) buildPayment(data),
           if (data['slip_url'] != null) buildSlip(data),
           ...buildActions(data),
@@ -1301,8 +1484,10 @@ Future<String?> showTextDialog(
   required String title,
   required String label,
   String? hint,
+  String? message,
   required String confirmLabel,
   bool required = false,
+  String requiredMessage = 'กรุณาบอกเหตุผล',
   bool danger = false,
 }) {
   final TextEditingController controller = TextEditingController();
@@ -1314,16 +1499,34 @@ Future<String?> showTextDialog(
       title: Text(title),
       content: Form(
         key: formKey,
-        child: TextFormField(
-          controller: controller,
-          autofocus: true,
-          maxLength: 300,
-          minLines: 2,
-          maxLines: 4,
-          decoration: InputDecoration(labelText: label, hintText: hint),
-          validator: (value) => required && (value ?? '').trim().isEmpty
-              ? 'กรุณาบอกเหตุผล'
-              : null,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (message != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Text(
+                  message,
+                  style: TextStyle(
+                    color: AppColors.danger,
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            TextFormField(
+              controller: controller,
+              autofocus: true,
+              maxLength: 300,
+              minLines: 2,
+              maxLines: 4,
+              decoration: InputDecoration(labelText: label, hintText: hint),
+              validator: (value) => required && (value ?? '').trim().isEmpty
+                  ? requiredMessage
+                  : null,
+            ),
+          ],
         ),
       ),
       actions: [
@@ -1347,67 +1550,128 @@ Future<String?> showTextDialog(
   );
 }
 
-// ร้านกดส่งสินค้า: เลขพัสดุ (ส่งพัสดุ/ส่งถึงบ้าน) + ข้อความถึงลูกค้า
-Future<({String tracking, String note})?> showShipDialog(
+// ร้านกดส่งสินค้า: บริษัทขนส่ง + เลขพัสดุ + ข้อความถึงลูกค้า
+// carriers มาจากเซิร์ฟเวอร์ (ว่าง = รับที่ร้าน / นัดรับ ไม่มีขนส่ง)
+// carrierRequired = ส่งพัสดุ ต้องเลือกขนส่ง / ขนส่งที่ tracking = true ต้องกรอกเลขพัสดุ
+Future<({String? carrier, String tracking, String note})?> showShipDialog(
   BuildContext context, {
   required bool handover,
+  List<Map<String, dynamic>> carriers = const [],
+  bool carrierRequired = false,
   String? paidAmount,
 }) {
   final TextEditingController tracking = TextEditingController();
   final TextEditingController note = TextEditingController();
+  final GlobalKey<FormState> formKey = GlobalKey<FormState>();
 
-  return showDialog<({String tracking, String note})>(
+  String? carrier;
+
+  return showDialog<({String? carrier, String tracking, String note})>(
     context: context,
-    builder: (dialogContext) => AlertDialog(
-      title: Text(handover ? 'ส่งมอบสินค้าแล้ว?' : 'ส่งสินค้าแล้ว?'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (paidAmount != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Text(
-                'เช็กในแอปธนาคารแล้วว่าได้รับเงิน $paidAmount ครบ',
-                style: TextStyle(
-                  color: AppColors.danger,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                ),
+    builder: (dialogContext) => StatefulBuilder(
+      builder: (context, setDialogState) {
+        final bool needsTracking = carriers.any(
+          (item) => item['key'] == carrier && item['tracking'] == true,
+        );
+
+        return AlertDialog(
+          title: Text(handover ? 'ส่งมอบสินค้าแล้ว?' : 'ส่งสินค้าแล้ว?'),
+          content: Form(
+            key: formKey,
+            // กดยืนยันแล้วมีข้อผิดพลาด → แก้แล้วข้อความเตือนหายเอง
+            autovalidateMode: AutovalidateMode.onUserInteraction,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (paidAmount != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Text(
+                        'ลูกค้าชำระแล้ว $paidAmount',
+                        style: TextStyle(
+                          color: AppColors.success,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  if (carriers.isNotEmpty) ...[
+                    DropdownButtonFormField<String>(
+                      initialValue: carrier,
+                      isExpanded: true,
+                      decoration: InputDecoration(
+                        labelText: carrierRequired
+                            ? 'บริษัทขนส่ง'
+                            : 'บริษัทขนส่ง (ไม่บังคับ)',
+                      ),
+                      items: [
+                        for (final item in carriers)
+                          DropdownMenuItem(
+                            value: item['key'].toString(),
+                            child: Text(item['label']?.toString() ?? ''),
+                          ),
+                      ],
+                      onChanged: (value) =>
+                          setDialogState(() => carrier = value),
+                      validator: (value) => carrierRequired && value == null
+                          ? 'กรุณาเลือกบริษัทขนส่ง'
+                          : null,
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                  if (!handover)
+                    TextFormField(
+                      controller: tracking,
+                      maxLength: 60,
+                      decoration: InputDecoration(
+                        labelText: needsTracking
+                            ? 'เลขพัสดุ'
+                            : 'เลขพัสดุ (ไม่บังคับ)',
+                        hintText: 'เช่น TH0123456789',
+                      ),
+                      validator: (value) =>
+                          needsTracking && (value ?? '').trim().isEmpty
+                          ? 'กรุณากรอกเลขพัสดุ'
+                          : null,
+                    ),
+                  TextFormField(
+                    controller: note,
+                    maxLength: 500,
+                    minLines: 1,
+                    maxLines: 3,
+                    decoration: InputDecoration(
+                      labelText: 'ข้อความถึงลูกค้า (ไม่บังคับ)',
+                      hintText: handover
+                          ? 'เช่น รอรับที่หน้าร้านได้เลย'
+                          : 'เช่น แพ็กกันกระแทกให้แล้ว',
+                    ),
+                  ),
+                ],
               ),
-            ),
-          if (!handover)
-            TextField(
-              controller: tracking,
-              maxLength: 60,
-              decoration: const InputDecoration(
-                labelText: 'เลขพัสดุ (ไม่บังคับ)',
-                hintText: 'เช่น TH0123456789',
-              ),
-            ),
-          TextField(
-            controller: note,
-            maxLength: 500,
-            minLines: 1,
-            maxLines: 3,
-            decoration: const InputDecoration(
-              labelText: 'ข้อความถึงลูกค้า (ไม่บังคับ)',
-              hintText: 'เช่น ส่งกับไปรษณีย์ไทย',
             ),
           ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(dialogContext).pop(),
-          child: const Text('ยังก่อน'),
-        ),
-        FilledButton(
-          style: FilledButton.styleFrom(backgroundColor: marketColor),
-          onPressed: () => Navigator.of(dialogContext)
-              .pop((tracking: tracking.text.trim(), note: note.text.trim())),
-          child: const Text('ยืนยัน'),
-        ),
-      ],
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('ยังก่อน'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: marketColor),
+              onPressed: () {
+                if (!(formKey.currentState?.validate() ?? false)) return;
+
+                Navigator.of(dialogContext).pop((
+                  carrier: carrier,
+                  tracking: tracking.text.trim(),
+                  note: note.text.trim(),
+                ));
+              },
+              child: const Text('ยืนยัน'),
+            ),
+          ],
+        );
+      },
     ),
   );
 }
