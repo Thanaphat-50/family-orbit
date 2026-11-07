@@ -34,7 +34,7 @@ import 'chat_room_page.dart';
 import 'feed_page.dart';
 import 'map_page.dart';
 import 'history_page.dart';
-import 'my_posts_page.dart';
+import '../services/order_service.dart';
 import 'my_shop_page.dart';
 import 'notification_page.dart';
 import 'order_page.dart';
@@ -75,6 +75,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   int selectedIndex = tabHome;
   int unreadNotificationCount = 0;
+
+  // เมนูบัญชี: คำสั่งซื้อรอชำระเงิน
+  int ordersToPay = 0;
 
   // เมนูบัญชีด้านซ้าย (เปิดจากรูปโปรไฟล์มุมซ้ายบน)
   final GlobalKey<ScaffoldState> scaffoldKey = GlobalKey<ScaffoldState>();
@@ -1177,8 +1180,29 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // โหลดตัวเลข/รูปล่าสุดระหว่างเปิดเมนู
     loadMyProfile();
     loadUnreadNotificationCount();
+    loadOrdersToPay();
 
     scaffoldKey.currentState?.openDrawer();
+  }
+
+  // คำสั่งซื้อรอชำระเงิน (ตัวเลขเดียวกับแท็บ "รอชำระเงิน" ในคำสั่งซื้อของฉัน)
+  Future<void> loadOrdersToPay() async {
+    try {
+      final result = await OrderService.getOrders(
+        seller: false,
+        filter: 'to_pay',
+      );
+
+      final dynamic counts = result['counts'];
+
+      if (!mounted || result['status'] != true || counts is! Map) return;
+
+      setState(() {
+        ordersToPay = (counts['to_pay'] as num?)?.toInt() ?? 0;
+      });
+    } catch (_) {
+      // โหลดไม่ได้ → ไม่แสดงข้อความรอชำระ
+    }
   }
 
   Widget buildAccountButton() {
@@ -1218,28 +1242,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           MaterialPageRoute(builder: (_) => const ProfilePage()),
         );
 
-      case AccountMenuItem.myPosts:
-        await navigator.push(
-          MaterialPageRoute(builder: (_) => const MyPostsPage()),
-        );
-
+      // "โพสต์ของฉัน" และ "โปรไฟล์ในชุมชน" อยู่ในหน้าโปรไฟล์แล้ว
+      // (ส่วนโพสต์ของฉัน + ตัวกรอง / ปุ่ม "ดูโปรไฟล์ที่คนอื่นเห็น")
       case AccountMenuItem.history:
         await navigator.push(
           MaterialPageRoute(builder: (_) => const HistoryPage()),
-        );
-
-      case AccountMenuItem.communityProfile:
-        final dynamic id = myUser['id'];
-
-        if (id is! num) return;
-
-        await navigator.push(
-          MaterialPageRoute(
-            builder: (_) => UserProfilePage(
-              userId: id.toInt(),
-              name: myUser['name']?.toString(),
-            ),
-          ),
         );
 
       case AccountMenuItem.family:
@@ -1832,6 +1839,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         profile: myProfile,
         fallbackName: widget.userName,
         unreadNotifications: unreadNotificationCount,
+        ordersToPay: ordersToPay,
         onSelected: handleAccountMenu,
       ),
 

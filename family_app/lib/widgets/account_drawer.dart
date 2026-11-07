@@ -6,16 +6,15 @@ import 'user_avatar.dart';
 
 // =======================================================
 // เมนูบัญชี (เลื่อนออกมาจากด้านซ้าย เมื่อกดรูปโปรไฟล์มุมซ้ายบน)
-// - หัวเมนู: รูป ชื่อ ครอบครัว และตัวเลข (กดแล้วเปิดหน้าโปรไฟล์)
-// - ทางลัดไปหน้าที่เกี่ยวกับบัญชีของเรา
+// - หัวเมนู: รูป + ชื่อ + กลุ่ม (กดแล้วเปิดหน้าโปรไฟล์) และปุ่มปิด
+// - หมวด: บัญชีและกิจกรรม / กลุ่ม / การซื้อสินค้า / การขายสินค้า / การตั้งค่า
+// ปิดได้ด้วยปุ่มปิด แตะด้านนอก หรือปุ่มย้อนกลับ (Drawer ของ Flutter)
 // หน้าหลักเป็นคนเปิดหน้าต่าง ๆ (onSelected)
 // =======================================================
 
 enum AccountMenuItem {
   profile,
-  myPosts,
   history,
-  communityProfile,
   family,
   notifications,
   orders,
@@ -26,14 +25,18 @@ enum AccountMenuItem {
   logout,
 }
 
-class AccountDrawer extends StatelessWidget {
-  // ผลจาก GET /api/profile (user, family, role, stats) — ยังไม่โหลดก็ได้
+class AccountDrawer extends StatefulWidget {
+  // ผลจาก GET /api/profile (user, family, role, stats, shop) — ยังไม่โหลดก็ได้
   final Map<String, dynamic>? profile;
 
   // ชื่อที่รู้อยู่แล้ว ใช้ระหว่างรอโหลดโปรไฟล์
   final String fallbackName;
 
+  // ตัวเลขเดียวกับกระดิ่งบนหน้าหลัก (หน้าหลักเป็นคนโหลด)
   final int unreadNotifications;
+
+  // คำสั่งซื้อรอชำระเงิน (0 = ไม่แสดง)
+  final int ordersToPay;
 
   final ValueChanged<AccountMenuItem> onSelected;
 
@@ -42,164 +45,141 @@ class AccountDrawer extends StatelessWidget {
     required this.profile,
     required this.fallbackName,
     required this.unreadNotifications,
+    this.ordersToPay = 0,
     required this.onSelected,
   });
 
-  static const Color communityColor = Color(0xFF0B7FA6);
+  @override
+  State<AccountDrawer> createState() => _AccountDrawerState();
+}
+
+class _AccountDrawerState extends State<AccountDrawer> {
+  // แถบเลื่อนของเมนู (ไม่ใช้ตัวเลื่อนหลักของหน้า)
+  final ScrollController scrollController = ScrollController();
+
+  Map<String, dynamic>? get profile => widget.profile;
 
   Map<String, dynamic> get user {
     final dynamic value = profile?['user'];
 
     return value is Map
         ? Map<String, dynamic>.from(value)
-        : {'name': fallbackName};
+        : {'name': widget.fallbackName};
   }
 
   String get name {
     final String text = user['name']?.toString().trim() ?? '';
 
-    return text.isEmpty ? fallbackName : text;
+    return text.isEmpty ? widget.fallbackName : text;
   }
+
+  bool get hasFamily => profile?['family'] is Map;
+
+  // ยังโหลดโปรไฟล์ไม่เสร็จ → ไม่บอกว่า "ยังไม่มีกลุ่ม/ร้าน" ก่อน
+  bool get loaded => profile != null;
+
+  bool get hasShop => profile?['shop'] is Map;
 
   String? get familyLine {
     final dynamic family = profile?['family'];
 
-    if (family is! Map) return null;
+    if (family is! Map) return loaded ? 'ยังไม่มีกลุ่ม' : null;
 
     final String role = profile?['role'] == 'owner' ? 'เจ้าของกลุ่ม' : 'สมาชิก';
 
     return '${family['name']} · $role';
   }
 
-  bool get hasFamily => profile?['family'] is Map;
-
-  int stat(String key) {
-    final dynamic stats = profile?['stats'];
-
-    final dynamic value = stats is Map ? stats[key] : null;
-
-    return value is num ? value.toInt() : 0;
-  }
-
   // ปิดเมนูก่อน แล้วค่อยให้หน้าหลักเปิดหน้าที่เลือก
-  void select(BuildContext context, AccountMenuItem item) {
+  void select(AccountMenuItem item) {
     Navigator.of(context).pop();
 
-    onSelected(item);
+    widget.onSelected(item);
   }
 
   // =====================================================
   // UI
   // =====================================================
 
-  Widget buildHeader(BuildContext context) {
+  Widget buildHeader() {
     final String? family = familyLine;
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () => select(context, AccountMenuItem.profile),
-        child: Container(
-          width: double.infinity,
-          padding: EdgeInsets.fromLTRB(
-            20,
-            MediaQuery.of(context).padding.top + 22,
-            20,
-            20,
-          ),
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFF172554), Color(0xFF4650D8), Color(0xFF666CFF)],
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.fromLTRB(
+        8,
+        MediaQuery.of(context).padding.top + 10,
+        4,
+        12,
+      ),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF172554), Color(0xFF4650D8), Color(0xFF666CFF)],
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onTap: () => select(AccountMenuItem.profile),
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Row(
+                    children: [
+                      UserAvatar(user: user, radius: 24, showBorder: true),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              name,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 17,
+                                height: 1.25,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            if (family != null) ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                family,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.88),
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              UserAvatar(user: user, radius: 32, showBorder: true),
-              const SizedBox(height: 12),
-              Text(
-                name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 19,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              if (family != null) ...[
-                const SizedBox(height: 3),
-                Text(
-                  family,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.80),
-                    fontSize: 12.5,
-                  ),
-                ),
-              ],
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  buildHeaderStat('${stat('posts')}', 'โพสต์'),
-                  const SizedBox(width: 18),
-                  buildHeaderStat(
-                    '${stat('likes_received')}',
-                    'ถูกใจที่ได้รับ',
-                  ),
-                  const Spacer(),
-                  Text(
-                    'ดูโปรไฟล์',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.85),
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    color: Colors.white.withValues(alpha: 0.85),
-                    size: 18,
-                  ),
-                ],
-              ),
-            ],
+          IconButton(
+            tooltip: 'ปิดเมนู',
+            onPressed: () => Navigator.of(context).pop(),
+            icon: const Icon(Icons.close_rounded, color: Colors.white),
           ),
-        ),
+        ],
       ),
     );
   }
 
-  Widget buildHeaderStat(String value, String label) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.baseline,
-      textBaseline: TextBaseline.alphabetic,
-      children: [
-        Text(
-          value,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 16,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        const SizedBox(width: 4),
-        Text(
-          label,
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.78),
-            fontSize: 12,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget buildItem(
-    BuildContext context, {
+  Widget buildItem({
     required AccountMenuItem item,
     required IconData icon,
     required String title,
@@ -211,7 +191,8 @@ class AccountDrawer extends StatelessWidget {
     color ??= AppColors.primary;
 
     return ListTile(
-      onTap: () => select(context, item),
+      onTap: () => select(item),
+      minTileHeight: 52,
       contentPadding: const EdgeInsets.symmetric(horizontal: 18),
       leading: Container(
         width: 38,
@@ -234,21 +215,24 @@ class AccountDrawer extends StatelessWidget {
           ? null
           : Text(
               subtitle,
-              style: TextStyle(color: AppColors.muted, fontSize: 12),
+              style: TextStyle(color: AppColors.subtle, fontSize: 12.5),
             ),
       trailing: badge > 0
-          ? Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: AppColors.danger,
-                borderRadius: BorderRadius.circular(99),
-              ),
-              child: Text(
-                badge > 99 ? '99+' : '$badge',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w800,
+          ? Semantics(
+              label: 'ยังไม่ได้อ่าน $badge รายการ',
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: AppColors.danger,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+                child: Text(
+                  badge > 99 ? '99+' : '$badge',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
               ),
             )
@@ -256,22 +240,40 @@ class AccountDrawer extends StatelessWidget {
     );
   }
 
-  Widget buildSectionLabel(String label) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: AppColors.muted,
-          fontSize: 12.5,
-          fontWeight: FontWeight.w800,
+  // หัวข้อหมวดเล็ก ๆ + เส้นคั่นบาง ๆ (ไม่ทำกรอบแยกทุกหมวด)
+  List<Widget> buildSection(
+    String label,
+    List<Widget> items, {
+    bool first = false,
+  }) {
+    return [
+      if (!first)
+        Divider(
+          height: 17,
+          thickness: 1,
+          indent: 20,
+          endIndent: 20,
+          color: AppColors.border,
+        ),
+      Padding(
+        padding: EdgeInsets.fromLTRB(20, first ? 12 : 4, 20, 2),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: AppColors.subtle,
+            fontSize: 12.5,
+            fontWeight: FontWeight.w800,
+          ),
         ),
       ),
-    );
+      ...items,
+    ];
   }
 
   @override
   Widget build(BuildContext context) {
+    final int toPay = widget.ordersToPay;
+
     return Drawer(
       backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
@@ -280,111 +282,109 @@ class AccountDrawer extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
-          buildHeader(context),
+          buildHeader(),
           Expanded(
-            child: ListView(
-              padding: const EdgeInsets.only(bottom: 12),
-              children: [
-                buildSectionLabel('ของฉัน'),
-                buildItem(
-                  context,
-                  item: AccountMenuItem.profile,
-                  icon: Icons.person_outline_rounded,
-                  title: 'โปรไฟล์',
-                  subtitle: 'รูป ชื่อ แนะนำตัว และโพสต์ของคุณ',
+            child: Scrollbar(
+              controller: scrollController,
+              child: ListView(
+                controller: scrollController,
+                // เว้นท้ายรายการไม่ให้ชนแถบนำทางของระบบ
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(context).padding.bottom + 16,
                 ),
-                buildItem(
-                  context,
-                  item: AccountMenuItem.myPosts,
-                  icon: Icons.article_outlined,
-                  title: 'โพสต์ของฉัน',
-                  subtitle: 'ทั้งในกลุ่มและชุมชน',
-                ),
-                buildItem(
-                  context,
-                  item: AccountMenuItem.history,
-                  icon: Icons.history_rounded,
-                  title: 'ประวัติการใช้งาน',
-                  subtitle: 'ถูกใจ ความคิดเห็น แชร์ และการติดตาม',
-                ),
-                if (hasFamily)
-                  buildItem(
-                    context,
-                    item: AccountMenuItem.communityProfile,
-                    icon: Icons.public_rounded,
-                    title: 'โปรไฟล์ในชุมชน',
-                    subtitle: 'ดูว่าคนในชุมชนเห็นคุณแบบไหน',
-                    color: communityColor,
-                  ),
-                buildItem(
-                  context,
-                  item: AccountMenuItem.family,
-                  icon: Icons.groups_rounded,
-                  title: 'กลุ่มของฉัน',
-                  subtitle: hasFamily
-                      ? 'สมาชิกและรหัสเชิญ'
-                      : 'สร้างหรือเข้าร่วมกลุ่ม',
-                  color: AppColors.sky,
-                ),
-                buildItem(
-                  context,
-                  item: AccountMenuItem.notifications,
-                  icon: Icons.notifications_none_rounded,
-                  title: 'การแจ้งเตือน',
-                  badge: unreadNotifications,
-                ),
-                buildItem(
-                  context,
-                  item: AccountMenuItem.orders,
-                  icon: Icons.receipt_long_outlined,
-                  title: 'คำสั่งซื้อของฉัน',
-                  subtitle: 'สินค้าที่สั่งซื้อและสถานะการส่ง',
-                  color: marketColor,
-                ),
-                buildItem(
-                  context,
-                  item: AccountMenuItem.savedProducts,
-                  icon: Icons.bookmark_border_rounded,
-                  title: 'สินค้าที่บันทึก',
-                  color: marketColor,
-                ),
-                buildItem(
-                  context,
-                  item: AccountMenuItem.addresses,
-                  icon: Icons.location_on_outlined,
-                  title: 'ที่อยู่จัดส่ง',
-                  color: marketColor,
-                ),
-                buildItem(
-                  context,
-                  item: AccountMenuItem.shop,
-                  icon: Icons.storefront_outlined,
-                  title: 'ร้านค้าของฉัน',
-                  subtitle: 'เปิดร้าน จัดการสินค้า และดูสถานะร้าน',
-                  color: marketColor,
-                ),
-                const Divider(height: 24, indent: 20, endIndent: 20),
-                buildItem(
-                  context,
-                  item: AccountMenuItem.settings,
-                  icon: Icons.settings_outlined,
-                  title: 'ตั้งค่า',
-                  subtitle: 'แจ้งเตือน ตำแหน่ง ความเป็นส่วนตัว บัญชี',
-                  color: AppColors.muted,
-                ),
-                buildItem(
-                  context,
-                  item: AccountMenuItem.logout,
-                  icon: Icons.logout_rounded,
-                  title: 'ออกจากระบบ',
-                  color: AppColors.danger,
-                  danger: true,
-                ),
-              ],
+                children: [
+                  ...buildSection('บัญชีและกิจกรรม', first: true, [
+                    buildItem(
+                      item: AccountMenuItem.profile,
+                      icon: Icons.person_outline_rounded,
+                      title: 'โปรไฟล์ของฉัน',
+                    ),
+                    buildItem(
+                      item: AccountMenuItem.history,
+                      icon: Icons.history_rounded,
+                      title: 'ประวัติการใช้งาน',
+                      subtitle: 'ถูกใจ ความคิดเห็น แชร์ และการติดตาม',
+                    ),
+                    buildItem(
+                      item: AccountMenuItem.notifications,
+                      icon: Icons.notifications_none_rounded,
+                      title: 'การแจ้งเตือน',
+                      badge: widget.unreadNotifications,
+                    ),
+                  ]),
+                  ...buildSection('กลุ่ม', [
+                    buildItem(
+                      item: AccountMenuItem.family,
+                      icon: Icons.groups_rounded,
+                      title: 'กลุ่มของฉัน',
+                      subtitle: loaded && !hasFamily
+                          ? 'สร้างหรือเข้าร่วมกลุ่ม'
+                          : null,
+                      color: AppColors.sky,
+                    ),
+                  ]),
+                  ...buildSection('การซื้อสินค้า', [
+                    buildItem(
+                      item: AccountMenuItem.orders,
+                      icon: Icons.receipt_long_outlined,
+                      title: 'คำสั่งซื้อของฉัน',
+                      subtitle: toPay > 0 ? 'รอชำระเงิน $toPay รายการ' : null,
+                      color: marketColor,
+                    ),
+                    buildItem(
+                      item: AccountMenuItem.savedProducts,
+                      icon: Icons.bookmark_border_rounded,
+                      title: 'สินค้าที่บันทึก',
+                      color: marketColor,
+                    ),
+                    buildItem(
+                      item: AccountMenuItem.addresses,
+                      icon: Icons.location_on_outlined,
+                      title: 'ที่อยู่จัดส่ง',
+                      color: marketColor,
+                    ),
+                  ]),
+                  ...buildSection('การขายสินค้า', [
+                    buildItem(
+                      item: AccountMenuItem.shop,
+                      icon: hasShop || !loaded
+                          ? Icons.storefront_outlined
+                          : Icons.add_business_outlined,
+                      title: hasShop || !loaded
+                          ? 'ร้านค้าของฉัน'
+                          : 'เปิดร้านค้า',
+                      subtitle: loaded && !hasShop ? 'ลงขายสินค้าในแอป' : null,
+                      color: marketColor,
+                    ),
+                  ]),
+                  ...buildSection('การตั้งค่า', [
+                    buildItem(
+                      item: AccountMenuItem.settings,
+                      icon: Icons.settings_outlined,
+                      title: 'ตั้งค่า',
+                      subtitle: 'แจ้งเตือน ตำแหน่ง ความเป็นส่วนตัว บัญชี',
+                      color: AppColors.subtle,
+                    ),
+                    buildItem(
+                      item: AccountMenuItem.logout,
+                      icon: Icons.logout_rounded,
+                      title: 'ออกจากระบบ',
+                      color: AppColors.danger,
+                      danger: true,
+                    ),
+                  ]),
+                ],
+              ),
             ),
           ),
         ],
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    scrollController.dispose();
+    super.dispose();
   }
 }
