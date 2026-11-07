@@ -144,8 +144,13 @@ class CommunityController extends Controller
         $blockedIds = $me->blockedUsers()->pluck('users.id');
 
         // นับเฉพาะโพสต์ที่เราเห็นได้ (ครอบครัวเดียวกัน + ชุมชน)
+        // โปรไฟล์ของเราเอง = "ดูโปรไฟล์ที่คนอื่นเห็น" → นับเฉพาะที่คนในชุมชนเห็น
         $visiblePosts = fn () => Post::where('user_id', $user->id)
-            ->visibleOnProfileTo($me, $membership?->family_id, $blockedIds);
+            ->when(
+                $isMe,
+                fn ($query) => $query->visibleInCommunityTo($me, $blockedIds),
+                fn ($query) => $query->visibleOnProfileTo($me, $membership?->family_id, $blockedIds)
+            );
 
         // บทบาทในครอบครัว (แสดงเฉพาะครอบครัวเดียวกัน)
         $familyRole = $membership && ($isMe || $isFamily)

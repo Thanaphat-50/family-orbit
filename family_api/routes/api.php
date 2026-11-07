@@ -202,6 +202,17 @@ Route::middleware('auth:sanctum')->group(function () {
         'destroy'
     ]);
 
+    // รายชื่อผู้ติดตาม / กำลังติดตาม ของเราเอง (หน้าโปรไฟล์)
+    Route::get('/me/followers', [
+        FollowController::class,
+        'myFollowers'
+    ]);
+
+    Route::get('/me/following', [
+        FollowController::class,
+        'myFollowing'
+    ]);
+
     // ประวัติการใช้งานของเรา
     Route::get('/me/history', [
         HistoryController::class,

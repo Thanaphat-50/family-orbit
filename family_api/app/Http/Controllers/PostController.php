@@ -46,6 +46,7 @@ class PostController extends Controller
     // ?scope=user      &user_id=5   หน้าโปรไฟล์: โพสต์ของคนนี้ที่เราเห็นได้
     //                  &page=N      (ครอบครัวเดียวกัน + ชุมชน)
     // ?scope=mine      &page=N      โพสต์ของเราเอง (ครอบครัว + ชุมชน)
+    //                  &visibility=community|family  ตัวกรองหน้าโปรไฟล์
     // =====================================================
 
     public function index(Request $request)
@@ -57,9 +58,9 @@ class PostController extends Controller
             $user->id
         )->first();
 
-        // ยังไม่มีครอบครัว: ดูฟีดชุมชนและโพสต์ในหน้าโปรไฟล์ได้
-        // (ฟีดครอบครัว / โพสต์ของฉัน ต้องมีครอบครัว)
-        if (!$membership && !in_array($request->query('scope'), ['community', 'user'], true)) {
+        // ยังไม่มีครอบครัว: ดูฟีดชุมชน โพสต์ในหน้าโปรไฟล์ และโพสต์ชุมชนของตัวเองได้
+        // (ฟีดครอบครัวต้องมีครอบครัว)
+        if (!$membership && !in_array($request->query('scope'), ['community', 'user', 'mine'], true)) {
             return response()->json([
                 'status' => false,
                 'message' => 'คุณยังไม่ได้อยู่ในกลุ่ม',
@@ -103,7 +104,13 @@ class PostController extends Controller
         }
 
         if ($request->query('scope') === 'mine') {
-            return $this->myPosts($user, $membership);
+            $data = $request->validate([
+                // community = เฉพาะชุมชน / family = เฉพาะในกลุ่ม / ไม่ส่ง = ทั้งหมด
+                'visibility' => 'nullable|in:community,family',
+                'page' => 'nullable|integer|min:1',
+            ]);
+
+            return $this->myPosts($user, $membership, $data['visibility'] ?? null);
         }
 
         if ($request->query('scope') === 'user') {
@@ -244,8 +251,15 @@ class PostController extends Controller
     {
         $blockedIds = $user->blockedUsers()->pluck('users.id');
 
+        // โปรไฟล์ของเราเอง = "ดูโปรไฟล์ที่คนอื่นเห็น" → เฉพาะที่คนในชุมชนเห็น (ไม่รวมโพสต์ในกลุ่ม)
+        $isMe = $authorId === (int) $user->id;
+
         $paginator = Post::where('user_id', $authorId)
-            ->visibleOnProfileTo($user, $membership?->family_id, $blockedIds)
+            ->when(
+                $isMe,
+                fn ($query) => $query->visibleInCommunityTo($user, $blockedIds),
+                fn ($query) => $query->visibleOnProfileTo($user, $membership?->family_id, $blockedIds)
+            )
             ->with($this->communityRelations($user, $blockedIds))
             ->tap(fn ($query) => $this->withLikeInfo($query, $user))
             ->orderByDesc('created_at')
@@ -266,17 +280,29 @@ class PostController extends Controller
         ]);
     }
 
-    private function myPosts(User $user, FamilyMember $membership)
+    // visibility: community / family / null = ทั้งหมด
+    // ยังไม่มีกลุ่ม → เฉพาะโพสต์ชุมชน (ตัวกรอง "ในกลุ่ม" = ว่าง)
+    private function myPosts(User $user, ?FamilyMember $membership, ?string $visibility = null)
     {
         $blockedIds = $user->blockedUsers()->pluck('users.id');
 
         $paginator = Post::where('user_id', $user->id)
-            ->where(function ($query) use ($membership) {
-                $query->where('visibility', 'community')
-                    ->orWhere(function ($family) use ($membership) {
+            ->where(function ($query) use ($membership, $visibility) {
+                if ($visibility !== 'family') {
+                    $query->where('visibility', 'community');
+                }
+
+                if ($membership && $visibility !== 'community') {
+                    $query->orWhere(function ($family) use ($membership) {
                         $family->where('visibility', 'family')
                             ->where('family_id', $membership->family_id);
                     });
+                }
+
+                // ตัวกรอง "ในกลุ่ม" แต่ยังไม่มีกลุ่ม → ไม่มีโพสต์
+                if (!$membership && $visibility === 'family') {
+                    $query->whereRaw('1 = 0');
+                }
             })
             ->with($this->communityRelations($user, $blockedIds))
             ->tap(fn ($query) => $this->withLikeInfo($query, $user))
@@ -295,6 +321,7 @@ class PostController extends Controller
         return response()->json([
             'status' => true,
             'scope' => 'mine',
+            'visibility' => $visibility,
             'current_user' => $this->currentUserPayload($user),
             'posts' => $posts,
             'page' => $paginator->currentPage(),

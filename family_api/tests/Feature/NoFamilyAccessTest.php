@@ -102,7 +102,10 @@ class NoFamilyAccessTest extends TestCase
             ->assertJsonPath('code', 'family_required');
 
         $this->getJson('/api/posts?scope=family')->assertForbidden();
-        $this->getJson('/api/posts?scope=mine')->assertForbidden();
+
+        // โพสต์ของฉันในหน้าโปรไฟล์ยังเปิดได้ (ยังไม่มีโพสต์ / ตัวกรอง "ในกลุ่ม" ว่าง)
+        $this->getJson('/api/posts?scope=mine')->assertOk()->assertJsonCount(0, 'posts');
+        $this->getJson('/api/posts?scope=mine&visibility=family')->assertOk()->assertJsonCount(0, 'posts');
 
         $this->assertSame(0, FamilyMember::where('user_id', $newcomer->id)->count());
     }

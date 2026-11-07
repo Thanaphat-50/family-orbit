@@ -619,7 +619,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
                   if (isMe)
                     buildChip(
                       Icons.visibility_outlined,
-                      'คนอื่นเห็นโปรไฟล์ของคุณแบบนี้',
+                      'คนในชุมชนเห็นโปรไฟล์ของคุณแบบนี้',
                       AppColors.primary,
                     ),
                   if (profile?['is_family'] == true)
@@ -676,6 +676,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
                 const SizedBox(height: 16),
                 Divider(height: 1, color: AppColors.border),
                 const SizedBox(height: 14),
+                // ตัวเลขนับที่เซิร์ฟเวอร์ เฉพาะโพสต์ที่ผู้ชมคนนี้เห็นได้
                 Row(
                   children: [
                     Expanded(
@@ -691,23 +692,51 @@ class _UserProfilePageState extends State<UserProfilePage> {
                     Container(width: 1, height: 36, color: AppColors.border),
                     Expanded(
                       child: buildStat(
-                        icon: Icons.favorite_rounded,
-                        color: likeColor,
-                        value: countOf('likes_received'),
-                        label: 'ถูกใจที่ได้รับ',
-                      ),
-                    ),
-                    Container(width: 1, height: 36, color: AppColors.border),
-                    Expanded(
-                      child: buildStat(
                         icon: Icons.people_alt_rounded,
                         color: AppColors.sky,
                         value: countOf('followers_count'),
                         label: 'ผู้ติดตาม',
                       ),
                     ),
+                    Container(width: 1, height: 36, color: AppColors.border),
+                    Expanded(
+                      child: buildStat(
+                        icon: Icons.person_add_alt_rounded,
+                        color: AppColors.sky,
+                        value: countOf('following_count'),
+                        label: 'กำลังติดตาม',
+                      ),
+                    ),
                   ],
                 ),
+                const SizedBox(height: 10),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.favorite_rounded,
+                      size: 13,
+                      color: likeColor,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'ได้รับถูกใจ ${countOf('likes_received')} ครั้ง',
+                      style: TextStyle(color: AppColors.muted, fontSize: 12),
+                    ),
+                  ],
+                ),
+                if (isMe) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'โพสต์ในกลุ่มไม่แสดงที่นี่ (เห็นเฉพาะสมาชิกในกลุ่ม) และไม่แสดงอีเมลหรือชื่อกลุ่มของคุณ',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: AppColors.muted,
+                      fontSize: 11.5,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
               ],
             ],
           ),
@@ -718,6 +747,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
             ProfileIntroCard(
               intro: intro,
               onEdit: isMe ? openEditProfile : null,
+              showPublicNote: isMe,
             ),
           ],
           const SizedBox(height: 20),
@@ -834,7 +864,11 @@ class _UserProfilePageState extends State<UserProfilePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
+        title: Text(
+          isMe ? 'โปรไฟล์ที่คนอื่นเห็น' : name,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         actions: [if (profile != null && !isMe) buildMenu()],
       ),
       body: buildBody(),

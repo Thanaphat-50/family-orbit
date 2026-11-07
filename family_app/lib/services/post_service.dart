@@ -44,6 +44,8 @@ class PostService {
     String? media,
     // ฟีดชุมชน: เฉพาะโพสต์ที่มีแฮชแท็กนี้
     String? hashtag,
+    // โพสต์ของฉัน: community = เฉพาะชุมชน / family = เฉพาะในกลุ่ม / null = ทั้งหมด
+    String? visibility,
   }) async {
     final headers = await _headers();
 
@@ -59,6 +61,7 @@ class PostService {
         if (scope == 'community' && sort != null) 'sort': sort,
         if (scope == 'community' && media != null) 'media': media,
         if (scope == 'community' && hashtag != null) 'hashtag': hashtag,
+        if (scope == 'mine' && visibility != null) 'visibility': visibility,
       },
     );
 

@@ -75,7 +75,15 @@ class ProfileIntroCard extends StatelessWidget {
   // โปรไฟล์ของเราเอง: มีปุ่มแก้ไข และชวนกรอกเมื่อยังว่าง
   final VoidCallback? onEdit;
 
-  const ProfileIntroCard({super.key, required this.intro, this.onEdit});
+  // เจ้าของบัญชีดูอยู่: บอกว่าข้อมูลนี้คนในชุมชนเห็น
+  final bool showPublicNote;
+
+  const ProfileIntroCard({
+    super.key,
+    required this.intro,
+    this.onEdit,
+    this.showPublicNote = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -138,6 +146,28 @@ class ProfileIntroCard extends StatelessWidget {
                 for (final field in details) ...[
                   const SizedBox(height: 10),
                   buildDetail(field, intro[field.key]!),
+                ],
+                if (showPublicNote) ...[
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.public_rounded,
+                        size: 13,
+                        color: AppColors.muted,
+                      ),
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: Text(
+                          'ข้อมูลนี้แสดงในชุมชน',
+                          style: TextStyle(
+                            color: AppColors.muted,
+                            fontSize: 11.5,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ],
                 if (bio == null && details.isEmpty) ...[
                   const SizedBox(height: 2),

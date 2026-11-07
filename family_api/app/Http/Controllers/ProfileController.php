@@ -6,7 +6,9 @@ use App\Models\Family;
 use App\Models\FamilyMember;
 use App\Models\Post;
 use App\Models\PostLike;
+use App\Models\Shop;
 use App\Models\User;
+use App\Models\UserBlock;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
@@ -31,6 +33,8 @@ class ProfileController extends Controller
             ? Family::find($membership->family_id)
             : null;
 
+        $shop = Shop::where('user_id', $user->id)->first(['id', 'name', 'status']);
+
         return response()->json([
             'status' => true,
             'user' => $this->userPayload($request, $user),
@@ -40,12 +44,16 @@ class ProfileController extends Controller
             ] : null,
             'role' => $membership ? $membership->role : null,
             'stats' => $this->stats($user, $membership),
+            // ทางลัดหน้าโปรไฟล์: มีร้าน → "ร้านค้าของฉัน" / ไม่มี → "เปิดร้านค้า"
+            'shop' => $shop?->only(['id', 'name', 'status']),
         ]);
     }
 
-    // ตัวเลขบนหน้าโปรไฟล์
-    // posts:          โพสต์ของเรา (ชุมชน + ครอบครัวปัจจุบัน) ตรงกับหน้า "โพสต์ของฉัน"
-    // likes_received: ถูกใจที่ได้รับในโพสต์เหล่านั้น
+    // ตัวเลขบนหน้าโปรไฟล์ของเราเอง (เห็นเฉพาะเจ้าของบัญชี)
+    // posts:           โพสต์ของเรา (ชุมชน + กลุ่มปัจจุบัน) ตรงกับ "โพสต์ของฉัน" ตัวกรองทั้งหมด
+    // community_posts: เฉพาะโพสต์ชุมชน / group_posts: เฉพาะโพสต์ในกลุ่มปัจจุบัน
+    // likes_received:  ถูกใจที่ได้รับในโพสต์ทั้งหมดข้างบน
+    // followers / following: ไม่นับคนที่บล็อกกัน (ตรงกับรายชื่อ GET /api/me/followers)
     private function stats(User $user, ?FamilyMember $membership): array
     {
         $myPosts = fn () => Post::where('user_id', $user->id)
@@ -60,9 +68,20 @@ class ProfileController extends Controller
                 }
             });
 
+        $blockedIds = UserBlock::idsBlockedEitherWay($user);
+
         return [
             'posts' => $myPosts()->count(),
+            'community_posts' => Post::where('user_id', $user->id)->where('visibility', 'community')->count(),
+            'group_posts' => $membership
+                ? Post::where('user_id', $user->id)
+                    ->where('visibility', 'family')
+                    ->where('family_id', $membership->family_id)
+                    ->count()
+                : 0,
             'likes_received' => PostLike::whereIn('post_id', $myPosts()->select('id'))->count(),
+            'followers' => $user->followers()->whereNotIn('users.id', $blockedIds)->count(),
+            'following' => $user->following()->whereNotIn('users.id', $blockedIds)->count(),
         ];
     }
 

@@ -86,6 +86,10 @@ class FeedPage extends StatefulWidget {
   final String? category;
   final ValueChanged<String?>? onCategoryChanged;
 
+  // โพสต์ของฉัน (scope mine): community = เฉพาะชุมชน / family = เฉพาะในกลุ่ม
+  // null = ทั้งหมด — เปลี่ยนค่า → โหลดใหม่ตั้งแต่หน้าแรก (เซิร์ฟเวอร์กรองทุกหน้า)
+  final String? mineVisibility;
+
   const FeedPage({
     super.key,
     required this.scope,
@@ -99,6 +103,7 @@ class FeedPage extends StatefulWidget {
     this.onRefresh,
     this.category,
     this.onCategoryChanged,
+    this.mineVisibility,
   });
 
   @override
@@ -307,6 +312,7 @@ class _FeedPageState extends State<FeedPage> {
         sort: forYou ? 'for_you' : null,
         media: videosOnly ? 'video' : null,
         hashtag: widget.hashtag,
+        visibility: scope == FeedScope.mine ? widget.mineVisibility : null,
       );
 
       if (!mounted || generation != feedGeneration) return;
@@ -643,6 +649,29 @@ class _FeedPageState extends State<FeedPage> {
     if (categoryFromParent && widget.category != oldWidget.category) {
       changeFilter(widget.category);
     }
+
+    if (scope == FeedScope.mine &&
+        widget.mineVisibility != oldWidget.mineVisibility) {
+      restartFeed();
+    }
+  }
+
+  // ตัวกรองโพสต์ของฉันเปลี่ยน → ล้างรายการแล้วโหลดหน้าแรกใหม่
+  // (ผลของตัวกรองเก่าที่ตอบกลับช้าถูกทิ้งด้วย feedGeneration)
+  Future<void> restartFeed() async {
+    setState(() {
+      feedGeneration++;
+
+      feed.posts = [];
+      feed.isLoading = true;
+      feed.isLoadingMore = false;
+      feed.loadError = null;
+      feed.hasMore = false;
+
+      expandedPostIds.clear();
+    });
+
+    await loadPosts();
   }
 
   // เลือกหมวดที่จะกรองฟีดชุมชน → ล้างฟีดแล้วโหลดใหม่
@@ -4114,12 +4143,26 @@ class _FeedPageState extends State<FeedPage> {
     }
 
     if (scope == FeedScope.mine) {
-      return buildStateCard(
-        icon: Icons.edit_note_rounded,
-        color: AppColors.primary,
-        title: 'ยังไม่มีโพสต์',
-        message: 'โพสต์ที่คุณแชร์ทั้งในกลุ่มและชุมชนจะแสดงที่นี่',
-      );
+      return switch (widget.mineVisibility) {
+        'community' => buildStateCard(
+          icon: Icons.public_rounded,
+          color: communityColor,
+          title: 'ยังไม่มีโพสต์ในชุมชน',
+          message: 'โพสต์ที่คุณแชร์ให้ทุกคนในชุมชนเห็นจะแสดงที่นี่',
+        ),
+        'family' => buildStateCard(
+          icon: Icons.groups_rounded,
+          color: AppColors.primary,
+          title: 'ยังไม่มีโพสต์ในกลุ่ม',
+          message: 'โพสต์ที่คุณแชร์ในกลุ่มจะแสดงที่นี่ เห็นเฉพาะสมาชิกในกลุ่ม',
+        ),
+        _ => buildStateCard(
+          icon: Icons.edit_note_rounded,
+          color: AppColors.primary,
+          title: 'ยังไม่มีโพสต์',
+          message: 'โพสต์ที่คุณแชร์ทั้งในกลุ่มและชุมชนจะแสดงที่นี่',
+        ),
+      };
     }
 
     final PostCategory? filter = findPostCategory(filterCategory);

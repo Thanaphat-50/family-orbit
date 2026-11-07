@@ -65,6 +65,25 @@ class SocialService {
     return ApiHelper.decode(response);
   }
 
+  // รายชื่อของเราเอง: followers = คนที่ติดตามเรา / false = คนที่เราติดตาม
+  // users: [{id, name, profile_photo_url, is_following, follows_me}]
+  static Future<Map<String, dynamic>> getFollowList({
+    required bool followers,
+    int page = 1,
+  }) async {
+    final headers = await _headers();
+
+    final Uri uri = Uri.parse(
+      '$baseUrl/me/${followers ? 'followers' : 'following'}',
+    ).replace(queryParameters: {'page': '$page'});
+
+    final response = await ApiHelper.request(
+      () => http.get(uri, headers: headers),
+    );
+
+    return ApiHelper.decode(response);
+  }
+
   // users: [{id, name, profile_image_url, followers_count, reason}]
   static Future<Map<String, dynamic>> suggestions() async {
     final headers = await _headers();

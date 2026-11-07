@@ -1213,13 +1213,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
     switch (item) {
       case AccountMenuItem.profile:
+        // หน้าโปรไฟล์มีแถบด้านบน (ชื่อหน้า + ปุ่มตั้งค่า) ของตัวเอง
         await navigator.push(
-          MaterialPageRoute(
-            builder: (_) => Scaffold(
-              appBar: AppBar(title: const Text('โปรไฟล์')),
-              body: const ProfilePage(),
-            ),
-          ),
+          MaterialPageRoute(builder: (_) => const ProfilePage()),
         );
 
       case AccountMenuItem.myPosts:
