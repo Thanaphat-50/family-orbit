@@ -9,6 +9,7 @@ import '../theme/app_theme.dart';
 import '../widgets/market_widgets.dart' show ShopContactButtons;
 import '../widgets/photo_viewer.dart';
 import '../widgets/promptpay_qr.dart';
+import '../widgets/shop_trust_widgets.dart' show StarRow, showStarReviewSheet;
 import 'market_shop_page.dart';
 
 // =======================================================
@@ -193,6 +194,63 @@ class _OrderPageState extends State<OrderPage> {
     });
   }
 
+  // =====================================================
+  // รีวิวสินค้า (คำสั่งซื้อสำเร็จแล้ว) 1 ครั้งต่อสินค้า แก้ได้
+  // =====================================================
+
+  // product_id → {rating, comment}
+  Map<String, Map<String, dynamic>> myReviews(Map<String, dynamic> data) {
+    final dynamic raw = data['my_reviews'];
+
+    if (raw is! Map) return {};
+
+    return {
+      for (final entry in raw.entries)
+        if (entry.value is Map)
+          entry.key.toString(): Map<String, dynamic>.from(entry.value as Map),
+    };
+  }
+
+  Future<void> reviewProduct(Map item, Map<String, dynamic>? existing) async {
+    final int? productId = (item['product_id'] as num?)?.toInt();
+
+    if (productId == null || isWorking) return;
+
+    Map<String, dynamic>? latest;
+
+    final String variant = item['variant_name']?.toString() ?? '';
+
+    final bool saved = await showStarReviewSheet(
+      context,
+      title: existing == null ? 'ให้คะแนนสินค้า' : 'แก้ไขรีวิวสินค้า',
+      subtitle: [
+        item['title']?.toString() ?? '',
+        if (variant.isNotEmpty) 'ตัวเลือก: $variant',
+      ].join(' · '),
+      hint: 'สินค้าเป็นอย่างไรบ้าง ตรงตามรูปไหม (ไม่บังคับ)',
+      existing: existing,
+      onSave: (rating, comment) async {
+        final result = await OrderService.act(widget.orderId, 'reviews', {
+          'product_id': productId,
+          'rating': rating,
+          'comment': comment,
+        });
+
+        final dynamic updated = result['order'];
+
+        if (updated is Map) latest = Map<String, dynamic>.from(updated);
+
+        return result;
+      },
+    );
+
+    final Map<String, dynamic>? updated = latest;
+
+    if (saved && updated != null && mounted) {
+      setState(() => order = updated);
+    }
+  }
+
   void showMessage(String message) {
     if (!mounted) return;
 
@@ -246,7 +304,10 @@ class _OrderPageState extends State<OrderPage> {
       'shipped' =>
         'ได้รับสินค้าแล้วกด "ได้รับสินค้าแล้ว" '
             '(ไม่กดภายใน ${formatDateTime(data['auto_complete_at'], withTime: false)} ระบบจะยืนยันให้)',
-      'completed' => 'ได้รับสินค้าแล้ว ขอบคุณที่สั่งซื้อ',
+      'completed' =>
+        data['can_review'] == true && myReviews(data).isEmpty
+            ? 'ได้รับสินค้าแล้ว ขอบคุณที่สั่งซื้อ ให้คะแนนสินค้าได้ด้านล่าง'
+            : 'ได้รับสินค้าแล้ว ขอบคุณที่สั่งซื้อ',
       _ => cancelText(data),
     };
   }
@@ -644,11 +705,68 @@ class _OrderPageState extends State<OrderPage> {
       (sum, item) => sum + (double.tryParse('${item['subtotal'] ?? 0}') ?? 0),
     );
 
+    // รีวิวได้ครั้งเดียวต่อสินค้า (สินค้าเดียวกันหลายตัวเลือก → ปุ่มเดียว)
+    final bool canReview = data['can_review'] == true;
+    final Map<String, Map<String, dynamic>> reviews = myReviews(data);
+    final Set<String> reviewShown = {};
+
+    Widget? reviewRow(Map item) {
+      final String productId = item['product_id']?.toString() ?? '';
+
+      if (!canReview || productId.isEmpty || !reviewShown.add(productId)) {
+        return null;
+      }
+
+      final Map<String, dynamic>? review = reviews[productId];
+
+      if (review == null) {
+        return Align(
+          alignment: Alignment.centerLeft,
+          child: OutlinedButton.icon(
+            // ธีมของแอปให้ปุ่มกว้างเต็มจอ → กำหนดขนาดเอง
+            style: OutlinedButton.styleFrom(
+              foregroundColor: marketColor,
+              side: const BorderSide(color: marketColor),
+              minimumSize: const Size(0, 36),
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+            ),
+            onPressed: isWorking ? null : () => reviewProduct(item, null),
+            icon: const Icon(Icons.star_outline_rounded, size: 18),
+            label: const Text('ให้คะแนนสินค้า'),
+          ),
+        );
+      }
+
+      final String comment = review['comment']?.toString() ?? '';
+
+      return Row(
+        children: [
+          StarRow(
+            rating: (review['rating'] as num?)?.toDouble() ?? 0,
+            size: 16,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              comment.isEmpty ? 'ให้คะแนนแล้ว' : comment,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: AppColors.muted, fontSize: 12.5),
+            ),
+          ),
+          TextButton(
+            onPressed: isWorking ? null : () => reviewProduct(item, review),
+            child: const Text('แก้ไข'),
+          ),
+        ],
+      );
+    }
+
     return card(
       child: Column(
         children: [
           for (final item in items)
-            if (item is Map)
+            if (item is Map) ...[
               Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: Row(
@@ -713,6 +831,12 @@ class _OrderPageState extends State<OrderPage> {
                   ],
                 ),
               ),
+              if (reviewRow(item) case final Widget row)
+                Padding(
+                  padding: const EdgeInsets.only(left: 72, bottom: 10),
+                  child: row,
+                ),
+            ],
           const Divider(height: 12),
           line('ค่าสินค้า', formatPrice(itemsTotal)),
           line('ค่าส่ง', shipping > 0 ? formatPrice(shipping) : 'ไม่มี'),

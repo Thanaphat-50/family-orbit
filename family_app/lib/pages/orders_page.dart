@@ -22,12 +22,23 @@ class OrdersPage extends StatefulWidget {
 
 class _OrdersPageState extends State<OrdersPage> {
   // แท็บ (key ส่งเป็น filter ไปเซิร์ฟเวอร์)
-  late final List<(String, String)> tabs = [
-    if (widget.seller) ('todo', 'ต้องจัดการ'),
-    ('open', 'กำลังดำเนินการ'),
-    ('completed', 'สำเร็จ'),
-    ('cancelled', 'ยกเลิก'),
-  ];
+  late final List<(String, String)> tabs = widget.seller
+      ? [
+          ('todo', 'ต้องจัดการ'),
+          ('shipping', 'กำลังจัดส่ง'),
+          ('completed', 'สำเร็จ'),
+          ('cancelled', 'ยกเลิก'),
+        ]
+      : [
+          ('to_pay', 'รอชำระเงิน'),
+          ('to_ship', 'รอจัดส่ง'),
+          ('shipping', 'กำลังจัดส่ง'),
+          ('completed', 'สำเร็จ'),
+          ('cancelled', 'ยกเลิก'),
+        ];
+
+  // ผู้ซื้อ: จำนวนในแต่ละแท็บ (to_pay / to_ship / shipping)
+  Map<String, int> counts = {};
 
   late String filter = tabs.first.$1;
 
@@ -94,6 +105,15 @@ class _OrdersPageState extends State<OrdersPage> {
         page = nextPage;
         hasMore = result['has_more'] == true;
         todoCount = (result['todo'] as num?)?.toInt() ?? todoCount;
+
+        final dynamic rawCounts = result['counts'];
+
+        if (rawCounts is Map) {
+          counts = {
+            for (final entry in rawCounts.entries)
+              entry.key.toString(): (entry.value as num?)?.toInt() ?? 0,
+          };
+        }
       });
     } catch (e) {
       if (mounted) setState(() => loadError = e.toString());
@@ -145,11 +165,13 @@ class _OrdersPageState extends State<OrdersPage> {
             Padding(
               padding: const EdgeInsets.only(right: 8),
               child: ChoiceChip(
-                label: Text(
-                  key == 'todo' && todoCount > 0
-                      ? '$label ($todoCount)'
-                      : label,
-                ),
+                label: Text(() {
+                  final int count = key == 'todo'
+                      ? todoCount
+                      : (counts[key] ?? 0);
+
+                  return count > 0 ? '$label ($count)' : label;
+                }()),
                 selected: filter == key,
                 selectedColor: marketColor.withValues(alpha: 0.16),
                 onSelected: (_) => selectTab(key),

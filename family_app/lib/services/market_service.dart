@@ -421,6 +421,23 @@ class MarketService {
     return ApiHelper.decode(response);
   }
 
+  // รีวิวสินค้าจากผู้ซื้อจริง
+  static Future<Map<String, dynamic>> getProductReviews(
+    int productId, {
+    int page = 1,
+  }) async {
+    final headers = await _headers();
+
+    final response = await ApiHelper.request(
+      () => http.get(
+        Uri.parse('$baseUrl/market/products/$productId/reviews?page=$page'),
+        headers: headers,
+      ),
+    );
+
+    return ApiHelper.decode(response);
+  }
+
   static Future<Map<String, dynamic>> saveShopReview(
     int shopId, {
     required int rating,

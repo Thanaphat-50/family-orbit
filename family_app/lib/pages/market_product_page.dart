@@ -11,6 +11,8 @@ import '../widgets/market_sheets.dart';
 import '../widgets/market_widgets.dart';
 import '../widgets/photo_viewer.dart';
 import '../widgets/product_option_sheet.dart';
+import '../widgets/shop_trust_widgets.dart'
+    show ReviewTile, ShopReviewsPage, StarRow;
 import 'cart_page.dart';
 import 'chat_room_page.dart';
 import 'checkout_page.dart';
@@ -40,6 +42,10 @@ class _MarketProductPageState extends State<MarketProductPage> {
   Map<String, dynamic>? shop;
   List<Map<String, dynamic>> otherProducts = [];
 
+  // รีวิวสินค้าจากผู้ซื้อจริง (ล่าสุด 3 รายการ) + คะแนนเฉลี่ย
+  List<Map<String, dynamic>> reviews = [];
+  Map<String, dynamic> reviewSummary = {};
+
   bool isLoading = true;
   String? loadError;
 
@@ -68,8 +74,19 @@ class _MarketProductPageState extends State<MarketProductPage> {
 
       if (result['status'] == true) {
         final dynamic others = result['other_products'];
+        final dynamic rawReviews = result['reviews'];
+        final dynamic summary = result['review_summary'];
 
         setState(() {
+          reviews = rawReviews is List
+              ? rawReviews
+                    .whereType<Map>()
+                    .map((item) => Map<String, dynamic>.from(item))
+                    .toList()
+              : [];
+          reviewSummary = summary is Map
+              ? Map<String, dynamic>.from(summary)
+              : {};
           product = Map<String, dynamic>.from(result['product'] as Map);
           shop = Map<String, dynamic>.from(result['shop'] as Map);
           otherProducts = others is List
@@ -606,6 +623,15 @@ class _MarketProductPageState extends State<MarketProductPage> {
   Widget buildHeadline(Map<String, dynamic> data) {
     final int sold = (data['sold_count'] as num?)?.toInt() ?? 0;
 
+    final int reviewCount = (reviewSummary['count'] as num?)?.toInt() ?? 0;
+
+    // "★ 4.8 (12) · ขายแล้ว 30 ชิ้น"
+    final String soldLine = [
+      if (reviewCount > 0)
+        '★ ${((reviewSummary['average'] as num?) ?? 0).toStringAsFixed(1)} ($reviewCount)',
+      if (sold > 0) 'ขายแล้ว $sold ชิ้น',
+    ].join(' · ');
+
     final bool soldOut = data['sold_out'] == true;
 
     final Color statusColor = soldOut ? AppColors.danger : AppColors.success;
@@ -632,9 +658,9 @@ class _MarketProductPageState extends State<MarketProductPage> {
                   ),
                 ),
               ),
-              if (sold > 0)
+              if (soldLine.isNotEmpty)
                 Text(
-                  'ขายแล้ว $sold ชิ้น',
+                  soldLine,
                   style: TextStyle(color: AppColors.muted, fontSize: 13),
                 ),
             ],
@@ -953,6 +979,85 @@ class _MarketProductPageState extends State<MarketProductPage> {
     );
   }
 
+  // รีวิวสินค้า: คะแนนเฉลี่ย + รีวิวล่าสุด (รีวิวได้หลังได้รับสินค้าเท่านั้น)
+  Widget buildReviews(Map<String, dynamic> data) {
+    final int count = (reviewSummary['count'] as num?)?.toInt() ?? 0;
+
+    final double average = (reviewSummary['average'] as num?)?.toDouble() ?? 0;
+
+    void openAll() {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => ShopReviewsPage.product(
+            productId: widget.productId,
+            productTitle: data['title']?.toString() ?? '',
+          ),
+        ),
+      );
+    }
+
+    return section(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'รีวิวสินค้า',
+                  style: TextStyle(
+                    color: AppColors.navy,
+                    fontSize: 15.5,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              if (count > reviews.length)
+                TextButton(
+                  onPressed: openAll,
+                  child: Text('ดูทั้งหมด ($count)'),
+                ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          if (count > 0)
+            Row(
+              children: [
+                Text(
+                  average.toStringAsFixed(1),
+                  style: TextStyle(
+                    color: AppColors.navy,
+                    fontSize: 26,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    StarRow(rating: average, size: 18),
+                    Text(
+                      '$count รีวิวจากผู้ซื้อจริง',
+                      style: TextStyle(color: AppColors.muted, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ],
+            )
+          else
+            Text(
+              'ยังไม่มีรีวิว (รีวิวได้หลังได้รับสินค้าแล้ว)',
+              style: TextStyle(color: AppColors.muted, fontSize: 13),
+            ),
+          for (final review in reviews) ...[
+            const Divider(height: 22),
+            ReviewTile(review: review),
+          ],
+        ],
+      ),
+    );
+  }
+
   // ร้าน + ความน่าเชื่อถือ (คะแนนรีวิว ยอดขาย จำนวนสินค้า เปิดร้านมานาน)
   Widget buildShop(Map<String, dynamic> shopData) {
     final String? logoUrl = shopData['logo_url']?.toString();
@@ -1160,6 +1265,7 @@ class _MarketProductPageState extends State<MarketProductPage> {
               buildShipping(data, shopData),
               if (data['video_url'] != null) buildVideo(data),
               buildDescription(data),
+              buildReviews(data),
               buildShop(shopData),
               if (otherProducts.isNotEmpty) buildOtherProducts(),
               // ร้านยังไม่เปิดรับคำสั่งซื้อในแอป → ติดต่อร้านโดยตรงได้

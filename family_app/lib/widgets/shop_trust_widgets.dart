@@ -425,6 +425,11 @@ class ReviewTile extends StatelessWidget {
 
     final String comment = review['comment']?.toString() ?? '';
 
+    // รีวิวสินค้า: ผู้ซื้อจริง + ตัวเลือกที่ซื้อ
+    final String variant = review['variant_name']?.toString() ?? '';
+
+    final bool verified = review['verified_purchase'] == true;
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -459,6 +464,54 @@ class ReviewTile extends StatelessWidget {
                 rating: (review['rating'] as num?)?.toDouble() ?? 0,
                 size: 15,
               ),
+              if (verified || variant.isNotEmpty) ...[
+                const SizedBox(height: 3),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    if (verified)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.success.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.verified_rounded,
+                              size: 12,
+                              color: AppColors.success,
+                            ),
+                            const SizedBox(width: 3),
+                            Text(
+                              'ซื้อแล้ว',
+                              style: TextStyle(
+                                color: AppColors.success,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    if (variant.isNotEmpty)
+                      Text(
+                        'ตัวเลือก: $variant',
+                        style: TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 11.5,
+                        ),
+                      ),
+                  ],
+                ),
+              ],
               if (comment.isNotEmpty) ...[
                 const SizedBox(height: 4),
                 Text(
@@ -479,13 +532,42 @@ class ReviewTile extends StatelessWidget {
 }
 
 // =======================================================
-// เขียน / แก้ไข / ลบรีวิว (คืนค่า true เมื่อมีการเปลี่ยนแปลง)
+// เขียน / แก้ไข / ลบรีวิวร้าน (คืนค่า true เมื่อมีการเปลี่ยนแปลง)
 // =======================================================
 
 Future<bool> showShopReviewSheet(
   BuildContext context, {
   required int shopId,
   Map<String, dynamic>? existing,
+}) {
+  return showStarReviewSheet(
+    context,
+    title: existing == null ? 'รีวิวร้านนี้' : 'แก้ไขรีวิว',
+    hint: 'เล่าประสบการณ์ซื้อจากร้านนี้ (ไม่บังคับ)',
+    existing: existing,
+    onSave: (rating, comment) =>
+        MarketService.saveShopReview(shopId, rating: rating, comment: comment),
+    onDelete: existing == null
+        ? null
+        : () => MarketService.deleteShopReview(shopId),
+  );
+}
+
+// =======================================================
+// แผ่นให้ดาว 1–5 + ความเห็น (ใช้กับรีวิวร้าน และรีวิวสินค้า)
+// onSave คืนผลจากเซิร์ฟเวอร์ status = true → ปิดแผ่น
+// onDelete = null → ไม่มีปุ่มลบ
+// =======================================================
+
+Future<bool> showStarReviewSheet(
+  BuildContext context, {
+  required String title,
+  required String hint,
+  required Future<Map<String, dynamic>> Function(int rating, String comment)
+  onSave,
+  Future<void> Function()? onDelete,
+  Map<String, dynamic>? existing,
+  String? subtitle,
 }) async {
   FocusManager.instance.primaryFocus?.unfocus();
 
@@ -493,17 +575,36 @@ Future<bool> showShopReviewSheet(
     context: context,
     isScrollControlled: true,
     showDragHandle: true,
-    builder: (sheetContext) => _ReviewSheet(shopId: shopId, existing: existing),
+    builder: (sheetContext) => _ReviewSheet(
+      title: title,
+      subtitle: subtitle,
+      hint: hint,
+      existing: existing,
+      onSave: onSave,
+      onDelete: onDelete,
+    ),
   );
 
   return changed == true;
 }
 
 class _ReviewSheet extends StatefulWidget {
-  final int shopId;
+  final String title;
+  final String? subtitle;
+  final String hint;
   final Map<String, dynamic>? existing;
+  final Future<Map<String, dynamic>> Function(int rating, String comment)
+  onSave;
+  final Future<void> Function()? onDelete;
 
-  const _ReviewSheet({required this.shopId, this.existing});
+  const _ReviewSheet({
+    required this.title,
+    required this.hint,
+    required this.onSave,
+    this.subtitle,
+    this.existing,
+    this.onDelete,
+  });
 
   @override
   State<_ReviewSheet> createState() => _ReviewSheetState();
@@ -524,11 +625,7 @@ class _ReviewSheetState extends State<_ReviewSheet> {
     setState(() => isSaving = true);
 
     try {
-      final result = await MarketService.saveShopReview(
-        widget.shopId,
-        rating: rating,
-        comment: controller.text.trim(),
-      );
+      final result = await widget.onSave(rating, controller.text.trim());
 
       if (!mounted) return;
 
@@ -550,10 +647,14 @@ class _ReviewSheetState extends State<_ReviewSheet> {
   }
 
   Future<void> delete() async {
+    final Future<void> Function()? onDelete = widget.onDelete;
+
+    if (onDelete == null) return;
+
     setState(() => isSaving = true);
 
     try {
-      await MarketService.deleteShopReview(widget.shopId);
+      await onDelete();
 
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
@@ -580,13 +681,22 @@ class _ReviewSheetState extends State<_ReviewSheet> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            widget.existing == null ? 'รีวิวร้านนี้' : 'แก้ไขรีวิว',
+            widget.title,
             style: TextStyle(
               color: AppColors.navy,
               fontSize: 18,
               fontWeight: FontWeight.w800,
             ),
           ),
+          if (widget.subtitle != null) ...[
+            const SizedBox(height: 2),
+            Text(
+              widget.subtitle!,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: AppColors.muted, fontSize: 13),
+            ),
+          ],
           const SizedBox(height: 12),
           Center(
             child: Row(
@@ -615,14 +725,12 @@ class _ReviewSheetState extends State<_ReviewSheet> {
             maxLength: 500,
             minLines: 2,
             maxLines: 5,
-            decoration: const InputDecoration(
-              hintText: 'เล่าประสบการณ์ซื้อจากร้านนี้ (ไม่บังคับ)',
-            ),
+            decoration: InputDecoration(hintText: widget.hint),
           ),
           const SizedBox(height: 8),
           Row(
             children: [
-              if (widget.existing != null)
+              if (widget.onDelete != null)
                 TextButton(
                   onPressed: isSaving ? null : delete,
                   child: Text(
@@ -651,18 +759,27 @@ class _ReviewSheetState extends State<_ReviewSheet> {
 }
 
 // =======================================================
-// รีวิวทั้งหมดของร้าน (โหลดทีละหน้า)
+// รีวิวทั้งหมดของร้าน / ของสินค้า (โหลดทีละหน้า)
+// productId != null → รีวิวสินค้า (จากผู้ซื้อจริง)
 // =======================================================
 
 class ShopReviewsPage extends StatefulWidget {
   final int shopId;
   final String shopName;
+  final int? productId;
 
   const ShopReviewsPage({
     super.key,
     required this.shopId,
     required this.shopName,
-  });
+  }) : productId = null;
+
+  const ShopReviewsPage.product({
+    super.key,
+    required int this.productId,
+    required String productTitle,
+  }) : shopId = 0,
+       shopName = productTitle;
 
   @override
   State<ShopReviewsPage> createState() => _ShopReviewsPageState();
@@ -693,10 +810,11 @@ class _ShopReviewsPageState extends State<ShopReviewsPage> {
     });
 
     try {
-      final result = await MarketService.getShopReviews(
-        widget.shopId,
-        page: page + 1,
-      );
+      final int? productId = widget.productId;
+
+      final result = productId != null
+          ? await MarketService.getProductReviews(productId, page: page + 1)
+          : await MarketService.getShopReviews(widget.shopId, page: page + 1);
 
       if (!mounted) return;
 
@@ -728,7 +846,11 @@ class _ShopReviewsPageState extends State<ShopReviewsPage> {
     final double average = (summary['average'] as num?)?.toDouble() ?? 0;
 
     return Scaffold(
-      appBar: AppBar(title: Text('รีวิว ${widget.shopName}')),
+      appBar: AppBar(
+        title: Text(
+          widget.productId != null ? 'รีวิวสินค้า' : 'รีวิว ${widget.shopName}',
+        ),
+      ),
       body: NotificationListener<ScrollNotification>(
         onNotification: (notification) {
           if (notification.metrics.extentAfter < 300) loadMore();
